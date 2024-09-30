@@ -163,7 +163,7 @@ class Primitive(ABC):
         elif word_bitsize <= 64: return 'uint64_t'
         else: return 'uint128_t'
     
-    def generate_code(self, filename, language = 'python', unroll = False):  # method that generates the code defining the primitive
+    def generate_code(self, filename, language = 'python', unroll = False, obj=0):  # method that generates the code defining the primitive
         
         nbr_rounds = self.nbr_rounds
         
@@ -349,27 +349,83 @@ class Primitive(ABC):
                     for s in ["STATE"]: # for single-key differential
                         for l in range(self.states[s].nbr_layers+1):                        
                             for cons in self.states[s].constraints[r][l]: 
-                                # print(cons.ID)
                                 if cons.ID[0:3] == 'ARK':
                                     var_in, var_out = [cons.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)], [cons.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)]
                                     for vin, vout in zip(var_in, var_out):
                                         myfile.write(f"{vin} - {vout} = 0\n")
-                                    Binary_cons += " " + " ".join(var_in + var_out)
+                                    Binary_cons += " ".join(var_in + var_out)
                                 else:
-                                    for line in cons.generate_model("milp", unroll=True): 
-                                        if type(line) == str:
-                                            myfile.write(line + "\n")    
-                                        elif type(line) == dict:
-                                            if 'Binary' in line:
-                                                Binary_cons += " " + line['Binary']
-                                            if 'Weight' in line:
-                                                obj += ' + ' + line['Weight']
+                                    cons_gen = cons.generate_model("milp", unroll=True)
+                                    myfile.write(''.join(cons + '\n' for cons in cons_gen[0:-1]))
+                                    if 'Binary' in cons_gen[-1]:
+                                        Binary_cons += " " + cons_gen[-1]['Binary']
+                                    if 'Weight' in cons_gen[-1]:
+                                        obj += ' + ' + cons_gen[-1]['Weight']
                 myfile.write(obj + ' - obj = 0\n') 
                 myfile.write('Binary\n' + Binary_cons) 
                 myfile.write('\nEnd\n') 
+
+            
+            elif language == 'sat':  
+                obj_var = []
+                if "IN" in self.inputs: # for permutation
+                    model_cons = [" ".join(f"{self.inputs['IN'][i].ID}_{j}" for i in range(len(self.inputs['IN'])) for j in range(self.inputs['IN'][i].bitsize))]
+                    model_cons += [clause for i, var in enumerate(self.inputs["IN"]) for j in range(var.bitsize) for clause in (f"-{self.inputs['IN'][i].ID}_{j} {self.states['STATE'].vars[1][0][i].ID}_{j}", f"{self.inputs['IN'][i].ID}_{j} -{self.states['STATE'].vars[1][0][i].ID}_{j}")]
+                elif "plaintext" in self.inputs: # for block cipher
+                    model_cons = [" ".join(f"{self.inputs['plaintext'][i].ID}_{j}" for i in range(len(self.inputs['plaintext'])) for j in range(self.inputs['plaintext'][i].bitsize))]
+                    model_cons += [clause for i, var in enumerate(self.inputs["plaintext"]) for j in range(var.bitsize) for clause in (f"-{self.inputs['plaintext'][i].ID}_{j} {self.states['STATE'].vars[1][0][i].ID}_{j}", f"{self.inputs['plaintext'][i].ID}_{j} -{self.states['STATE'].vars[1][0][i].ID}_{j}")]
+                for r in range(1,nbr_rounds+1):
+                    for s in ["STATE"]: # for single-key differential
+                        for l in range(self.states[s].nbr_layers+1):                        
+                            for cons in self.states[s].constraints[r][l]: 
+                                if cons.ID[0:3] == 'ARK':
+                                    var_in, var_out = [cons.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)], [cons.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)]
+                                    for vin, vout in zip(var_in, var_out):
+                                        model_cons += [f"-{vin} {vout}", f"{vin} -{vout}"]
+                                else:
+                                    cons_gen = cons.generate_model("sat", unroll=True)
+                                    model_cons += cons_gen[0:-1]  
+                                    if 'Weight' in cons_gen[-1]:
+                                        obj_var += cons_gen[-1]['Weight']
+                # modeling the constraint "weight greater or equal to the given obj using sequential encoding method 
+                if obj == 0:
+                    obj_cons = [f'-{var}' for var in obj_var] 
+                else:
+                    n = len(obj_var)
+                    dummy_var = [[f'obj_d_{i}_{j}' for j in range(obj)] for i in range(n - 1)]
+                    obj_cons = [f'-{obj_var[0]} {dummy_var[0][0]}']
+                    obj_cons += [f'-{dummy_var[0][j]}' for j in range(1, obj)]
+                    for i in range(1, n - 1):
+                        obj_cons += [f'-{obj_var[i]} {dummy_var[i][0]}']
+                        obj_cons += [f'-{dummy_var[i - 1][0]} {dummy_var[i][0]}']
+                        obj_cons += [f'-{obj_var[i]} -{dummy_var[i - 1][j - 1]} {dummy_var[i][j]}' for j in range(1, obj)]
+                        obj_cons += [f'-{dummy_var[i - 1][j]} {dummy_var[i][j]}' for j in range(1, obj)]
+                        obj_cons += [f'-{obj_var[i]} -{dummy_var[i - 1][obj - 1]}']
+                    obj_cons += [f'-{obj_var[n - 1]} -{dummy_var[n - 2][obj - 1]}']
+                model_cons += obj_cons
+                # creating numerical CNF
+                num_clause = len(model_cons)
+                family_of_variables = ' '.join(model_cons).replace('-', '')
+                variables = sorted(set(family_of_variables.split()))
+                num_var = len(variables)
+                variable2number = {variable: i + 1 for (i, variable) in enumerate(variables)}
+                numerical_cnf = []
+                for clause in model_cons:
+                    literals = clause.split()
+                    numerical_literals = []
+                    lits_are_neg = (literal[0] == '-' for literal in literals)
+                    numerical_literals.extend(tuple(f'{"-" * lit_is_neg}{variable2number[literal[lit_is_neg:]]}'
+                                            for lit_is_neg, literal in zip(lits_are_neg, literals)))
+                    numerical_clause = ' '.join(numerical_literals)
+                    numerical_cnf.append(numerical_clause)
+                content = f"p cnf {num_var} {num_clause}\n"  
+                for constraint in numerical_cnf:
+                    content += constraint + ' 0\n'
+                myfile.write(content)
+
                 
 
-                   
+                    
     def generate_figure(self, filename):  # method that generates the figure describing the primitive       
         
         var_font_size = 2    # controls the font size of the variables
