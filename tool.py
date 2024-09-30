@@ -353,8 +353,8 @@ def solve_milp(filename):
     model.optimize()
     if model.status == gp.GRB.Status.OPTIMAL:
         print("Optimal Objective Value:", model.ObjVal)
-        for v in model.getVars(): 
-            print(f"{v.VarName} = {v.Xn}")
+        # for v in model.getVars(): 
+            # print(f"{v.VarName} = {v.Xn}")
         return model.ObjVal
     else:
         print("No optimal solution found.")
@@ -369,8 +369,8 @@ def solve_SAT(filename):
     solver.append_formula(cnf.clauses)
     if solver.solve():
         print("A solution exists.")
-        solution = solver.get_model()
-        print("solution: \n", solution)
+        # solution = solver.get_model()
+        # print("solution: \n", solution)
         return True
     else:
         print("No solution exists.")
@@ -438,7 +438,7 @@ def TEST_CIPHERS_MILP():
         result = solve_milp(file_name)
         end_time = time.time()
         data.append([r, result, end_time - strat_time])
-        with open(file_name.replace(".lp", "_DAS_MILP.txt"), 'w') as file:
+        with open(file_name.replace(".lp", "_DC_MILP.txt"), 'w') as file:
             file.write(f"{'Rounds':<10}{'Result':<10}{'Time (s)':<10}\n")
             file.write('-' * 30 + '\n')
             for row in data:
@@ -464,7 +464,7 @@ def TEST_CIPHERS_SAT():
             obj += 1
         end_time = time.time()
         data.append([r, obj-1, end_time - strat_time])
-        with open(file_name.replace(".cnf", "_DAS_SAT.txt"), 'w') as file:
+        with open(file_name.replace(".cnf", "_DC_SAT.txt"), 'w') as file:
             file.write(f"{'Rounds':<10}{'Result':<10}{'Time (s)':<10}\n")
             file.write('-' * 30 + '\n')
             for row in data:
@@ -472,8 +472,8 @@ def TEST_CIPHERS_SAT():
 
 
 
-# TEST_OPERATORS_MILP_SAT()
-# TEST_CIPHERS_MILP()
+TEST_OPERATORS_MILP_SAT()
+TEST_CIPHERS_MILP()
 TEST_CIPHERS_SAT()
 
 # TEST_SPECK32_PERMUTATION(2)
