@@ -9,7 +9,6 @@ class Variable:
         self.ID = ID              # ID of that variable
 
     def display_value(self, representation='binary'):   # method that displays the value of that variable, depending on the representation requested
-        # zcn
         if representation == 'binary' and self.value:
             return bin(self.value)[2:].zfill(self.bitsize)
         elif representation == 'hexadecimal' and self.value:
@@ -20,8 +19,7 @@ class Variable:
             return "Invalid representation"
         
     def display(self, representation='binary'):   # method that displays all information of that variable
-        print("ID: " + self.ID + " / bitsize: " + str(self.bitsize) + " / value: ", end='') # zcn
-        # print("ID: " + self.ID + " / bitsize: " + self.bitsize + " / value: ", end=[])
+        print("ID: " + self.ID + " / bitsize: " + str(self.bitsize) + " / value: ", end='') 
         print(self.display_value(representation)) 
             
     def remove_round_from_ID(self):   # method that removes the round number from the ID of that variable (used when unroll mode if off)

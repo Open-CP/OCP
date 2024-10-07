@@ -15,7 +15,14 @@ except ImportError:
     gurobipy_import = False
     pass
 
-
+try:
+    from pysat.solvers import CryptoMinisat
+    from pysat.formula import CNF
+    pysat_import = True
+except ImportError:
+    print("pysat module can't be loaded \n")
+    pysat_import = False
+    pass
 
 def computeDDT(table, input_bitsize, output_bitsize):  # method computing the DDT of the Sbox
     DDT = [[0]*(2**output_bitsize) for _ in range(2**input_bitsize)] 
@@ -29,176 +36,313 @@ def test_operator_MILP(constraints):
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
         return ""
-    # init
     content = "Minimize\n obj\nSubject To\n"
-    if "Weight" in  constraints[-1]:
+    if "Weight" in constraints[-1]:
         content += constraints[-1]["Weight"] + ' - obj = 0\n'
     for i, constraint in enumerate(constraints[0:-1]):
         content += constraint + '\n'
     content += "Binary\n" + constraints[-1]["Binary"] + "\nEnd\n"
-    filename = 'milp.lp'
+    filename = 'files/milp.lp'
     with open(filename, "w") as file:
         file.write(content)
     model = gp.read(filename)
+    model.setParam('OutputFlag', 0)
     model.Params.PoolSearchMode = 2   # Search for all solutions
-    model.Params.PoolSolutions = 1000  # Assuming you want a large number of solutions
+    model.Params.PoolSolutions = 1000000  # Assuming you want a large number of solutions
     model.optimize()
-    print(model.SolCount)
+    print("Number of total solutions using MILP: ", model.SolCount)
+    var_list = [v.VarName for v in model.getVars()]
+    var_index_map = {v.VarName: idx for idx, v in enumerate(model.getVars())}
+    print(var_list)
     for i in range(model.SolCount):
-        model.Params.SolutionNumber = i
-        print(f"Solution #{i+1}:")
-        for v in model.getVars():
-            print(f"{v.VarName} = {v.Xn}")
+        model.Params.SolutionNumber = i  
+        solution = [model.getVars()[var_index_map[var_name]].Xn for var_name in var_list]
+        print(f"Solution #{i + 1}:")
+        print(solution)
+    print("\n")
+
+    
 
 
-# ********************* TEST OF OPERATORS MODELING IM MILP ********************* #   
-def TEST_OPERATORS_MILP():    
-    # test equal
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)]
-    operator = op.Equal(my_input, my_output, ID='Equal')
+def create_numerical_cnf(cnf):
+    # creating dictionary (variable -> string, numeric_id -> int)
+    family_of_variables = ' '.join(cnf).replace('-', '')
+    variables = sorted(set(family_of_variables.split()))
+    variable2number = {variable: i + 1 for (i, variable) in enumerate(variables)}
+    # creating numerical CNF
+    numerical_cnf = []
+    for clause in cnf:
+        literals = clause.split()
+        numerical_literals = []
+        lits_are_neg = (literal[0] == '-' for literal in literals)
+        numerical_literals.extend(tuple(f'{"-" * lit_is_neg}{variable2number[literal[lit_is_neg:]]}'
+                                  for lit_is_neg, literal in zip(lits_are_neg, literals)))
+        numerical_clause = ' '.join(numerical_literals)
+        numerical_cnf.append(numerical_clause)
+    return len(variables), variable2number, numerical_cnf
+
+
+def test_operator_SAT(constraints):
+    if pysat_import == False: 
+        print("pysat module can't be loaded ... skipping test\n")
+        return ""
+    num_clause = len(constraints[0:-1])
+    num_var, variable_map, numerical_cnf = create_numerical_cnf(constraints[0:-1])
+    print("variable_map", variable_map)
+    content = f"p cnf {num_var} {num_clause}\n"   
+    for constraint in numerical_cnf:
+        content += constraint + ' 0\n'
+    filename = 'files/sat.cnf'
+    with open(filename, "w") as file:
+        file.write(content)
+    cnf = CNF(filename)
+    solver = CryptoMinisat()
+    solver.append_formula(cnf.clauses)
+    solutions = []
+    while solver.solve():
+        model = solver.get_model()
+        solutions.append(model)
+        block_clause = [-l for l in model]
+        solver.add_clause(block_clause)
+    solver.delete()
+    print("Number of total solutions using SAT: ", len(solutions))
+    for solution in solutions:
+        print(solution)
+    return solutions
+
+
+# ********************* TEST OF OPERATORS MODELING IM MILP and SAT********************* #   
+def TEST_OPERATORS_MILP_SAT():  
+    # test Equal
     print("********************* operation: Equal ********************* ")
-    print(operator.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
+    print("Input variables:")
+    my_input[0].display()
+    print("Output variables:")
+    my_output[0].display()
+    equal = op.Equal(my_input, my_output, ID='Equal')
+    python_code = equal.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", python_code)
+    milp_constraints = equal.generate_model(model_type='milp', unroll=True)
+    print("MILP constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = equal.generate_model(model_type='sat', unroll=True)    
+    print("SAT constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    print("\n")
+
+
+
+    # test rot
+    print("********************* operation: Rot ********************* ")
+    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
     print("output:")
     my_output[0].display()
-    constraints = operator.generate_model(model_type='milp', unroll=True)
-    print("Equal constraints: \n", constraints)
+    rot = op.Rot(my_input, my_output, direction= 'l', amount=2, ID='Rot')
+    # rot = op.Rot(my_input, my_output, direction= 'r', amount=2, ID='Rot')
+    python_code = rot.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = rot.generate_model(model_type='milp', unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = rot.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
     print("\n")
     
-    # test rot
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)]
-    rot = op.Rot(my_input, my_output, direction='l',amount=3)
-    print("********************* operation: Rot ********************* ")
-    print(rot.generate_model(model_type='python', unroll=True))
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    print("Rot constraints: \n", rot.generate_model("milp", unroll=True))
-    print("\n")    
     
-    # test shift
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)]
-    shift = op.Shift(my_input, my_output, direction='l',amount=3)
+
+    # test Shift
     print("********************* operation: Shift ********************* ")
-    print("python:", shift.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
     print("output:")
     my_output[0].display()
-    print("Shift constraints: \n", shift.generate_model("milp", unroll=True))
-    print("\n")    
+    shift = op.Shift(my_input, my_output, direction='l', amount=1, ID='Shift')
+    # shift = op.Shift(my_input, my_output, direction='r', amount=1, ID='Shift')
+    print("python code:", python_code)
+    python_code = shift.generate_model(model_type='python', unroll=True)
+    milp_constraints = shift.generate_model(model_type='milp', unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = shift.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    print("\n")
+    
+
     
     # test ConstantAdd
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)]
-    cons_add = op.ConstantAdd(my_input, my_output, 2, "xor")
     print("********************* operation: ConstantAdd ********************* ")
-    print("python:", cons_add.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
     print("output:")
     my_output[0].display()
-    print("ConstantAdd constraints: \n", cons_add.generate_model("milp", unroll=True))
+    cons_add = op.ConstantAdd(my_input, my_output, 2, "xor", ID = 'ConstantAddXor')
+    python_code = cons_add.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = cons_add.generate_model("milp", unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = cons_add.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
     print("\n")    
+    
     
     # test Modadd
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(2)], [var.Variable(4,ID="out"+str(i)) for i in range(1)]
-    mod_add = op.ModAdd(my_input, my_output, ID = 'ModAdd')
     print("********************* operation: ModAdd ********************* ")
-    print("python:", mod_add.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
+    my_input[1].display()
     print("output:")
     my_output[0].display()
-    mod_add_constraints = mod_add.generate_model("milp", unroll=True)
-    print("ModAdd constraints: \n", mod_add_constraints)
+    mod_add = op.ModAdd(my_input, my_output, ID = 'ModAdd')
+    python_code = mod_add.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = mod_add.generate_model("milp", unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = mod_add.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
     print("\n")
+    
 
     # test bitwiseAND
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    and_ = op.bitwiseAND(my_input, my_output, ID = 'AND')
     print("********************* operation: bitwiseAND ********************* ")
-    print("python:", and_.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
+    my_input[1].display()
     print("output:")
     my_output[0].display()
-    and_constraints = and_.generate_model("milp", unroll=True)
-    print("ConstantAND constraints: \n", and_constraints)
-    print("ddt of and_table", computeDDT([0,0,0,1],2,1))
-    test_operator_MILP(and_constraints)
+    bit_and = op.bitwiseAND(my_input, my_output, ID = 'AND')
+    python_code = bit_and.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = bit_and.generate_model("milp", unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = bit_and.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    ddt = computeDDT([0,0,0,1],2,1)
+    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
     print("\n")
+    
         
     # test bitwiseOR
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(2)], [var.Variable(4,ID="out"+str(i)) for i in range(1)]
-    or_ = op.bitwiseOR(my_input, my_output, ID = 'OR')
     print("********************* operation: bitwiseOR ********************* ")
-    print("python:", or_.generate_model(model_type='python', unroll=True))
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    or_constraints = or_.generate_model("milp", unroll=True)
-    print("ConstantOR constraints: \n", or_constraints)
-    print("ddt of or_table", computeDDT([0,1,1,1],2,1))
-    test_operator_MILP(or_constraints)
-    print("\n")    
-    
-    # test bitwiseXOR
     my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
-    print("********************* operation: bitwiseXOR ********************* ")
-    print("python:", xor.generate_model(model_type='python', unroll=True))
     print("input:")
     my_input[0].display()
+    my_input[1].display()
     print("output:")
     my_output[0].display()
-    xor_constraints0 = xor.generate_model("milp", unroll=True)
-    xor_constraints1 = xor.generate_model("milp", model_version =1, unroll=True)
-    xor_constraints2 = xor.generate_model("milp", model_version =2, unroll=True)
-    xor_constraints3 = xor.generate_model("milp", model_version =3, unroll=True)
-    print("bitwiseXOR constraints 0: \n", xor_constraints0)
-    print("bitwiseXOR constraints 1: \n", xor_constraints1)
-    print("bitwiseXOR constraints 2: \n", xor_constraints2)
-    print("bitwiseXOR constraints 3: \n", xor_constraints3)
-    test_operator_MILP(xor_constraints0)
-    print("\n")    
+    bit_or = op.bitwiseOR(my_input, my_output, ID = 'OR')
+    python_code = bit_or.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = bit_or.generate_model("milp", unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = bit_or.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    ddt = computeDDT([0,1,1,1],2,1)
+    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
+    print("\n")  
+    
+   
+    # test bitwiseXOR
+    print("********************* operation: bitwiseXOR ********************* ")
+    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
+    print("input:")
+    my_input[0].display()
+    my_input[1].display()
+    print("output:")
+    my_output[0].display()
+    xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
+    python_code = xor.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints0 = xor.generate_model("milp", unroll=True)
+    milp_constraints1 = xor.generate_model("milp", model_version =1, unroll=True)
+    milp_constraints2 = xor.generate_model("milp", model_version =2, unroll=True)
+    milp_constraints3 = xor.generate_model("milp", model_version =3, unroll=True)
+    print("milp constraints 0: \n", milp_constraints0)
+    test_operator_MILP(milp_constraints0)
+    print("milp constraints 1: \n", milp_constraints1)
+    test_operator_MILP(milp_constraints1)
+    print("milp constraints 2: \n", milp_constraints2)
+    test_operator_MILP(milp_constraints2)
+    print("milp constraints 3: \n", milp_constraints3)
+    test_operator_MILP(milp_constraints3)
+    sat_constraints = xor.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    print("\n")   
+   
+     
     
     # test bitwiseNOT
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    not_ = op.bitwiseNOT(my_input, my_output)
     print("********************* operation: bitwiseNOT ********************* ")
-    print("python:", not_.generate_model(model_type='python', unroll=True))
+    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
     print("output:")
     my_output[0].display()
-    not_constraints = not_.generate_model("milp", unroll=True)
-    print("bitwiseNOT constraints: \n", not_constraints)
-    print("ddt of not_table", computeDDT([1,0],1,1))
-    test_operator_MILP(not_constraints)
-    print("\n")    
+    bit_not = op.bitwiseNOT(my_input, my_output, ID = 'NOT')
+    python_code = bit_not.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code)
+    milp_constraints = bit_not.generate_model("milp", unroll=True)
+    print("milp constraints: \n", milp_constraints)
+    test_operator_MILP(milp_constraints)
+    sat_constraints = bit_not.generate_model(model_type='sat', unroll=True)    
+    print("sat constraints: \n", sat_constraints)
+    test_operator_SAT(sat_constraints)
+    ddt = computeDDT([1,0],1,1)
+    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
+    print("\n")  
+    
+    
     
     # test sbox
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)]
-    operator = op.GIFT_Sbox(my_input, my_output, ID="sb")
-    print("********************* operation: bitwiseNOT ********************* ")
-    print("python:", operator.generate_model(model_type='python', unroll=True))
+    print("********************* operation: ASCON_Sbox ********************* ")
+    my_input, my_output = [var.Variable(5,ID="in"+str(i)) for i in range(1)], [var.Variable(5,ID="out"+str(i)) for i in range(1)]
     print("input:")
     my_input[0].display()
     print("output:")
     my_output[0].display()
-    constraints0 = operator.generate_model(model_type='milp', model_version=0, unroll=True)
-    constraints1 = operator.generate_model(model_type='milp', model_version=1, unroll=True)
-    constraints2 = operator.generate_model(model_type='milp', model_version=2, unroll=True)
-    print("GIFT_Sbox constraints 0: \n", constraints0)
-    print("GIFT_Sbox constraints 1: \n", constraints1)
-    print("GIFT_Sbox constraints 2: \n", constraints2)
-    print("\n")
-    test_operator_MILP(constraints0)
-    # GIFT_ddt = operator.computeDDT()
-
+    sbox = op.ASCON_Sbox(my_input, my_output, ID="sbox")
+    python_code = sbox.generate_model(model_type='python', unroll=True)
+    print("python code:", python_code) 
+    milp_constraints0 = sbox.generate_model("milp", unroll=True)
+    milp_constraints1 = sbox.generate_model("milp", model_version =1, unroll=True)
+    milp_constraints2 = sbox.generate_model("milp", model_version =2, unroll=True)
+    print("milp constraints 0: \n", milp_constraints0)
+    test_operator_MILP(milp_constraints0)
+    print("milp constraints 1: \n", milp_constraints1)
+    test_operator_MILP(milp_constraints1)
+    print("milp constraints 2: \n", milp_constraints2)
+    test_operator_MILP(milp_constraints2)
+    sat_constraints0 = sbox.generate_model(model_type='sat', unroll=True)   
+    sat_constraints1 = sbox.generate_model(model_type='sat', model_version =1, unroll=True) 
+    sat_constraints2 = sbox.generate_model(model_type='sat', model_version =2, unroll=True)  
+    print("sat constraints 0: \n", sat_constraints0)
+    test_operator_SAT(sat_constraints0)
+    print("sat constraints 1: \n", sat_constraints1)
+    test_operator_SAT(sat_constraints1)
+    print("sat constraints 2: \n", sat_constraints2)
+    test_operator_SAT(sat_constraints2)
+    ddt = sbox.computeDDT()
+    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
+    print("\n")  
+    
+ 
 
 
 def solve_milp(filename):
@@ -206,35 +350,53 @@ def solve_milp(filename):
         print("gurobipy module can't be loaded ... skipping test\n")
         return ""
     model = gp.read(filename)
-    # model.Params.PoolSearchMode = 2   # Search for all solutions
-    # model.Params.PoolSolutions = 100000  # Assuming you want a large number of solutions
     model.optimize()
     if model.status == gp.GRB.Status.OPTIMAL:
         print("Optimal Objective Value:", model.ObjVal)
-        # for v in model.getVars():
-        #     print(f"{v.VarName} = {v.Xn}")
+        # for v in model.getVars(): 
+            # print(f"{v.VarName} = {v.Xn}")
         return model.ObjVal
     else:
         print("No optimal solution found.")
 
-def generate_codes(ciphername, cipher):
+
+def solve_SAT(filename):
+    if pysat_import == False: 
+        print("pysat module can't be loaded ... skipping test\n")
+        return ""
+    cnf = CNF(filename)
+    solver = CryptoMinisat()
+    solver.append_formula(cnf.clauses)
+    if solver.solve():
+        print("A solution exists.")
+        # solution = solver.get_model()
+        # print("solution: \n", solution)
+        return True
+    else:
+        print("No solution exists.")
+        return False
+    
+
+
+def generate_codes(ciphername, cipher, obj=0):
     cipher.generate_code("files/" + ciphername + ".py", "python")
     cipher.generate_code("files/" + ciphername + "_unrolled.py", "python", True)
     cipher.generate_code("files/" + ciphername + ".c", "c")
     cipher.generate_code("files/" + ciphername + "_unrolled.c", "c", True)
     cipher.generate_code("files/" + ciphername + ".lp", "milp", True)
+    cipher.generate_code("files/" + ciphername + ".cnf", "sat", True, obj)
     cipher.generate_figure("files/" + ciphername + ".pdf")
     
 
-def TEST_SPECK32_PERMUTATION(r):
+def TEST_SPECK32_PERMUTATION(r,obj=0):
     my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Speck_permutation("SPECK32_PERM", 32, my_input, my_output, nbr_rounds=r)
-    generate_codes("SPECK32_PERM", my_cipher)
+    generate_codes("SPECK32_PERM", my_cipher, obj)
 
-def TEST_SIMON32_PERMUTATION(r):
+def TEST_SIMON32_PERMUTATION(r, obj=0):
     my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Simon_permutation("SIMON32_PERM", 32, my_input, my_output, nbr_rounds=r)
-    generate_codes("SIMON32_PERM", my_cipher)
+    generate_codes("SIMON32_PERM", my_cipher, obj)
 
 def TEST_ASCON_PERMUTATION(r):
     my_input, my_output = [var.Variable(5,ID="in"+str(i)) for i in range(64)], [var.Variable(5,ID="out"+str(i)) for i in range(64)]
@@ -251,10 +413,10 @@ def TEST_AES_PERMUTATION(r):
     my_cipher = prim.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
     generate_codes("AES_PERM", my_cipher)
     
-def TEST_SPECK32_BLOCKCIPHER(r):
+def TEST_SPECK32_BLOCKCIPHER(r, obj=0):
     my_plaintext, my_key, my_ciphertext = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="k"+str(i)) for i in range(4)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Speck_block_cipher("SPECK32", [32, 64], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
-    generate_codes("SPECK32", my_cipher)
+    generate_codes("SPECK32", my_cipher, obj)
 
 def TEST_SKINNY64_192_BLOCKCIPHER(r):
     my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="in"+str(i)) for i in range(48)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
@@ -264,27 +426,54 @@ def TEST_SKINNY64_192_BLOCKCIPHER(r):
 
 def TEST_CIPHERS_MILP():
     data = []
-    for r in range(2,8):
-        # TEST_SPECK32_PERMUTATION(r)
-        # ciphername = "SPECK32_PERM"
-        TEST_SIMON32_PERMUTATION(r)
-        ciphername = "SIMON32_PERM"
+    for r in range(1,5):
+        TEST_SPECK32_PERMUTATION(r)
+        ciphername = "SPECK32_PERM"
+        # TEST_SIMON32_PERMUTATION(r)
+        # ciphername = "SIMON32_PERM"
         # TEST_SPECK32_BLOCKCIPHER(r)
         # ciphername = "SPECK32"
         file_name = "files/" + ciphername + ".lp"
         strat_time = time.time()
         result = solve_milp(file_name)
         end_time = time.time()
-        t = end_time - strat_time
-        data.append([r, result, t])
-        with open(file_name.replace(".lp", "_DAS.txt"), 'w') as file:
+        data.append([r, result, end_time - strat_time])
+        with open(file_name.replace(".lp", "_DC_MILP.txt"), 'w') as file:
             file.write(f"{'Rounds':<10}{'Result':<10}{'Time (s)':<10}\n")
             file.write('-' * 30 + '\n')
             for row in data:
                 file.write(f"{row[0]:<10}{row[1]:<10}{row[2]:<10.2f}\n")
 
 
-# TEST_OPERATORS_MILP()
-# TEST_CIPHERS_MILP()
+def TEST_CIPHERS_SAT():
+    data = []
+    for r in range(1,5):
+        obj = 0
+        flag = False
+        strat_time = time.time()
+        while not flag:
+            print("obj", obj)
+            TEST_SPECK32_PERMUTATION(r, obj)
+            ciphername = "SPECK32_PERM"
+            # TEST_SIMON32_PERMUTATION(r, obj)
+            # ciphername = "SIMON32_PERM"
+            # TEST_SPECK32_BLOCKCIPHER(r, obj)
+            # ciphername = "SPECK32"
+            file_name = "files/" + ciphername + ".cnf"
+            flag = solve_SAT(file_name)
+            obj += 1
+        end_time = time.time()
+        data.append([r, obj-1, end_time - strat_time])
+        with open(file_name.replace(".cnf", "_DC_SAT.txt"), 'w') as file:
+            file.write(f"{'Rounds':<10}{'Result':<10}{'Time (s)':<10}\n")
+            file.write('-' * 30 + '\n')
+            for row in data:
+                file.write(f"{row[0]:<10}{row[1]:<10}{row[2]:<10.2f}\n")
 
-TEST_SPECK32_PERMUTATION(10)
+
+
+TEST_OPERATORS_MILP_SAT()
+TEST_CIPHERS_MILP()
+TEST_CIPHERS_SAT()
+
+# TEST_SPECK32_PERMUTATION(2)

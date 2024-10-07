@@ -50,8 +50,8 @@ class UnaryOperator(Operator):   # Generic operator taking one input and one out
         
 class BinaryOperator(Operator):   # Generic operator taking two inputs and one output (must be of same bitsize)
     def __init__(self, input_vars, output_vars, ID = None):
-        # if len(input_vars) != 2: raise Exception(str(self.__class__.__name__) + ": your input does not contain exactly 2 element")
-        # if len(output_vars) != 1: raise Exception(str(self.__class__.__name__) + ": your output does not contain exactly 1 element")
+        if len(input_vars) != 2: raise Exception(str(self.__class__.__name__) + ": your input does not contain exactly 2 element")
+        if len(output_vars) != 1: raise Exception(str(self.__class__.__name__) + ": your output does not contain exactly 1 element")
         if input_vars[0].bitsize != input_vars[1].bitsize: raise Exception(str(self.__class__.__name__) + ": your inputs sizes do not match")
         if input_vars[0].bitsize != output_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": your input and output sizes do not match")
         super().__init__(input_vars, output_vars, ID = ID)
@@ -68,7 +68,13 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0: 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+                model_list.append({"Weight: ": []})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if self.model_version == 0: 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -105,14 +111,62 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            self.model_version = model_version
+            if self.model_version == 0:
+                # modeling *ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_At = self.ID + '_At'    
+                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DAS.txt', 'r') as file: 
+                    for line in file:
+                        if line.startswith('CNF Output: '):
+                            sbox_inequalities = line.split('CNF Output:')[1].strip().split('&')
+                model_list = []
+                for ineq in sbox_inequalities:
+                    temp = ineq.replace("(", "").replace(")", "").replace("~", "-").replace("| ", "")
+                    for i in range(self.input_vars[0].bitsize):
+                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    model_list += [temp]
+                model_list += [f"-{var} {var_At}" for var in var_in]
+                model_list += [" ".join(var_in) + ' -' + var_At]
+                model_list.append({"Weight": [var_At]})                
+                return model_list
+            elif self.model_version == 1:
+                # modeling ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DC.txt', 'r') as file: 
+                    for line in file:
+                        if line.startswith('SAT Weight: '):
+                            weight_line = line.split('SAT Weight: ')[1].strip() 
+                        if line.startswith('CNF Output: '):
+                            sbox_inequalities = line.split('CNF Output:')[1].strip().split('&')
+                model_list = []
+                var_p = []
+                for i in range(weight_line.count('+') + 1):
+                    var_p.append(f"{self.ID}_p{i}")
+                for ineq in sbox_inequalities:
+                    temp = ineq.replace("(", "").replace(")", "").replace("~", "-").replace("| ", "")
+                    for i in range(self.input_vars[0].bitsize):
+                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(weight_line.count('+')+1):
+                        temp = temp.replace(f"p{i}", var_p[i])
+                    model_list += [temp]
+                model_list.append({"Weight": var_p})                
+                return model_list
+            elif self.model_version == 2:
+                # for word-wise
+                var_in, var_out = self.get_var_ID('in', 0, unroll), self.get_var_ID('out', 0, unroll)
+                model_list = [f"-{var_in} {var_out}", f"{var_in} -{var_out}"]
+                model_list.append({"Weight": [var_in]})            
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             self.model_version = model_version
             if self.model_version == 0:
-                # generate constraints for modeling *ddt by using sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+                # modeling *ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_At = self.ID + '_At'    
-                with open('constraints_sbox/milp_constraints_sbox_' + self.table_name + '_DAS.txt', 'r') as file: 
+                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DAS.txt', 'r') as file: 
                     for line in file:
                         if line.startswith('MILP Output: '):
                             sbox_inequalities = eval(line.split('MILP Output:')[1].strip())
@@ -121,19 +175,18 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     temp = ineq
                     for i in range(self.input_vars[0].bitsize):
                         temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
-                    model_list.append(temp)
-                for i in range(len(var_in)):
-                    model_list.append(var_At + ' - ' + var_in[i] + ' >= 0')
-                model_list.append(" + ".join(var_in) + ' - ' + var_At + ' >= 0')
+                    model_list += [temp]
+                model_list += [var_At + ' - ' + var_in[i] + ' >= 0' for i in range(len(var_in))]
+                model_list += [" + ".join(var_in) + ' - ' + var_At + ' >= 0']
                 model_list.append({"Binary": " ".join(var_in + var_out + [var_At]), "Weight": var_At})
                 return model_list
             if self.model_version == 1:
-                # generate constraints for ddt
+                # modeling ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                with open('constraints_sbox/milp_constraints_sbox_' + self.table_name + '_DC.txt', 'r') as file: 
+                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DC.txt', 'r') as file: 
                     for line in file:
-                        if line.startswith('Weight: '):
-                            weight_line = line.split('Weight: ')[1].strip()  # 获取权重信息
+                        if line.startswith('MILP Weight: '):
+                            weight_line = line.split('MILP Weight: ')[1].strip()
                         if line.startswith('MILP Output: '):
                             sbox_inequalities = eval(line.split('MILP Output:')[1].strip())
                 model_list = []
@@ -143,11 +196,11 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     weight_line = weight_line.replace(f"p{i}", f"{self.ID}_p{i}")
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(4):
+                    for i in range(self.input_vars[0].bitsize):
                         temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
                     for i in range(weight_line.count('+')+1):
                         temp = temp.replace(f"p{i}", var_p[i])
-                    model_list.append(temp)
+                    model_list += [temp]
                 model_list.append({"Binary": " ".join(var_in + var_out + var_p), "Weight": weight_line})
                 return model_list
             elif self.model_version == 2:
@@ -156,8 +209,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 model_list = [var_in + ' - ' + var_out + ' = 0']
                 model_list.append({"Binary": var_in + ' ' + var_out, "Weight": var_in})                
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
         
@@ -361,23 +413,28 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
                 if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
                 else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            if self.direction =='r' and self.model_version == 0:
+                model_list = [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
+                model_list.append({"Weight: ": []})
+                return model_list  
+            elif self.direction =='l' and self.model_version == 0:
+                model_list = [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
+                model_list.append({"Weight: ": []})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction == 'r' and self.model_version == 0:
-                model_list = []
-                for i in range(len(var_in)):
-                    model_list += [var_in[i] + ' - ' + var_out[(i+self.amount)%len(var_in)] + ' = 0']
+                model_list = [var_in[i] + ' - ' + var_out[(i + self.amount) % len(var_in)] + ' = 0' for i in range(len(var_in))]
                 model_list.append({"Binary": " ".join(var_in + var_out)})                
                 return model_list
             elif self.direction =='l' and self.model_version == 0:
-                model_list = []
-                for i in range(len(var_in)):
-                    model_list += [var_in[(i+self.amount)%len(var_in)] + ' - ' + var_out[i] + ' = 0']                    
+                model_list = [var_in[(i+self.amount)%len(var_in)] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]                    
                 model_list.append({"Binary": " ".join(var_in + var_out)}) 
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
@@ -405,26 +462,34 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            if self.direction =='r' and self.model_version == 0:
+                model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
+                model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
+                model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]    
+                model_list.append({"Weight: ": []})
+                return model_list        
+            elif self.direction =='l' and self.model_version == 0:
+                model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]    
+                model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
+                model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]              
+                model_list.append({"Weight: ": []})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='l' and self.model_version == 0:
-                model_list = []
-                for i in range(len(var_in)-self.amount):
-                    model_list += [var_in[i+self.amount] + ' - ' + var_out[i] + ' = 0']
-                for i in range(len(var_in)-self.amount, len(var_in)):
-                    model_list += [var_out[i] + ' = 0']
+            if self.direction =='r' and self.model_version == 0:
+                model_list = [var_out[i] + ' = 0' for i in range(self.amount)]
+                model_list += [var_in[i] + ' - ' + var_out[i+self.amount] + ' = 0' for i in range(len(var_in)-self.amount)]                    
                 model_list.append({"Binary": " ".join(var_in + var_out)})                
-                return model_list
-            elif self.direction =='r' and self.model_version == 0:
-                model_list = []
-                for i in range(self.amount):
-                    model_list += [var_out[i] + ' = 0']
-                for i in range(len(var_in)-self.amount):
-                    model_list += [var_in[i] + ' - ' + var_out[i+self.amount] + ' = 0']                    
+                return model_list  
+            elif self.direction =='l' and self.model_version == 0:
+                model_list = [var_in[i+self.amount] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in)-self.amount)]
+                model_list += [var_out[i] + ' = 0' for i in range(len(var_in)-self.amount, len(var_in))]
                 model_list.append({"Binary": " ".join(var_in + var_out)})                
-                return model_list           
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+                return model_list         
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
@@ -459,18 +524,20 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                         if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
                         else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0 and self.add_type == 'xor': 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+                model_list.append({"Weight: ": []})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0: 
-                if self.add_type == 'xor': 
-                    var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                    model_list = []
-                    for i in range(len(var_in)):
-                        model_list += [var_in[i] + ' - ' + var_out[i] + ' = 0']
-                    model_list.append({"Binary": " ".join(var_in + var_out)})  
-                    return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            if self.model_version == 0 and self.add_type == 'xor': 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = [var_in[i] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]
+                model_list.append({"Binary": " ".join(var_in + var_out)})  
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
@@ -496,7 +563,30 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
                     else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0:
+                # cite: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
+                model_list = []
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)]
+                for i in range(self.input_vars[0].bitsize-1):
+                    alpha, beta, gamma, alpha1, beta1, gamma1 = var_in1[i],var_in2[i],var_out[i],var_in1[i+1],var_in2[i+1],var_out[i+1]
+                    model_list += [f'{alpha} {beta} -{gamma} {alpha1} {beta1} {gamma1}', 
+                                   f'{alpha} -{beta} {gamma} {alpha1} {beta1} {gamma1}',
+                                   f'-{alpha} {beta} {gamma} {alpha1} {beta1} {gamma1}',
+                                   f'-{alpha} -{beta} -{gamma} {alpha1} {beta1} {gamma1}',
+                                   f'{alpha} {beta} {gamma} -{alpha1} -{beta1} -{gamma1}',
+                                   f'{alpha} -{beta} -{gamma} -{alpha1} -{beta1} -{gamma1}',
+                                   f'-{alpha} {beta} -{gamma} -{alpha1} -{beta1} -{gamma1}',
+                                   f'-{alpha} -{beta} {gamma} -{alpha1} -{beta1} -{gamma1}']
+                alpha, beta, gamma = var_in1[-1],var_in2[-1],var_out[-1]
+                model_list += [f'{alpha} {beta} -{gamma}', f'{alpha} -{beta} {gamma}', f'-{alpha} {beta} {gamma}', f'-{alpha} -{beta} -{gamma}']
+                for i in range(self.input_vars[0].bitsize-1):
+                    alpha, beta, gamma, w = var_in1[i+1],var_in2[i+1],var_out[i+1],var_p[i]
+                    model_list += [f'-{alpha} {gamma} {w}', f'{beta} -{gamma} {w}', f'{alpha} -{beta} {w}', f'{alpha} {beta} {gamma} -{w}', f'-{alpha} -{beta} -{gamma} -{w}']
+                model_list.append({"Weight": var_p})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if self.model_version == 0:
                 # cite: Fu, K., Wang, M., Guo, Y., Sun, S., Hu, L. (2016). MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck 
@@ -569,12 +659,20 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            if self.model_version == 0:
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = []
+                for i in range(len(var_in1)):
+                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_out[i]]
+                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_p[i]]
+                    model_list += ['-' + var_in1[i] + ' ' + var_p[i]]
+                    model_list += ['-' + var_in2[i] + ' ' + var_p[i]]
+                model_list.append({"Weight": var_p})
+                return model_list        
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if self.model_version == 0: 
-                # by using sbox analyzer, https://github.com/hadipourh/sboxanalyzer
-                # and_ddt = [[4, 0], [2, 2], [2, 2], [2, 2]]
-                # returned inequalities = ['a0 + a1 - b0 >= 0', 'a0 + a1 - p0 >= 0', '- a1 + p0 >= 0', '- a0 + p0 >= 0']
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
@@ -585,8 +683,7 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
                     model_list += [' - ' + var_in2[i] + ' + ' + var_p[i] + ' >= 0']
                 model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_p), "Weight": " + ".join(var_p)})
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
@@ -601,11 +698,20 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0: 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = []
+                for i in range(len(var_in1)):
+                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_out[i]]
+                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_p[i]]
+                    model_list += ['-' + var_in1[i] + ' ' + var_p[i]]
+                    model_list += ['-' + var_in2[i] + ' ' + var_p[i]]
+                model_list.append({"Weight": var_p})
+                return model_list        
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            # cite: using sboxanalyzer of SageMath, https://github.com/hadipourh/sboxanalyzer
-            # and_ddt = [[4, 0], [2, 2], [2, 2], [2, 2]]
-            # returned inequalities = ['a0 + a1 - b0 >= 0', 'a0 + a1 - p0 >= 0', '- a1 + p0 >= 0', '- a0 + p0 >= 0']
             if self.model_version == 0: 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -617,8 +723,7 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
                     model_list += [' - ' + var_in2[i] + ' + ' + var_p[i] + ' >= 0']
                 model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_p), "Weight": " + ".join(var_p)})
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
@@ -634,7 +739,16 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0: 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = []
+                for i in range(len(var_in1)):
+                    alpha, beta, gamma = var_in1[i],var_in2[i],var_out[i]
+                    model_list += [f'{alpha} {beta} -{gamma}', f'{alpha} -{beta} {gamma}', f'-{alpha} {beta} {gamma}', f'-{alpha} -{beta} -{gamma}']
+                model_list.append({"Weight: ": []})
+                return model_list        
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -685,18 +799,21 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
         elif model_type == 'c': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type) 
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            if self.model_version == 0: 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+                model_list.append({"Weight: ": []})
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = self.get_var_ID('in', 0, unroll), self.get_var_ID('out', 0, unroll)
             if self.model_version == 0: 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                model_list = []    
-                for i in range(len(var_in)):  
-                    model_list += [var_in[i] + ' - ' + var_out[i] + ' = 0']
+                model_list = [var_in[i] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]
                 model_list.append({"Binary": " ".join(var_in + var_out)})
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
