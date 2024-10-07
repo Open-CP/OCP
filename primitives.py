@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import os, os.path
 from numpy import linspace
 import variables as var
 import operators as op
@@ -166,7 +167,7 @@ class Primitive(ABC):
         
         nbr_rounds = self.nbr_rounds
         
-
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
         with open(filename, "w") as myfile:
             
             if language == 'c': myfile.write("#include <stdint.h>\n#include <stdio.h>\n\n")

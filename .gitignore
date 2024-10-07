@@ -1,0 +1,7 @@
+
+*.c
+*.lp
+*.pdf
+*.pyc
+files/SPECK32_PERM_unrolled.py
+files/SPECK32_PERM.py
