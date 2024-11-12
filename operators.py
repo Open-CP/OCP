@@ -5,6 +5,9 @@ import time
 import os
 
 
+if not os.path.exists('files'):
+    os.makedirs('files')
+
 
 # TODO make modules instead of classes ? 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
