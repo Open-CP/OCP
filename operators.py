@@ -1,5 +1,10 @@
 from abc import ABC, abstractmethod
 import math
+import subprocess
+import time 
+import os
+
+
 
 # TODO make modules instead of classes ? 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
@@ -45,7 +50,7 @@ class UnaryOperator(Operator):   # Generic operator taking one input and one out
     def __init__(self, input_vars, output_vars, ID = None):
         if len(input_vars) != 1: raise Exception(str(self.__class__.__name__) + ": your input does not contain exactly 1 element")
         if len(output_vars) != 1: raise Exception(str(self.__class__.__name__) + ": your output does not contain exactly 1 element")
-        if input_vars[0].bitsize != output_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": your input and output sizes do not match")
+        # if input_vars[0].bitsize != output_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": your input and output sizes do not match") zcn: can be removed because the input size and output size of sbox may be different
         super().__init__(input_vars, output_vars, ID = ID)
         
 class BinaryOperator(Operator):   # Generic operator taking two inputs and one output (must be of same bitsize)
@@ -61,7 +66,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
         super().__init__(input_vars, output_vars, ID = ID)
     
         
-    def generate_model(self, model_type='python', unroll=False):   
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):   
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll)]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -69,17 +74,15 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-                model_list.append({"Weight: ": []})
-                return model_list
+                return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
-                model_list.append({"Binary": " ".join(var_in + var_out)})
+                self.binary_vars = var_in + var_out
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self._class_._name_), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -93,7 +96,6 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.output_bitsize = output_bitsize
         self.table = None
         self.table_inv = None
-        self.table_name = None
         
     def computeDDT(self):  # method computing the DDT of the Sbox
         DDT = [[0]*(2**self.output_bitsize) for _ in range(2**self.input_bitsize)] 
@@ -103,8 +105,162 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 DDT[in_diff][out_diff] += 1 
         return DDT
     
+
+    def star_ddt_to_truthtable(self, ddt):
+        # Convert star-DDT into a truthtable, which encode the differential propagations without probalities
+        ttable = ''
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            dx = n >> self.output_bitsize
+            dy = n & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] > 0: ttable += '0'
+            else: ttable += '1'
+        return ttable
+
+
+    def pddt_to_truthtable(self, ddt, p):
+        # Convert p-DDT into a truthtable, which encode the differential propagations with the item in ddt equal to p.  
+        ttable = ''    
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            dx = n >> self.output_bitsize
+            dy = n & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] == p: ttable += '0'
+            else: ttable += '1'
+        return ttable
+
+
+
+    def ddt_to_truthtable(self, len_diff_spectrum, diff_weights, ddt):
+        # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
+        ttable = ''
+        for n in range(2**(self.input_bitsize+self.output_bitsize+len_diff_spectrum)):
+            dx = n >> (self.output_bitsize + len_diff_spectrum)
+            dy = (n >> len_diff_spectrum) & ((1 << self.output_bitsize) - 1)
+            p = bin(n & ((1 << (len_diff_spectrum)) - 1))[2:].zfill(len_diff_spectrum)
+            w = 0
+            for i in range(len_diff_spectrum): w += diff_weights[i] * int(p[i])
+            if ddt[dx][dy] > 0 and abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2))) == w: ttable += '0'
+            else: ttable += '1'
+        return ttable
+
+
+    def ddt_to_truthtable_sat(self, diff_weights, max_diff_weights, ddt):
+        # Convert the DDT, which encode the differential propagations with probalities into a truthtable in sat. All weights should be integers in this case.  
+        if any([i != int(i) for i in diff_weights]):
+            raise ValueError("All transition's weights should be integers")
+        ttable = ''
+        for n in range(2**(self.input_bitsize+self.output_bitsize+max_diff_weights)):
+            dx = n >> (self.output_bitsize + max_diff_weights)
+            dy = (n >> max_diff_weights) & ((1 << self.output_bitsize) - 1)
+            p = tuple(int(x) for x in bin(n & ((1 << max_diff_weights) - 1))[2:].zfill(max_diff_weights))
+            if ddt[dx][dy] > 0:
+                w = int(abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2))))
+                if p == tuple([0]*(max_diff_weights - w) + [1]*w): ttable += '0' 
+                else: ttable += '1'                
+            else: ttable += '1'
+        return ttable
     
-    def generate_model(self, model_type='python', model_version=0, unroll=False):
+
+    def gen_constraints_espresso(self, filename, model_type='milp', model_version="diff_0", mode=0):
+        try:
+            from pyeda.inter import espresso_tts
+        except ImportError:
+            print("pyeda has not stalled, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/install.html...\n")
+            return ""
+        # if os.path.exists(filename):
+        #     with open(filename, 'r') as file:
+        #         for line in file:
+        #             if 'Constraints:' in line:
+        #                 constraints = eval(line.split(':', 1)[1].strip())
+        #             if 'Weight:' in line:
+        #                 objective_fun = line[len("Weight: "):]
+        #     return constraints, objective_fun
+        input_variables = [f'a{i}' for i in range(self.input_bitsize)]
+        output_variables = [f'b{i}' for i in range(self.output_bitsize)]
+        if "diff" in model_version: ddt = self.computeDDT()
+        objective_fun = ''
+        cont_ttable = ''
+        if model_version == "diff_0":
+            complexity = self.input_bitsize + self.output_bitsize
+            variables = input_variables + output_variables
+            ttable = self.star_ddt_to_truthtable(ddt)
+            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n' 
+        elif model_version == "diff_1":
+            diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
+            diff_weights = [abs(float(math.log(d/(2**self.input_bitsize), 2))) for d in diff_spectrum]  
+            len_diff_spectrum = len(diff_spectrum)   
+            if model_type == 'milp':
+                pr_variables = [f'p{i}' for i in range(len_diff_spectrum)]  
+                complexity = self.input_bitsize + self.output_bitsize + len_diff_spectrum
+                ttable = self.ddt_to_truthtable(len_diff_spectrum, diff_weights, ddt)
+                objective_fun = "{}".format(" + ".join(["{:0.04f} p{:d}".format(diff_weights[i], i) for i in range(len_diff_spectrum)]))
+            elif model_type == 'sat':
+                max_diff_weights = int(max(diff_weights))
+                pr_variables = [f'p{i}' for i in range(max_diff_weights)] 
+                complexity = self.input_bitsize + self.output_bitsize + max_diff_weights
+                ttable = self.ddt_to_truthtable_sat(diff_weights, max_diff_weights, ddt)
+                objective_fun = "{}".format(" + ".join(["p{:d}".format(i) for i in range(max_diff_weights)])) 
+            variables = input_variables + output_variables + pr_variables
+            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n'  
+        elif "diff_p" in model_version:
+            complexity = self.input_bitsize + self.output_bitsize
+            variables = input_variables + output_variables
+            ttable = self.pddt_to_truthtable(ddt, int(model_version.replace("diff_p", "")))
+            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n' 
+        file_contents = f".i {complexity}\n"
+        file_contents += ".o 1\n"
+        file_contents += f".p {2**(complexity)}\n"
+        file_contents += ".ilb " + " ".join(variables) + "\n"     
+        file_contents += ".ob F\n"
+        file_contents += ".type fr\n" 
+        file_contents += cont_ttable
+        with open('files/ttable.txt', "w") as fw:
+            fw.write(file_contents)
+            fw.write(".e\n")
+        espresso_options =  [['-estrong', '-eonset'], [], ['-eonset']]
+        espresso_command = ['espresso', *espresso_options[mode], 'files/ttable.txt'] # Espresso Script of Pyeda provides the parameters: "-e {fast,ness,nirr,nunwrap,onset,strong}"
+        time_start = time.time()
+        result = subprocess.run(espresso_command, capture_output=True, text=True)
+        time_end = time.time()
+        espresso_output = result.stdout
+        with open('files/sttable.txt', 'w') as fw: fw.write(espresso_output)
+        with open('files/sttable.txt', 'r') as fr: espresso_output = fr.readlines()   
+        constraints = []
+        starting_point = 0
+        end_point = 0
+        for i in range(len(espresso_output)):
+            if ".p" in espresso_output[i]: starting_point = i + 1
+            if ".e" in espresso_output[i]: end_point = i
+        for l in espresso_output[starting_point:end_point]:
+            line = l[0:len(variables)]
+            constraint = ''
+            lp_rhs = 0
+            for i in range(len(variables)):
+                if model_type == 'milp':
+                    if line[i] == '0': constraint += " + " + variables[i]
+                    elif line[i] == '1': 
+                        constraint += " - "+ variables[i]
+                        lp_rhs += 1
+                elif model_type == 'sat':
+                    if line[i] == '0': constraint += ' ' + variables[i]
+                    elif line[i] == '1': constraint += ' -' + variables[i]
+            if model_type == 'milp':
+                constraint = constraint.strip(" + ")
+                constraint += ' >= ' + str(-(lp_rhs - 1))
+            elif model_type == 'sat': constraint = constraint.strip(" ")
+            constraints.append(constraint)
+        len_constraints = len(constraints)
+        variables_mapping = "Input: {0}; msb: {1}".format("||".join(input_variables), input_variables[0])
+        variables_mapping += "\nOutput: {0}; msb: {1}".format("||".join(output_variables), output_variables[0])
+        with open(filename, 'w') as file:
+            file.write(f"{variables_mapping}\n")
+            file.write("Time used to simplify the constraints: {:0.04f} s\n".format(time_end - time_start))
+            file.write(f"Number of constraints: {len_constraints}\n") 
+            file.write(f"Constraints: {constraints}\n") 
+            file.write(f"Weight: {objective_fun}\n") 
+        return constraints, objective_fun
+    
+    
+    def generate_model(self, model_type='python', model_version="diff_0", mode = 0, unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -112,107 +268,112 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            self.model_version = model_version
-            if self.model_version == 0:
-                # modeling *ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+            filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
+            if model_version == "diff_0":
+                # calculating the minimum number of differentially active s-boxes
+                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_At = self.ID + '_At'    
-                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DAS.txt', 'r') as file: 
-                    for line in file:
-                        if line.startswith('CNF Output: '):
-                            sbox_inequalities = line.split('CNF Output:')[1].strip().split('&')
+                var_At = [self.ID + '_At']    
                 model_list = []
                 for ineq in sbox_inequalities:
-                    temp = ineq.replace("(", "").replace(")", "").replace("~", "-").replace("| ", "")
-                    for i in range(self.input_vars[0].bitsize):
-                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    temp = ineq
+                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
                     model_list += [temp]
-                model_list += [f"-{var} {var_At}" for var in var_in]
-                model_list += [" ".join(var_in) + ' -' + var_At]
-                model_list.append({"Weight": [var_At]})                
+                model_list += [f"-{var} {var_At[0]}" for var in var_in]
+                model_list += [" ".join(var_in) + ' -' + var_At[0]]
+                self.weight = var_At         
                 return model_list
-            elif self.model_version == 1:
+            elif model_version == "diff_1":
                 # modeling ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DC.txt', 'r') as file: 
-                    for line in file:
-                        if line.startswith('SAT Weight: '):
-                            weight_line = line.split('SAT Weight: ')[1].strip() 
-                        if line.startswith('CNF Output: '):
-                            sbox_inequalities = line.split('CNF Output:')[1].strip().split('&')
                 model_list = []
                 var_p = []
-                for i in range(weight_line.count('+') + 1):
-                    var_p.append(f"{self.ID}_p{i}")
+                for i in range(sbox_weight.count('+') + 1): var_p.append(f"{self.ID}_p{i}")
                 for ineq in sbox_inequalities:
-                    temp = ineq.replace("(", "").replace(")", "").replace("~", "-").replace("| ", "")
-                    for i in range(self.input_vars[0].bitsize):
-                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
-                    for i in range(weight_line.count('+')+1):
-                        temp = temp.replace(f"p{i}", var_p[i])
+                    temp = ineq
+                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
                     model_list += [temp]
-                model_list.append({"Weight": var_p})                
+                self.weight = var_p                
                 return model_list
-            elif self.model_version == 2:
-                # for word-wise
-                var_in, var_out = self.get_var_ID('in', 0, unroll), self.get_var_ID('out', 0, unroll)
-                model_list = [f"-{var_in} {var_out}", f"{var_in} -{var_out}"]
-                model_list.append({"Weight": [var_in]})            
+            elif model_version == "diff_2":
+                # word-wise difference propagations, the input difference equals the ouput difference
+                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                model_list = [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
+                self.weight = var_in           
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            self.model_version = model_version
-            if self.model_version == 0:
-                # modeling *ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+            if model_version == "diff_0":
+                # calculating the minimum number of differentially active s-boxes
+                filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
+                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_At = self.ID + '_At'    
-                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DAS.txt', 'r') as file: 
-                    for line in file:
-                        if line.startswith('MILP Output: '):
-                            sbox_inequalities = eval(line.split('MILP Output:')[1].strip())
+                var_At = [self.ID + '_At']    
                 model_list = []
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize):
-                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
                     model_list += [temp]
-                model_list += [var_At + ' - ' + var_in[i] + ' >= 0' for i in range(len(var_in))]
-                model_list += [" + ".join(var_in) + ' - ' + var_At + ' >= 0']
-                model_list.append({"Binary": " ".join(var_in + var_out + [var_At]), "Weight": var_At})
+                model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
+                model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
+                self.binary_vars = var_in + var_out + var_At
+                self.weight = var_At[0]
                 return model_list
-            if self.model_version == 1:
-                # modeling ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+            elif model_version == "diff_1":
+                # searching for the best differential charactristic
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                with open('constraints_sbox/constraints_sbox_' + self.table_name + '_DC.txt', 'r') as file: 
-                    for line in file:
-                        if line.startswith('MILP Weight: '):
-                            weight_line = line.split('MILP Weight: ')[1].strip()
-                        if line.startswith('MILP Output: '):
-                            sbox_inequalities = eval(line.split('MILP Output:')[1].strip())
                 model_list = []
-                var_p = []
-                for i in range(weight_line.count('+') + 1):
+                var_p = []    
+                filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
+                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
+                for i in range(sbox_weight.count('+') + 1):
                     var_p.append(f"{self.ID}_p{i}")
-                    weight_line = weight_line.replace(f"p{i}", f"{self.ID}_p{i}")
+                    sbox_weight = sbox_weight.replace(f"p{i}", f"{self.ID}_p{i}")
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize):
-                        temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
-                    for i in range(weight_line.count('+')+1):
-                        temp = temp.replace(f"p{i}", var_p[i])
+                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
                     model_list += [temp]
-                model_list.append({"Binary": " ".join(var_in + var_out + var_p), "Weight": weight_line})
+                self.binary_vars = var_in + var_out + var_p
+                self.weight = sbox_weight
                 return model_list
-            elif self.model_version == 2:
-                # for word-wise
-                var_in, var_out = self.get_var_ID('in', 0, unroll), self.get_var_ID('out', 0, unroll)
-                model_list = [var_in + ' - ' + var_out + ' = 0']
-                model_list.append({"Binary": var_in + ' ' + var_out, "Weight": var_in})                
+            elif model_version == "diff_p":
+                # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = []
+                var_p = []    
+                ddt = self.computeDDT()
+                diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
+                self.weight = ''
+                for w in range(len(diff_spectrum)):
+                    var_p.append(f"{self.ID}_p{w}")
+                    filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_diff_1_p{diff_spectrum[w]}.txt'
+                    sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, f"diff_p{diff_spectrum[w]}", mode)
+                    for ineq in sbox_inequalities:
+                        temp = ineq
+                        for i in range(self.input_vars[0].bitsize):
+                            temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                        temp_0, temp_1 = temp.split(">=")[0], int(temp.split(" >= ")[1])
+                        temp = temp_0 + f"- 10000 {var_p[w]} >= {temp_1-10000}"
+                        model_list += [temp]
+                    self.weight += " + " + "{:0.04f} ".format(abs(float(math.log(diff_spectrum[w]/(2**self.input_bitsize), 2)))) + var_p[w]
+                model_list += [' + '.join(var_p) + ' = 1\n']
+                self.binary_vars = var_in + var_out + var_p
+                return model_list
+            elif model_version == "diff_2":
+                # word-wise difference propagations, the input difference equals the ouput difference
+                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                model_list = [f'{var_in[0]} - {var_out[0]} = 0']
+                self.binary_vars = var_in + var_out 
+                self.weight = var_in[0]              
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
-        
+
+
     def generate_header(self, model_type='python'):
         if model_type == 'python': 
             if self.model_version == 0: return [str(self.__class__.__name__) + ' = ' + str(self.table)]
@@ -224,11 +385,13 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: return None
 
+
 class Skinny_4bit_Sbox(Sbox):         # Operator of the Skinny 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)
         self.table = [12, 6, 9, 0, 1, 10, 2, 11, 3, 8, 5, 13, 4, 14, 7, 15]
         self.table_inv = [3, 4, 6, 8, 12, 10, 1, 14, 9, 2, 5, 7, 0, 11, 13, 15]
+
 
 class Skinny_8bit_Sbox(Sbox):         # Operator of the Skinny 8 -bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):      
@@ -266,20 +429,20 @@ class Skinny_8bit_Sbox(Sbox):         # Operator of the Skinny 8 -bit Sbox
             0x25, 0x70, 0xf0, 0xb5, 0x75, 0x20, 0xb0, 0xf5, 0x22, 0x27, 0xb2, 0xb7, 0x72, 0x77, 0xf2, 0xf7, 
             0x2d, 0x79, 0xf9, 0xbd, 0x7d, 0x29, 0xb9, 0xfd, 0x2b, 0x2f, 0xbb, 0xbf, 0x7b, 0x7f, 0xfb, 0xff]
 
+
 class GIFT_Sbox(Sbox):              # Operator of the GIFT 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)
         self.table = [1, 10, 4, 12, 6, 15, 3, 9, 2, 13, 11, 7, 5, 0, 8, 14]
         self.table_inv = [13, 0, 8, 6, 2, 12, 4, 11, 14, 7, 1, 10, 3, 9, 15, 5]
-        self.table_name = 'gift'
+        
 
 class ASCON_Sbox(Sbox):             # Operator of the ASCON 5-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 5, 5, ID = ID)
         self.table = [4, 11, 31, 20, 26, 21, 9, 2, 27, 5, 8, 18, 29, 3, 6, 28, 30, 19, 7, 14, 0, 13, 17, 24, 16, 12, 1, 25, 22, 10, 15, 23]
         self.table_inv = [20, 26, 7, 13, 0, 9, 14, 18, 10, 6, 29, 1, 25, 21, 19, 30, 24, 22, 11, 17, 3, 5, 28, 31, 23, 27, 4, 8, 15, 12, 16, 2]
-        self.table_name = 'Ascon'
-
+        
 
 class AES_Sbox(Sbox):               # Operator of the AES 8-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):      
@@ -316,6 +479,24 @@ class AES_Sbox(Sbox):               # Operator of the AES 8-bit Sbox
             0x60, 0x51, 0x7F, 0xA9, 0x19, 0xB5, 0x4A, 0x0D, 0x2D, 0xE5, 0x7A, 0x9F, 0x93, 0xC9, 0x9C, 0xEF,
             0xA0, 0xE0, 0x3B, 0x4D, 0xAE, 0x2A, 0xF5, 0xB0, 0xC8, 0xEB, 0xBB, 0x3C, 0x83, 0x53, 0x99, 0x61,
             0x17, 0x2B, 0x04, 0x7E, 0xBA, 0x77, 0xD6, 0x26, 0xE1, 0x69, 0x14, 0x63, 0x55, 0x21, 0x0C, 0x7D]
+
+
+class TWINE_Sbox(Sbox):             # Operator of the TWINE 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [12, 0, 15, 10, 2, 11, 9, 5, 8, 3, 13, 7, 1, 14, 6, 4]
+
+
+class PRESENT_Sbox(Sbox):             # Operator of the PRESENT 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2]
+
+
+class KNOT_Sbox(Sbox):             # Operator of the KNOT 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [4, 0, 10, 7, 11, 14, 1, 13, 9, 15, 6, 8, 5, 2, 12, 3]
 
 
 class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the matrix "mat" (stored as a list of lists) to the input vector of variables, towards the output vector of variables
@@ -402,7 +583,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
         if amount<=0 or amount>= input_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": wrong amount value")
         self.amount = amount
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version="diff_0", unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: 
                 if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ')']
@@ -415,25 +596,19 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and self.model_version == 0:
-                model_list = [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
-                model_list.append({"Weight: ": []})
-                return model_list  
-            elif self.direction =='l' and self.model_version == 0:
-                model_list = [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
-                model_list.append({"Weight: ": []})
-                return model_list
+            if self.direction =='r' and model_version == "diff_0": 
+                return [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
+            elif self.direction =='l' and model_version == "diff_0": 
+                return [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction == 'r' and self.model_version == 0:
-                model_list = [var_in[i] + ' - ' + var_out[(i + self.amount) % len(var_in)] + ' = 0' for i in range(len(var_in))]
-                model_list.append({"Binary": " ".join(var_in + var_out)})                
-                return model_list
-            elif self.direction =='l' and self.model_version == 0:
-                model_list = [var_in[(i+self.amount)%len(var_in)] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]                    
-                model_list.append({"Binary": " ".join(var_in + var_out)}) 
-                return model_list
+            if self.direction == 'r' and model_version == "diff_0": 
+                self.binary_vars = var_in + var_out              
+                return [f'{var_in[i]} - {var_out[(i + self.amount) % len(var_in)]} = 0' for i in range(len(var_in))]
+            elif self.direction =='l' and model_version == "diff_0": 
+                self.binary_vars = var_in + var_out
+                return [f'{var_in[(i+self.amount)%len(var_in)]} - {var_out[i]} = 0' for i in range(len(var_in))]                    
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
@@ -455,7 +630,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
         if amount<=0 or amount>= input_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": wrong amount value")
         self.amount = amount
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0",unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ") & (2**" + str(self.input_vars[0].bitsize) + " - 1)"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -464,30 +639,28 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and self.model_version == 0:
+            if self.direction =='r' and model_version == "diff_0": 
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
                 model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
                 model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]    
-                model_list.append({"Weight: ": []})
                 return model_list        
-            elif self.direction =='l' and self.model_version == 0:
+            elif self.direction =='l' and model_version == "diff_0": 
                 model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]    
                 model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
                 model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]              
-                model_list.append({"Weight: ": []})
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and self.model_version == 0:
-                model_list = [var_out[i] + ' = 0' for i in range(self.amount)]
-                model_list += [var_in[i] + ' - ' + var_out[i+self.amount] + ' = 0' for i in range(len(var_in)-self.amount)]                    
-                model_list.append({"Binary": " ".join(var_in + var_out)})                
+            if self.direction =='r' and model_version == "diff_0": 
+                model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
+                model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]                    
+                self.binary_vars = var_in + var_out           
                 return model_list  
-            elif self.direction =='l' and self.model_version == 0:
-                model_list = [var_in[i+self.amount] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in)-self.amount)]
-                model_list += [var_out[i] + ' = 0' for i in range(len(var_in)-self.amount, len(var_in))]
-                model_list.append({"Binary": " ".join(var_in + var_out)})                
+            elif self.direction =='l' and model_version == "diff_0": 
+                model_list = [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
+                model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]
+                self.binary_vars = var_in + var_out             
                 return model_list         
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -503,7 +676,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
         self.modulo = modulo
         self.code_if_unrolled = code_if_unrolled
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if self.code_if_unrolled==None or unroll==True: my_constant=hex(self.constant)
         else: my_constant=self.code_if_unrolled
         if model_type == 'python': 
@@ -525,17 +698,16 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                         else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0 and self.add_type == 'xor': 
+            if model_version == "diff_0" and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-                model_list.append({"Weight: ": []})
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0 and self.add_type == 'xor': 
+            if model_version == "diff_0" and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                model_list = [var_in[i] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]
-                model_list.append({"Binary": " ".join(var_in + var_out)})  
+                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
+                self.binary_vars = var_in + var_out
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -547,7 +719,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
         super().__init__(input_vars, output_vars, ID = ID)
         self.modulo = modulo
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0",unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: 
                 if self.modulo == None: 
@@ -564,7 +736,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0:
+            if model_version == "diff_0":
                 # cite: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
                 model_list = []
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -584,15 +756,15 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 for i in range(self.input_vars[0].bitsize-1):
                     alpha, beta, gamma, w = var_in1[i+1],var_in2[i+1],var_out[i+1],var_p[i]
                     model_list += [f'-{alpha} {gamma} {w}', f'{beta} -{gamma} {w}', f'{alpha} -{beta} {w}', f'{alpha} {beta} {gamma} -{w}', f'-{alpha} -{beta} -{gamma} -{w}']
-                model_list.append({"Weight": var_p})
+                self.weight = var_p
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0:
+            if model_version == "diff_0": 
                 # cite: Fu, K., Wang, M., Guo, Y., Sun, S., Hu, L. (2016). MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck 
                 model_list = []
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], self.ID + '_d'
+                var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d']
                 for i in range(self.input_vars[0].bitsize-1) :
                     b = [var_in1[i],var_in2[i],var_out[i]]
                     a = [var_in1[i+1],var_in2[i+1],var_out[i+1]]
@@ -610,11 +782,12 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     model_list += [b[1]+' - '+a[1]+' - '+b[0]+' - '+b[2]+' + '+var_p[i]+' >= -2 ']
                     model_list += [b[2]+' - '+a[1]+' - '+b[0]+' - '+b[1]+' + '+var_p[i]+' >= -2 ']
                 model_list += [var_in1[-1]+' + '+var_in2[-1]+' + '+var_out[-1] + ' <= 2 ']
-                model_list += [var_in1[-1]+' + '+var_in2[-1]+' + '+var_out[-1] + ' - 2 ' + var_d + ' >= 0 ']
-                model_list += [var_d + ' - ' + var_in1[-1] + ' >= 0 ']
-                model_list += [var_d + ' - ' + var_in2[-1] + ' >= 0 ']
-                model_list += [var_d + ' - ' + var_out[-1] + ' >= 0 ']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_p + [var_d]), "Weight": " + ".join(var_p)})
+                model_list += [var_in1[-1]+' + '+var_in2[-1]+' + '+var_out[-1] + ' - 2 ' + var_d[0] + ' >= 0 ']
+                model_list += [var_d[0] + ' - ' + var_in1[-1] + ' >= 0 ']
+                model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
+                model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_p + var_d
+                self.weight = " + ".join(var_p)
                 return model_list
             else:
                 RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -651,7 +824,7 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll)]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -659,29 +832,26 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0:
+            if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
                 for i in range(len(var_in1)):
-                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_out[i]]
-                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_p[i]]
-                    model_list += ['-' + var_in1[i] + ' ' + var_p[i]]
-                    model_list += ['-' + var_in2[i] + ' ' + var_p[i]]
-                model_list.append({"Weight": var_p})
+                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
+                    model_list += [f'{i1} {i2} -{o}', f'{i1} {i2} -{p}', f'-{i1} {p}', f'-{i2} {p}']
+                self.weight = var_p
                 return model_list        
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
                 for i in range(len(var_in1)):
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' - ' + var_out[i] + ' >= 0']
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' - ' + var_p[i] + ' >= 0']
-                    model_list += [' - ' + var_in1[i] + ' + ' + var_p[i] + ' >= 0']
-                    model_list += [' - ' + var_in2[i] + ' + ' + var_p[i] + ' >= 0']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_p), "Weight": " + ".join(var_p)})
+                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
+                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i1} + {i2} - {p} >= 0', f'- {i1} + {p} >= 0', f'- {i2} + {p} >= 0']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_p 
+                self.weight = " + ".join(var_p)
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -691,7 +861,7 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll)]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -699,29 +869,26 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
                 for i in range(len(var_in1)):
-                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_out[i]]
-                    model_list += [var_in1[i] + ' ' + var_in2[i] + ' -' + var_p[i]]
-                    model_list += ['-' + var_in1[i] + ' ' + var_p[i]]
-                    model_list += ['-' + var_in2[i] + ' ' + var_p[i]]
-                model_list.append({"Weight": var_p})
+                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
+                    model_list += [f'{i1} {i2} -{o}', f'{i1} {i2} -{p}', f'-{i1} {p}', f'-{i2} {p}']
+                self.weight = var_p
                 return model_list        
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
-                for i in range(len(var_in1)):       
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' - ' + var_out[i] + ' >= 0']
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' - ' + var_p[i] + ' >= 0']
-                    model_list += [' - ' + var_in1[i] + ' + ' + var_p[i] + ' >= 0']
-                    model_list += [' - ' + var_in2[i] + ' + ' + var_p[i] + ' >= 0']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_p), "Weight": " + ".join(var_p)})
+                for i in range(len(var_in1)):   
+                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
+                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i1} + {i2} - {p} >= 0',  f'- {i1} + {p} >= 0', f'- {i2} + {p} >= 0']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_p 
+                self.weight = " + ".join(var_p)
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -731,8 +898,7 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
-    def generate_model(self, model_type='python', model_version = 0, unroll=False):
-        self.model_version = model_version
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -740,48 +906,45 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
                 for i in range(len(var_in1)):
                     alpha, beta, gamma = var_in1[i],var_in2[i],var_out[i]
                     model_list += [f'{alpha} {beta} -{gamma}', f'{alpha} -{beta} {gamma}', f'-{alpha} {beta} {gamma}', f'-{alpha} -{beta} -{gamma}']
-                model_list.append({"Weight: ": []})
                 return model_list        
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            model_list = []    
-            if self.model_version == 0: 
-                for i in range(len(var_in1)):  
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' + ' + var_out[i] + ' - 2 ' + var_d[i] + ' >= 0']
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' + ' + var_out[i] + ' <= 2']
-                    model_list += [var_d[i] + ' - ' + var_in1[i] + ' >= 0']
-                    model_list += [var_d[i] + ' - ' + var_in2[i] + ' >= 0']
-                    model_list += [var_d[i] + ' - ' + var_out[i] + ' >= 0']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_d)})
+            model_list = []
+            if model_version == "diff_0": 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                for i in range(len(var_in1)): 
+                    i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
+                    model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_d
                 return model_list
-            elif model_version == 1:
+            elif model_version == "diff_1": 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(len(var_in1)):  
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' - ' + var_out[i] + ' >= 0']
-                    model_list += [var_in2[i] + ' + ' + var_out[i] + ' - ' + var_in1[i] + ' >= 0']
-                    model_list += [var_in1[i] + ' + ' + var_out[i] + ' - ' + var_in2[i] + ' >= 0']
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' + ' + var_out[i] + ' <= 2']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out)})
+                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
+                self.binary_vars = var_in1 + var_in2 + var_out
                 return model_list
-            elif model_version == 2: 
+            elif model_version == "diff_2": 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(len(var_in1)):  
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' + ' + var_out[i] + ' - 2 ' + var_d[i] + ' = 0']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_d)})
+                    i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
+                    model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_d
                 return model_list
-            elif model_version == 3: 
-                for i in range(len(var_in1)):  
-                    model_list += [var_in1[i] + ' + ' + var_in2[i] + ' + ' + var_out[i] + ' - 2 ' + var_d[i] + ' >= 0']
-                    model_list += [var_d[i] + ' - ' + var_in1[i] + ' >= 0']
-                    model_list += [var_d[i] + ' - ' + var_in2[i] + ' >= 0']
-                    model_list += [var_d[i] + ' - ' + var_out[i] + ' >= 0']
-                model_list.append({"Binary": " ".join(var_in1 + var_in2 + var_out + var_d)})
+            elif model_version == "diff_3": 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('out', 0, unroll)]
+                var_d = [self.ID + '_d']
+                i1, i2, o, d = var_in1[0], var_in2[0], var_out[0], var_d[0]
+                model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
+                self.binary_vars = var_in1 + var_in2 + var_out + var_d      
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -791,7 +954,7 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: 
                 return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1)]
@@ -800,18 +963,16 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type) 
         elif model_type == 'sat': 
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-                model_list.append({"Weight: ": []})
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            var_in, var_out = self.get_var_ID('in', 0, unroll), self.get_var_ID('out', 0, unroll)
-            if self.model_version == 0: 
+            if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                model_list = [var_in[i] + ' - ' + var_out[i] + ' = 0' for i in range(len(var_in))]
-                model_list.append({"Binary": " ".join(var_in + var_out)})
+                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
+                self.binary_vars = var_in + var_out
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
