@@ -163,7 +163,7 @@ class Primitive(ABC):
         elif word_bitsize <= 64: return 'uint64_t'
         else: return 'uint128_t'
     
-    def generate_code(self, filename, language = 'python', unroll = False, obj=0):  # method that generates the code defining the primitive
+    def generate_code(self, filename, language = 'python', unroll = False, function="MAS", obj=0):  # method that generates the code defining the primitive
         
         nbr_rounds = self.nbr_rounds
         
@@ -343,27 +343,28 @@ class Primitive(ABC):
                     cons = ' + '.join(f"{self.inputs['plaintext'][i].ID}_{j}" for i in range(len(self.inputs['plaintext'])) for j in range(self.inputs['plaintext'][i].bitsize)) + ' >= 1\n'
                     cons += ''.join([f"{self.inputs['plaintext'][i].ID}_{j} - {self.states['STATE'].vars[1][0][i].ID}_{j} = 0\n" for i, var in enumerate(self.inputs["plaintext"]) for j in range(var.bitsize)])
                 myfile.write(cons)
-                Binary_cons = ''
+                bin_vars = []
                 obj = ''
                 for r in range(1,nbr_rounds+1):
                     for s in ["STATE"]: # for single-key differential
                         for l in range(self.states[s].nbr_layers+1):                        
                             for cons in self.states[s].constraints[r][l]: 
+                                print("cons", cons.ID)
                                 if cons.ID[0:3] == 'ARK':
                                     var_in, var_out = [cons.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)], [cons.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)]
                                     for vin, vout in zip(var_in, var_out):
                                         myfile.write(f"{vin} - {vout} = 0\n")
-                                    Binary_cons += " ".join(var_in + var_out)
+                                    bin_vars += var_in + var_out
                                 else:
-                                    cons_gen = cons.generate_model("milp", unroll=True)
-                                    myfile.write(''.join(cons + '\n' for cons in cons_gen[0:-1]))
-                                    if 'Binary' in cons_gen[-1]:
-                                        Binary_cons += " " + cons_gen[-1]['Binary']
-                                    if 'Weight' in cons_gen[-1]:
-                                        obj += ' + ' + cons_gen[-1]['Weight']
+                                    if function == "BDC" and "Sbox" in str(cons.__class__.__name__):
+                                        cons_gen = cons.generate_model("milp", model_version = "diff_1", unroll=True)
+                                    else: 
+                                        cons_gen = cons.generate_model("milp", unroll=True)
+                                    myfile.write(''.join(cons + '\n' for cons in cons_gen))
+                                    if hasattr(cons, 'binary_vars'): bin_vars += cons.binary_vars
+                                    if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
                 myfile.write(obj + ' - obj = 0\n') 
-                myfile.write('Binary\n' + Binary_cons) 
-                myfile.write('\nEnd\n') 
+                myfile.write("Binary\n" + " ".join(set(bin_vars)) + "\nEnd\n")
 
             
             elif language == 'sat':  
@@ -383,13 +384,14 @@ class Primitive(ABC):
                                     for vin, vout in zip(var_in, var_out):
                                         model_cons += [f"-{vin} {vout}", f"{vin} -{vout}"]
                                 else:
-                                    cons_gen = cons.generate_model("sat", unroll=True)
-                                    model_cons += cons_gen[0:-1]  
-                                    if 'Weight' in cons_gen[-1]:
-                                        obj_var += cons_gen[-1]['Weight']
+                                    if function == "BDC" and "Sbox" in str(cons.__class__.__name__):
+                                        cons_gen = cons.generate_model("sat", model_version = "diff_1", unroll=True)
+                                    else: 
+                                        cons_gen = cons.generate_model("sat", unroll=True)
+                                    model_cons += cons_gen  
+                                    if hasattr(cons, 'weight'): obj_var += cons.weight
                 # modeling the constraint "weight greater or equal to the given obj using sequential encoding method 
-                if obj == 0:
-                    obj_cons = [f'-{var}' for var in obj_var] 
+                if obj == 0: obj_cons = [f'-{var}' for var in obj_var] 
                 else:
                     n = len(obj_var)
                     dummy_var = [[f'obj_d_{i}_{j}' for j in range(obj)] for i in range(n - 1)]
