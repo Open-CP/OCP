@@ -714,9 +714,9 @@ class AES_permutation(Permutation):
                 self.states["STATE"].AddConstantLayer("AC", i, 3, "xor", [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14])  # Constant layer            
             
             self.states["STATE"].SboxLayer("SB", nbr_rounds, 0, op.AES_Sbox) # Sbox layer   
-            self.states["STATE"].PermutationLayer("SR", 10, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
-            self.states["STATE"].AddConstantLayer("AC", 10, 2, "xor", [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14])  # Constant layer            
-            self.states["STATE"].AddIndentityLayer("ID", 10, 3)     # Identity layer 
+            self.states["STATE"].PermutationLayer("SR", nbr_rounds, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
+            self.states["STATE"].AddConstantLayer("AC", nbr_rounds, 2, "xor", [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14])  # Constant layer            
+            self.states["STATE"].AddIndentityLayer("ID", nbr_rounds, 3)     # Identity layer 
 
 
 
