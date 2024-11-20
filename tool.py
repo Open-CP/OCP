@@ -34,12 +34,23 @@ def test_operator_MILP(operator, model_v="diff_0", mode=0):
         return ""
     if "Sbox" in str(type(operator).__name__): milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, mode= mode, unroll=True)
     else: milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, unroll=True)
-    # print("MILP constraints: \n", milp_constraints)
+    print("MILP constraints: \n", milp_constraints)
     content = "Minimize\n obj\nSubject To\n"
     if hasattr(operator, 'weight'): content += operator.weight + ' - obj = 0\n'
-    for i, constraint in enumerate(milp_constraints):
-        content += constraint + '\n'
-    if hasattr(operator, 'binary_vars'): content += "Binary\n" + " ".join(sorted(list(set(operator.binary_vars)))) + "\nEnd\n"
+    bin_vars = []
+    in_vars = []
+    for constraint in milp_constraints:
+        if "Binary" in constraint:
+            constraint_split = constraint.split('Binary\n')
+            content += constraint_split[0]
+            bin_vars += constraint_split[1].strip().split()
+        elif "Integer" in constraint:
+            constraint_split = constraint.split('Integer\n')
+            content += constraint_split[0]
+            in_vars += constraint_split[1].strip().split()
+        else: content += constraint + '\n'
+    if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
+    if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
     filename = f'files/milp_{type(operator).__name__}_{model_v}.lp'
     with open(filename, "w") as file:
         file.write(content)
@@ -293,21 +304,61 @@ def TEST_Sbox_MILP_SAT():
     sbox_list = [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox]
     for model_type in ["milp", "sat"]:
         for sbox in sbox_list:
-            for model_v in ["diff_0", "diff_1", "diff_2"]: 
+            for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
                 if model_type == "milp": test_operator_MILP(sbox, model_v, mode=0)
                 elif model_type == "sat" and str(sbox.__class__.__name__) != "GIFT_Sbox": test_operator_SAT(sbox, model_v, mode=0)
 
 
     for sbox in [skinny8_sbox]:
-        for model_v in ["diff_0", "diff_p", "diff_2"]: test_operator_MILP(sbox, model_v, mode=0)
+        for model_v in ["diff_0", "diff_p", "truncated_diff"]: test_operator_MILP(sbox, model_v, mode=0)
         test_operator_SAT(sbox, "diff_0", mode=0)
 
 
     for sbox in [aes_sbox]:
-        for model_v in ["diff_0", "diff_1", "diff_2"]: test_operator_MILP(sbox, model_v, mode=0)
+        for model_v in ["diff_0", "diff_1", "truncated_diff"]: test_operator_MILP(sbox, model_v, mode=0)
         test_operator_MILP(sbox, "diff_p", mode=1)
         test_operator_SAT(sbox, "diff_0", mode=0)
             
+
+
+def TEST_N_XOR_MILP_SAT(): 
+    print("\n********************* operation: N_XOR ********************* ")
+    n = 2
+    my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(n+1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)]
+    print("input:")
+    for i in range(n):
+        my_input[i].display()
+    print("output:")
+    my_output[0].display()
+    n_xor = op.N_XOR(my_input, my_output, ID = 'N_XOR')
+    test_operator_MILP(n_xor, model_v="diff_0")
+    test_operator_MILP(n_xor, model_v="diff_1")
+    
+   
+
+def TEST_Matrix_MILP_SAT(): 
+    print("\n********************* operation: Matrix ********************* ")
+    # test aes's matrix
+    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(4)], [var.Variable(8,ID="out"+str(i)) for i in range(4)]
+    print("input:")
+    for i in range(len(my_input)):
+        my_input[i].display()
+    print("output:")
+    my_output[0].display()
+    mat_aes = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
+    matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix')
+    test_operator_MILP(matrix, model_v="diff_0")
+    # test future's matrix
+    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
+    print("input:")
+    for i in range(len(my_input)):
+        my_input[i].display()
+    print("output:")
+    my_output[0].display()
+    mat_future = [[8,9,1,8], [3,2,9,9], [2,3,8,9], [9,9,8,1]]
+    matrix = op.Matrix("mat_future", my_input, my_output, mat = mat_future, polynomial=0x3, ID = 'Matrix')
+    test_operator_MILP(matrix, model_v="diff_1")
+    
 
 def TEST_OPERATORS_MILP_SAT():  
     TEST_Equal_MILP_SAT()
@@ -320,185 +371,79 @@ def TEST_OPERATORS_MILP_SAT():
     TEST_bitwiseXOR_MILP_SAT()
     TEST_bitwiseNOT_MILP_SAT()
     TEST_Sbox_MILP_SAT()
-    
-    
-
-def solve_milp(filename):
-    if gurobipy_import == False: 
-        print("gurobipy module can't be loaded ... skipping test\n")
-        return ""
-    model = gp.read(filename)
-    model.optimize()
-    if model.status == gp.GRB.Status.OPTIMAL:
-        print("Optimal Objective Value:", model.ObjVal)
-        # for v in model.getVars(): 
-            # print(f"{v.VarName} = {v.Xn}")
-        return model.ObjVal
-    else:
-        print("No optimal solution found.")
-
-
-
-def solve_SAT(filename):
-    if pysat_import == False: 
-        print("pysat module can't be loaded ... skipping test\n")
-        return ""
-    cnf = CNF(filename)
-    solver = CryptoMinisat()
-    solver.append_formula(cnf.clauses)
-    if solver.solve():
-        print("A solution exists.")
-        # solution = solver.get_model()
-        # print("solution: \n", solution)
-        return True
-    else:
-        print("No solution exists.")
-        return False
+    TEST_N_XOR_MILP_SAT()
+    TEST_Matrix_MILP_SAT()
     
 
 
-def generate_codes(ciphername, cipher):
-    cipher.generate_code("files/" + ciphername + ".py", "python")
-    cipher.generate_code("files/" + ciphername + "_unrolled.py", "python", True)
-    cipher.generate_code("files/" + ciphername + ".c", "c")
-    cipher.generate_code("files/" + ciphername + "_unrolled.c", "c", True)
-    cipher.generate_code("files/" + ciphername + ".lp", "milp", True)
-    cipher.generate_code("files/" + ciphername + ".cnf", "sat", True, obj=0)
-    cipher.generate_figure("files/" + ciphername + ".pdf")
+# ********************* TEST OF CIPHERS CODING IN PYTHON AND C********************* #  
+def generate_codes(cipher):
+    cipher.generate_code("files/" + cipher.name + ".py", "python")
+    cipher.generate_code("files/" + cipher.name + "_unrolled.py", "python", True)
+    cipher.generate_code("files/" + cipher.name + ".c", "c")
+    cipher.generate_code("files/" + cipher.name + "_unrolled.c", "c", True)
+    cipher.generate_figure("files/" + cipher.name + ".pdf")
     
-
 
 # ********************* TEST OF CIPHERS MODELING IN MILP and SAT********************* #   
 def TEST_SPECK32_PERMUTATION(r):
     my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Speck_permutation("SPECK32_PERM", 32, my_input, my_output, nbr_rounds=r)
-    return "SPECK32_PERM", my_cipher
+    return my_cipher
    
 
 def TEST_SIMON32_PERMUTATION(r):
     my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Simon_permutation("SIMON32_PERM", 32, my_input, my_output, nbr_rounds=r)
-    return "SIMON32_PERM", my_cipher
+    return my_cipher
 
 
 def TEST_ASCON_PERMUTATION(r):
     my_input, my_output = [var.Variable(5,ID="in"+str(i)) for i in range(64)], [var.Variable(5,ID="out"+str(i)) for i in range(64)]
     my_cipher = prim.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
-    return "ASCON_PERM", my_cipher
+    return my_cipher
 
 
 def TEST_SKINNY_PERMUTATION(r):
     my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.Skinny_permutation("SKINNY_PERM", 64, my_input, my_output, nbr_rounds=r)
-    return "SKINNY_PERM", my_cipher
+    return my_cipher
 
 
 def TEST_AES_PERMUTATION(r):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
-    return "AES_PERM", my_cipher
+    return my_cipher
 
 
 def TEST_SPECK32_BLOCKCIPHER(r):
     my_plaintext, my_key, my_ciphertext = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="k"+str(i)) for i in range(4)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Speck_block_cipher("SPECK32", [32, 64], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
-    return "SPECK32", my_cipher
+    return my_cipher
 
 
 def TEST_SKINNY64_192_BLOCKCIPHER(r):
     my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="in"+str(i)) for i in range(48)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.Skinny_block_cipher("SKINNY64_192", [64, 192], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
-    return "SKINNY64_192", my_cipher
+    return my_cipher
 
 
 def TEST_GIFT64_permutation(r):
     my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.GIFT_permutation("GIFT64_PERM", 64, my_input, my_output, nbr_rounds=r)
-    generate_codes("GIFT64_PERM", my_cipher)
-    return "GIFT64_PERM", my_cipher
-
-
-def TEST_CIPHERS_MAS_MILP(r): 
-    # searching for the minimum number of active s-boxes
-    ciphername, cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_AES_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
-    ciphername, cipher = TEST_GIFT64_permutation(r) # TO DO
-    file_name = "files/" + ciphername + "_MAS.lp"
-    cipher.generate_code(file_name, "milp", unroll = True, function="MAS")
-    result = solve_milp(file_name)
-    return file_name, result
-
-
-
-def TEST_CIPHERS_BDC_MILP(r):
-    # search for the best differential characteristic number of active s-boxes
-    ciphername, cipher = TEST_SPECK32_PERMUTATION(r)
-    ciphername, cipher = TEST_SIMON32_PERMUTATION(r)
-    ciphername, cipher = TEST_SPECK32_BLOCKCIPHER(r)
-    # ciphername, cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    # ciphername, cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    # ciphername, cipher = TEST_AES_PERMUTATION(r) # TO DO
-    # ciphername, cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
-    # ciphername, cipher = TEST_GIFT64_permutation(r) # TO DO
-    file_name = "files/" + ciphername + "_BDC.lp"
-    cipher.generate_code(file_name, "milp", unroll = True, function="BDC")
-    result = solve_milp(file_name)
-    return file_name, result
-
-
-
-def TEST_CIPHERS_MAS_SAT(r):
-    # searching for the minimum number of active s-boxes
-    ciphername, cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_AES_PERMUTATION(r) # TO DO
-    ciphername, cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
-    ciphername, cipher = TEST_GIFT64_permutation(r) # TO DO
-    file_name = "files/" + ciphername + "_MAS.cnf"
-    obj = 0
-    flag = False
-    while not flag:
-        print("obj", obj)
-        cipher.generate_code(file_name, "sat", unroll = True, function="MAS", obj=obj)
-        flag = solve_SAT(file_name)
-        obj += 1
-    result = obj-1
-    return file_name, result
-
-
-
-def TEST_CIPHERS_BDC_SAT(r):
-    # search for the best differential characteristic number of active s-boxes
-    ciphername, cipher = TEST_SPECK32_PERMUTATION(r)
-    ciphername, cipher = TEST_SIMON32_PERMUTATION(r)
-    ciphername, cipher = TEST_SPECK32_BLOCKCIPHER(r)
-    # ciphername, cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    file_name = "files/" + ciphername + "_BDC.cnf"
-    obj = 0
-    flag = False
-    while not flag:
-        print("obj", obj)
-        cipher.generate_code(file_name, "sat", unroll = True, function="BDC", obj=obj)
-        flag = solve_SAT(file_name)
-        obj += 1
-    result = obj-1
-    return file_name, result
-
-
-
-def TEST_CIPHERS_MILP_SAT():
-    # TEST_CIPHERS_MAS_MILP(3)
-    TEST_CIPHERS_BDC_MILP(3)
-    # TEST_CIPHERS_MAS_SAT(3)
-    TEST_CIPHERS_BDC_SAT(3)
-
+    return my_cipher
 
 
 if __name__ == '__main__':
     TEST_OPERATORS_MILP_SAT()
-    TEST_CIPHERS_MILP_SAT()
+    cipher = TEST_SPECK32_PERMUTATION(r)
+    # cipher = TEST_SIMON32_PERMUTATION(r)
+    # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
+    # cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
+    # cipher = TEST_AES_PERMUTATION(r) # TO DO
+    # cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
+    # cipher = TEST_GIFT64_permutation(r) # TO DO
+    generate_codes(cipher)
 
 
 
