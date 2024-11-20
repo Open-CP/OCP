@@ -614,8 +614,6 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         elif model_type == 'milp': 
             model_list = []
             bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
-            print("milp", bin_matrix)
-            print(self.input_vars[0])
             if model_version == "diff_0" or model_version == "diff_1":
                 for i in range(len(self.mat)):
                     for j in range(self.input_vars[0].bitsize):
