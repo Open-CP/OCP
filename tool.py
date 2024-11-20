@@ -436,6 +436,7 @@ def TEST_GIFT64_permutation(r):
 
 if __name__ == '__main__':
     TEST_OPERATORS_MILP_SAT()
+    r = 2
     cipher = TEST_SPECK32_PERMUTATION(r)
     # cipher = TEST_SIMON32_PERMUTATION(r)
     # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
