@@ -188,23 +188,37 @@ if __name__ == '__main__':
     # cipher = TEST_GIFT64_permutation(r) # TO DO
     
 
-    # test milp
-    # the user can add/modify the modeling versions for some operations in model_versions
-    model_versions = {"XOR_1_4_1": "diff_1"}
+    # ****************************** TEST OF MILP MODELING ****************************** #
+    # (1) The user can modify the modeling versions for specific operations
+    # Example: XOR_1_4_1 is modeled using "diff_1"
+    model_versions_milp = {"XOR_1_4_1": "diff_1"}
 
-    # the user can generate additional constraints in add_constraints (for example set the i-th input different to 0)
-    add_cons = ["in0_0 = 0"]
-    singlekey_differential_path_search_milp(cipher, r, "milp", model_versions=model_versions, add_cons=add_cons)
+    # (2) The user can specify additional constraints
+    # Example: Force the first input (in0_0) to be equal to 0
+    add_cons_milp = ["in0_0 = 0"]
+
+    # (3) The user can specify the weight of operations # TO DO
     
-    # test sat
-    # the user can add/modify the modeling versions for some operations in model_versions
-    model_versions = {}
-    # the user can generate additional constraints in add_constraints (for example set the i-th input different to 0)
-    add_cons = ["-in0_0 "]
+
+    # Call the single-key differential path search function for MILP
+    singlekey_differential_path_search_milp(cipher, r, "milp", model_versions=model_versions_milp, add_cons=add_cons_milp)
+    
+    # ****************************** TEST OF SAT MODELING ****************************** #
+    # (1) The user can modify the modeling versions for specific operations
+    model_versions_sat = {}
+
+    # (2) The user can specify additional constraints
+    # Example: Force the first input (in0_0) to be non-zero
+    add_cons_sat = ["-in0_0"]
+
+    # (3) The user can specify the weight of operations # TO DO
+
+    # (4) The user can specify the value of the objective function starting from obj
+    # Example: obj = 0
     obj = 0
     flag = False
     while not flag:
         print("obj", obj)
-        flag = singlekey_differential_path_search_sat(cipher, r, "milp", model_versions=model_versions, obj=obj, add_cons=add_cons)
+        flag = singlekey_differential_path_search_sat(cipher, r, "milp", model_versions=model_versions_sat, obj=obj, add_cons=add_cons_sat)
         obj += 1
     result = obj-1
