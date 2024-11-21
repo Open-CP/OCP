@@ -626,8 +626,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             if self.model_version == 0:  
                 return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp': 
+        elif model_type == 'milp' or model_type == 'sat': 
             model_list = []
             bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
             if model_version == "diff_0" or model_version == "diff_1":
@@ -641,13 +640,11 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                                     vi = copy.deepcopy(self.input_vars[i])
                                     vi.bitsize = 1
                                     vi.ID = self.input_vars[k].ID + '_' + str(l)
-                                    vi.display()
                                     var_in.append(vi)
                         vo = copy.deepcopy(self.output_vars[i])
                         vo.bitsize = 1
                         vo.ID = self.output_vars[i].ID + '_' + str(j)
                         var_out.append(vo)
-                        vo.display()
                         n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(self.input_vars[0].bitsize*i+j))
                         cons = n_xor.generate_model(model_type, model_version, unroll)
                         model_list += cons
