@@ -331,8 +331,9 @@ def TEST_N_XOR_MILP_SAT():
     print("output:")
     my_output[0].display()
     n_xor = op.N_XOR(my_input, my_output, ID = 'N_XOR')
-    test_operator_MILP(n_xor, model_v="diff_0")
+    test_operator_MILP(n_xor)
     test_operator_MILP(n_xor, model_v="diff_1")
+    test_operator_SAT(n_xor)
     
    
 
