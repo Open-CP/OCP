@@ -348,7 +348,10 @@ def TEST_Matrix_MILP_SAT():
     my_output[0].display()
     mat_aes = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
     matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix')
-    test_operator_MILP(matrix, model_v="diff_0")
+    test_operator_MILP(matrix)
+    test_operator_MILP(matrix, model_v="diff_1")
+    test_operator_SAT(matrix)
+    
     # test future's matrix
     my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
     print("input:")
@@ -358,7 +361,9 @@ def TEST_Matrix_MILP_SAT():
     my_output[0].display()
     mat_future = [[8,9,1,8], [3,2,9,9], [2,3,8,9], [9,9,8,1]]
     matrix = op.Matrix("mat_future", my_input, my_output, mat = mat_future, polynomial=0x3, ID = 'Matrix')
+    test_operator_MILP(matrix)
     test_operator_MILP(matrix, model_v="diff_1")
+    test_operator_SAT(matrix)
     
 
 def TEST_OPERATORS_MILP_SAT():  
