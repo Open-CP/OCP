@@ -5,6 +5,7 @@ import time
 import os
 import copy
 import matrix
+from itertools import combinations
 
 
 if not os.path.exists('files'):
@@ -510,7 +511,22 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
     def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'sat': 
+            var_in, var_out = [[f"{self.get_var_ID('in', i, unroll)}_{j}" for i in range(len(self.input_vars))] for j in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            model_list = []
+            if model_version == "diff_0": 
+                for i in range(self.input_vars[0].bitsize):
+                    current_var_in = var_in[i]
+                    current_var_out = var_out[i]
+                    n = len(current_var_in)
+                    for k in range(0, n + 1):  # All subsets (0 to n elements)
+                        for comb in combinations(current_var_in, k):
+                            is_even_parity = (len(comb) % 2 == 0)
+                            clause = [f"{current_var_out}" if is_even_parity else f"-{current_var_out}"]
+                            clause += [f"-{v}" if v in comb else f"{v}" for v in current_var_in]
+                            model_list.append(" ".join(clause))
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             model_list = []
             if model_version == "diff_0": 
