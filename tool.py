@@ -285,40 +285,52 @@ def TEST_bitwiseNOT_MILP_SAT():
 def TEST_Sbox_MILP_SAT(): 
     print("\n********************* operation: Sbox ********************* ")
     ascon_sbox = op.ASCON_Sbox([var.Variable(5,ID="in"+str(i)) for i in range(1)], [var.Variable(5,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of ascon_sbox: ", ascon_sbox.differential_branch_number())
 
     skinny4_sbox = op.Skinny_4bit_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of skinny4_sbox: ", skinny4_sbox.differential_branch_number())
 
     skinny8_sbox = op.Skinny_8bit_Sbox([var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of skinny8_sbox: ", skinny8_sbox.differential_branch_number())
 
     gift_sbox = op.GIFT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of gift_sbox: ", gift_sbox.differential_branch_number())
 
     aes_sbox = op.AES_Sbox([var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of aes_sbox: ", aes_sbox.differential_branch_number())
 
     twine_sbox = op.TWINE_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of twine_sbox: ", twine_sbox.differential_branch_number())
 
     present_sbox = op.PRESENT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of present_sbox: ", present_sbox.differential_branch_number())
 
     knot_sbox = op.KNOT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
+    print("differential branch number of knot_sbox: ", knot_sbox.differential_branch_number())
 
 
-    sbox_list = [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox]
-    for model_type in ["milp", "sat"]:
-        for sbox in sbox_list:
-            for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
-                if model_type == "milp": test_operator_MILP(sbox, model_v, mode=0)
-                elif model_type == "sat" and str(sbox.__class__.__name__) != "GIFT_Sbox": test_operator_SAT(sbox, model_v, mode=0)
+    for sbox in [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox]:
+        for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
+            test_operator_MILP(sbox, model_v, mode=0)
+            if str(sbox.__class__.__name__) != "GIFT_Sbox": test_operator_SAT(sbox, model_v, mode=0)
 
 
     for sbox in [skinny8_sbox]:
-        for model_v in ["diff_0", "diff_p", "truncated_diff"]: test_operator_MILP(sbox, model_v, mode=0)
+        for model_v in ["diff_0", "diff_p", "truncated_diff"]: 
+            test_operator_MILP(sbox, model_v, mode=0)
         test_operator_SAT(sbox, "diff_0", mode=0)
 
 
     for sbox in [aes_sbox]:
-        for model_v in ["diff_0", "diff_1", "truncated_diff"]: test_operator_MILP(sbox, model_v, mode=0)
+        for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
+            test_operator_MILP(sbox, model_v, mode=0)
         test_operator_MILP(sbox, "diff_p", mode=1)
-        test_operator_SAT(sbox, "diff_0", mode=0)
-            
+        test_operator_SAT(sbox, "diff_0", mode=0)    
+
+
+    for sbox in [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox, skinny8_sbox, aes_sbox]:
+        model_v = "truncated_diff_1"
+        test_operator_MILP(sbox, model_v)
 
 
 def TEST_N_XOR_MILP_SAT(): 
