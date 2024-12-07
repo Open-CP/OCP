@@ -266,6 +266,19 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return constraints, objective_fun
     
     
+    def differential_branch_number(self):
+        # Return differential branch number of the S-Box.
+        ret = (1 << self.input_bitsize) + (1 << self.output_bitsize)
+        for a in range(1 << self.input_bitsize):
+            for b in range(1 << self.output_bitsize):
+                if a != b:
+                    x = a ^ b
+                    y = self.table[a] ^ self.table[b]
+                    w = bin(x).count('1') + bin(y).count('1')
+                    if w < ret: ret = w
+        return ret
+    
+
     def generate_model(self, model_type='python', model_version="diff_0", mode = 0, unroll=False):
         if model_type == 'python': 
             if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
@@ -276,7 +289,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         elif model_type == 'sat': 
             filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
             if model_version == "diff_0":
-                # calculating the minimum number of differentially active s-boxes
+                # modeling all possible (input difference, output difference) to calculate the minimum number of differentially active s-boxes
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_At = [self.ID + '_At']    
@@ -290,7 +303,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 self.weight = var_At         
                 return model_list
             elif model_version == "diff_1":
-                # modeling ddt by reading the constraint file obtained from sbox analyzer, https://github.com/hadipourh/sboxanalyzer
+                # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
@@ -312,7 +325,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if model_version == "diff_0":
-                # calculating the minimum number of differentially active s-boxes
+                # modeling all possible (input difference, output difference) to calculate the minimum number of differentially active s-boxes
                 filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -328,7 +341,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 self.weight = var_At[0]
                 return model_list
             elif model_version == "diff_1":
-                # searching for the best differential charactristic
+                # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
                 var_p = []    
@@ -374,6 +387,19 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 self.weight = var_in[0]              
+                return model_list
+            elif model_version == "truncated_diff_1":
+                # modeling the differential branch number of sbox to calculate the minimum number of differentially active s-boxes
+                branch_num = self.differential_branch_number()
+                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_At = [self.ID + '_At'] 
+                var_d = [self.ID + '_d'] 
+                model_list = [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
+                model_list += [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d[0] + ' >= 0']
+                model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
+                model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_At + var_d))
+                self.weight = var_At[0]       
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
