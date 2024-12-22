@@ -408,7 +408,9 @@ def TEST_ConstantAdd_MILP_SAT():
     c_code = cons_add.generate_model(model_type='c', unroll=True)
     print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(cons_add)
+    test_operator_MILP(cons_add, model_v="truncated_diff")
     test_operator_SAT(cons_add)
+    test_operator_SAT(cons_add, model_v="truncated_diff")
 
 
 def TEST_OPERATORS_MILP_SAT():  
