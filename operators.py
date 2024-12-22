@@ -574,7 +574,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 model_list.append('Binary\n' + ' '.join(sum(var_in, []) + var_out))
                 model_list.append('Integer\n' + ' '.join(var_d))
                 return model_list
-            elif model_version == "diff_1":  # cited from: Murat Burhan İlter and Ali Aydın Selçuk. Milp-aided cryptanalysis of the future block cipher. In International Conference on Information Technology and Communications Security, pages 153–167. Springer, 2022.
+            elif model_version == "diff_1":  # cited from: "Milp-aided cryptanalysis of the future block cipher".
                 var_in, var_out = [[f"{self.get_var_ID('in', i, unroll)}_{j}" for i in range(len(self.input_vars))] for j in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_d = [[f"{self.ID}_d_{i}_{j}" for i in range(int((len(self.input_vars)+1)/2))] for j in range(self.input_vars[0].bitsize)] 
                 model_list = []
@@ -583,6 +583,12 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                     s += " + ".join(f"{2 * (len(var_d[i]) - j)} {var_d[i][j]}" for j in range(1, len(var_d[i]))) + " = 0"
                     model_list += [s]
                 model_list.append('Binary\n' + ' '.join(sum(var_in, []) + sum(var_d, []) + var_out))
+                return model_list
+            elif len(self.input_vars) == 3 and model_version == "truncated_diff":  # cited from: "Related-Key Differential Analysis of the AES".
+                var_in1, var_in2, var_in3, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('in', 2, unroll)], [self.get_var_ID('out', 0, unroll)]
+                i1, i2, i3, o = var_in1[0], var_in2[0], var_in3[0], var_out[0]
+                model_list += [f'{i1} + {i2} + {i3} - {o} >= 0', f'{i2} + {i3} + {o} - {i1} >= 0', f'{i1} + {i3} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} - {i3} >= 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_in3 + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
