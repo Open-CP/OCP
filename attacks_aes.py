@@ -68,8 +68,6 @@ def addkeyScheduleExtraConstr(cipher):
     add_cons = []
     s = "KEY_STATE"
     nk = int(cipher.k_bitsize/8)
-    print(cipher.k_nbr_rounds)
-    # print(fghj)
     for i in range(1, cipher.k_nbr_rounds):               
         for j in range(nk-8):
             if nk == 32 and (cipher.nbr_rounds%2) == 1 and i == (cipher.k_nbr_rounds-1) and j >= 8:
@@ -125,8 +123,6 @@ def addMixColumnsExtraConstr(cipher):
                 v0 = [var.Variable(8,ID=f"v0_{i}_{j}_" +str(k)) for k in range(4)]
                 v1 = [var.Variable(8,ID=f"v1_{i}_{j}_" +str(k)) for k in range(4)]
                 v2 = [var.Variable(8,ID=f"v2_{i}_{j}_" +str(k)) for k in range(4)]
-                for x in x0+x1+x2+y0+y1+y2+k0+k1+k2:
-                    x.display()
                 for k in range(4):
                     xor = op.bitwiseXOR([x0[k], x1[k]], [u0[k]], ID=f"addMixColumnsExtraConstr_xor0_{i}_{j}_{k}")
                     add_cons += xor.generate_model("milp", model_version = "truncated_diff_1", unroll=True)
