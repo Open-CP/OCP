@@ -1,5 +1,6 @@
 import os, os.path
 import tool
+import operators as op
 
 
 try:
@@ -54,22 +55,27 @@ def solve_SAT(filename):
         return False
     
 
-def singlekey_differential_path_search_milp(primitive, nbr_rounds, model_type, model_versions={}, add_cons=[]):
-    filename = f"files/{nbr_rounds}_round_{primitive.name}_singlekey_differential_path_search_{model_type}.lp"
+def singlekey_differential_path_search_milp(cipher, nbr_rounds, model_versions={}, add_cons=[]):
+    filename = f"files/{nbr_rounds}_round_{cipher.name}_singlekey_differential_path_search_milp.lp"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     bin_vars = []
     in_vars = []
     obj = ""
     content = "Minimize\nobj\nSubject To\n"
-    # constraint that the input is non-zero
-    if "IN" in primitive.inputs: # for permutation
-        content += ' + '.join(f"{primitive.inputs['IN'][i].ID}_{j}" for i in range(len(primitive.inputs['IN'])) for j in range(primitive.inputs['IN'][i].bitsize)) + ' >= 1\n'
-    elif "plaintext" in primitive.inputs: # for block cipher
-        content += ' + '.join(f"{primitive.inputs['plaintext'][i].ID}_{j}" for i in range(len(primitive.inputs['plaintext'])) for j in range(primitive.inputs['plaintext'][i].bitsize)) + ' >= 1\n'
+    # add constraint that the input difference of the cipher is non-zero
+    if "permutation" in cipher.__class__.__name__: # for permutation
+        if "Input_Cons" in model_versions:
+            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['IN'][i].ID}" for i in range(len(cipher.inputs['IN']))) + ' >= 1\n'
+        else: content += ' + '.join(f"{cipher.inputs['IN'][i].ID}_{j}" for i in range(len(cipher.inputs['IN'])) for j in range(cipher.inputs['IN'][i].bitsize)) + ' >= 1\n'
+    elif "block_cipher" in cipher.__class__.__name__: # for block cipher
+        if "Input_Cons" in model_versions:
+            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext']))) + ' >= 1\n'
+        else: content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize)) + ' >= 1\n'
     # constrains for linking the input and the first round 
-    for cons in primitive.inputs_constraints:
-        if "_K_" not in cons.ID:
-            cons_gen = cons.generate_model("milp", unroll=True)
+    for cons in cipher.inputs_constraints:
+        if "_K_" not in cons.ID: # ignoring the key of block ciphers
+            model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
+            cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
             for constraint in cons_gen:
                 if "Binary" in constraint:
                     constraint_split = constraint.split('Binary\n')
@@ -81,66 +87,79 @@ def singlekey_differential_path_search_milp(primitive, nbr_rounds, model_type, m
                     in_vars += constraint_split[1].strip().split()
                 else: content += constraint + '\n'
     # constrains for each operation 
-    for r in range(1,nbr_rounds+1):
-        for l in range(primitive.states["STATE"].nbr_layers+1):                        
-            for cons in primitive.states["STATE"].constraints[r][l]: 
-                if cons.ID[0:3] == 'ARK':
-                    var_in, var_out = [cons.get_var_ID('in', 0, unroll=True) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)], [cons.get_var_ID('out', 0, unroll=True) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)]
-                    for vin, vout in zip(var_in, var_out):
-                        content += f"{vin} - {vout} = 0\n"
-                    bin_vars += var_in + var_out
+    for r in range(1,cipher.nbr_rounds+1):
+        for l in range(cipher.states["STATE"].nbr_layers+1):                        
+            for cons in cipher.states["STATE"].constraints[r][l]: 
+                model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
+                if cons.ID[0:3] == 'ARK' and cons.__class__.__name__ == "bitwiseXOR": # regarding XOR as Equal
+                    equal = op.Equal([cons.input_vars[0]], cons.output_vars, ID=cons.ID)
+                    cons_gen = equal.generate_model("milp", model_version = model_v, unroll=True)
                 else:
-                    if cons.ID in model_versions: cons_gen = cons.generate_model("milp", model_version = model_versions[cons.ID], unroll=True)
-                    else: cons_gen = cons.generate_model("milp", unroll=True)
-                    for constraint in cons_gen:
-                        if "Binary" in constraint:
-                            constraint_split = constraint.split('Binary\n')
-                            content += constraint_split[0]
-                            bin_vars += constraint_split[1].strip().split()
-                        elif "Integer" in constraint:
-                            constraint_split = constraint.split('Integer\n')
-                            content += constraint_split[0]
-                            in_vars += constraint_split[1].strip().split()
-                        else: content += constraint + '\n'
-                    if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
-    content += "\n".join(cons for cons in add_cons) + "\n" # add addtional constrains
+                    cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
+                for constraint in cons_gen:
+                    if "Binary" in constraint:
+                        constraint_split = constraint.split('Binary\n')
+                        content += constraint_split[0]
+                        bin_vars += constraint_split[1].strip().split()
+                    elif "Integer" in constraint:
+                        constraint_split = constraint.split('Integer\n')
+                        content += constraint_split[0]
+                        in_vars += constraint_split[1].strip().split()
+                    else: content += constraint + '\n'
+                if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
+    for constraint in add_cons: # add addtional constrains
+        if "Binary" in constraint:
+            constraint_split = constraint.split('Binary\n')
+            content += constraint_split[0]
+            bin_vars += constraint_split[1].strip().split()
+        elif "Integer" in constraint:
+            constraint_split = constraint.split('Integer\n')
+            content += constraint_split[0]
+            in_vars += constraint_split[1].strip().split()
+        else: content += constraint + '\n'
     content += obj + ' - obj = 0\n'
     if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
     if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
     with open(filename, "w") as myfile:
         myfile.write(content)
-    solve_milp(filename)
+    obj = solve_milp(filename)
+    return obj
 
 
 
-def singlekey_differential_path_search_sat(primitive, nbr_rounds, model_type, model_versions={}, obj=0, add_cons=[]):       
-    filename = f"files/{nbr_rounds}_round_{primitive.name}_singlekey_differential_path_search_{model_type}.cnf"
+def singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_versions={}, add_cons=[], obj=0):       
+    filename = f"files/{nbr_rounds}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf"
     os.makedirs(os.path.dirname(filename), exist_ok=True)
     obj_var = []
-    # constraint that the input is non-zero
-    if "IN" in primitive.inputs: # for permutation
-        model_cons = [" ".join(f"{primitive.inputs['IN'][i].ID}_{j}" for i in range(len(primitive.inputs['IN'])) for j in range(primitive.inputs['IN'][i].bitsize))]
-    elif "plaintext" in primitive.inputs: # for block cipher
-        model_cons = [" ".join(f"{primitive.inputs['plaintext'][i].ID}_{j}" for i in range(len(primitive.inputs['plaintext'])) for j in range(primitive.inputs['plaintext'][i].bitsize))]
-    # constrains for linking the input and the first round 
-    for cons in primitive.inputs_constraints:
-        if "_K_" not in cons.ID:
-            cons_gen = cons.generate_model("sat", model_version = "diff_0", unroll=True)
+    # constraints of non-zero input
+    if "permutation" in cipher.__class__.__name__: # for permutation
+        if "Input_Cons" in model_versions:
+            if model_versions["Input_Cons"] == "truncated_diff":
+                model_cons = [" ".join(f"{cipher.inputs['IN'][i].ID}" for i in range(len(cipher.inputs['IN'])))]
+        else: model_cons = [" ".join(f"{cipher.inputs['IN'][i].ID}_{j}" for i in range(len(cipher.inputs['IN'])) for j in range(cipher.inputs['IN'][i].bitsize))]
+    elif "block_cipher" in cipher.__class__.__name__: # for block cipher
+        if "Input_Cons" in model_versions:
+            if model_versions["Input_Cons"] == "truncated_diff": 
+                model_cons = [" ".join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext'])))]
+        else: model_cons = [" ".join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize))]
+    # constraints for linking the input and the first round 
+    for cons in cipher.inputs_constraints:
+        if "_K_" not in cons.ID: # ignoring the key of block ciphers
+            model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
+            cons_gen = cons.generate_model("sat", model_version = model_v, unroll=True)
             model_cons += cons_gen  
     # constrains for each operation 
-    for r in range(1,nbr_rounds+1):
+    for r in range(1,cipher.nbr_rounds+1):
         for s in ["STATE"]:
-            for l in range(primitive.states[s].nbr_layers+1):                        
-                for cons in primitive.states[s].constraints[r][l]: 
-                    if cons.ID[0:3] == 'ARK':
-                        var_in, var_out = [cons.get_var_ID('in', 0, unroll=True) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)], [cons.get_var_ID('out', 0, unroll=True) + '_' + str(i) for i in range(cons.input_vars[0].bitsize)]
-                        for vin, vout in zip(var_in, var_out):
-                            model_cons += [f"-{vin} {vout}", f"{vin} -{vout}"]
-                    else:
-                        if cons.ID in model_versions: cons_gen = cons.generate_model("sat", model_version = model_versions[cons.ID], unroll=True)
-                        else: cons_gen = cons.generate_model("sat", unroll=True)
-                        model_cons += cons_gen  
-                        if hasattr(cons, 'weight'): obj_var += cons.weight
+            for l in range(cipher.states[s].nbr_layers+1):                        
+                for cons in cipher.states[s].constraints[r][l]: 
+                    model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
+                    if cons.ID[0:3] == 'ARK' and cons.__class__.__name__ == "bitwiseXOR": # regarding XOR as Equal
+                        equal = op.Equal([cons.input_vars[0]], cons.output_vars, ID=cons.ID)
+                        cons_gen = equal.generate_model("sat", model_version = model_v, unroll=True)
+                    else: cons_gen = cons.generate_model("sat", model_version = model_v, unroll=True)    
+                    model_cons += cons_gen  
+                    if hasattr(cons, 'weight'): obj_var += cons.weight
     model_cons += add_cons # add addtional constrains
     # modeling the constraint "weight greater or equal to the given obj using sequential encoding method 
     if obj == 0: obj_cons = [f'-{var}' for var in obj_var] 
@@ -168,57 +187,80 @@ def singlekey_differential_path_search_sat(primitive, nbr_rounds, model_type, mo
     return solve_SAT(filename)
 
 
-
-# def relatedkey_differential_path_search_milp(primitive, num_rounds, model_type): # to do
-
-
-# def relatedkey_differential_path_search_sat(primitive, num_rounds, model_type, obj=0): # to do
-
-
-
-if __name__ == '__main__':
-    r = 4
-    cipher = tool.TEST_SPECK32_BLOCKCIPHER(r)
-    # cipher = TEST_SPECK32_PERMUTATION(r)
-    # cipher = TEST_SIMON32_PERMUTATION(r)
-    # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    # cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    # cipher = TEST_AES_PERMUTATION(r) # TO DO
-    # cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
-    # cipher = TEST_GIFT64_permutation(r) # TO DO
-    
-
-    # ****************************** TEST OF MILP MODELING ****************************** #
-    # (1) The user can modify the modeling versions for specific operations
-    # Example: XOR_1_4_1 is modeled using "diff_1"
-    model_versions_milp = {"XOR_1_4_1": "diff_1"}
-
-    # (2) The user can specify additional constraints
-    # Example: Force the first input (in0_0) to be equal to 0
-    add_cons_milp = ["in0_0 = 0"]
-
-    # (3) The user can specify the weight of operations # TO DO
-    
-
-    # Call the single-key differential path search function for MILP
-    singlekey_differential_path_search_milp(cipher, r, "milp", model_versions=model_versions_milp, add_cons=add_cons_milp)
-    
-    # ****************************** TEST OF SAT MODELING ****************************** #
-    # (1) The user can modify the modeling versions for specific operations
-    model_versions_sat = {}
-
-    # (2) The user can specify additional constraints
-    # Example: Force the first input (in0_0) to be non-zero
-    add_cons_sat = ["-in0_0"]
-
-    # (3) The user can specify the weight of operations # TO DO
-
-    # (4) The user can specify the value of the objective function starting from obj
-    # Example: obj = 0
-    obj = 0
+def singlekey_differential_path_search_sat(cipher, nbr_rounds, model_versions={}, add_cons=[], obj=0):
+    print(model_versions)
     flag = False
     while not flag:
         print("obj", obj)
-        flag = singlekey_differential_path_search_sat(cipher, r, "milp", model_versions=model_versions_sat, obj=obj, add_cons=add_cons_sat)
+        flag = singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_versions=model_versions, add_cons=add_cons, obj=obj)
         obj += 1
-    result = obj-1
+    return obj-1
+
+
+
+def relatedkey_differential_path_search_milp(cipher, nbr_rounds, model_versions={}, add_cons=[]):
+    if "block_cipher" not in cipher.__class__.__name__: raise Exception("only support relatedkey differential cryptanalysis for block_ciphers")
+    filename = f"files/{nbr_rounds}_round_{cipher.name}_relatedkey_differential_path_search_milp.lp"
+    os.makedirs(os.path.dirname(filename), exist_ok=True)
+    bin_vars = []
+    in_vars = []
+    obj = ""
+    content = "Minimize\nobj\nSubject To\n"
+    # add constraint that the input difference of the cipher is non-zero
+    if "block_cipher" in cipher.__class__.__name__: # for block cipher
+        if "Input_Cons" in model_versions: 
+            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext']))) + ' + ' + ' + '.join(f"{cipher.inputs['key'][i].ID}" for i in range(len(cipher.inputs['key']))) + ' >= 1\n'
+        else: content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize)) + ' + ' + ' + '.join(f"{cipher.inputs['key'][i].ID}_{j}" for i in range(len(cipher.inputs['key'])) for j in range(cipher.inputs['key'][i].bitsize)) + ' >= 1\n'
+    # constrains for linking the input and the first round 
+    for cons in cipher.inputs_constraints:
+        model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
+        cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
+        for constraint in cons_gen:
+            if "Binary" in constraint:
+                constraint_split = constraint.split('Binary\n')
+                content += constraint_split[0]
+                bin_vars += constraint_split[1].strip().split()
+            elif "Integer" in constraint:
+                constraint_split = constraint.split('Integer\n')
+                content += constraint_split[0]
+                in_vars += constraint_split[1].strip().split()
+            else: content += constraint + '\n'
+    # constrains for each operation 
+    for s in cipher.states: 
+        for r in range(1,cipher.nbr_rounds+1):
+            for l in range(cipher.states[s].nbr_layers+1):                        
+                for cons in cipher.states[s].constraints[r][l]: 
+                    model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
+                    cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
+                    for constraint in cons_gen:
+                        if "Binary" in constraint:
+                            constraint_split = constraint.split('Binary\n')
+                            content += constraint_split[0]
+                            bin_vars += constraint_split[1].strip().split()
+                        elif "Integer" in constraint:
+                            constraint_split = constraint.split('Integer\n')
+                            content += constraint_split[0]
+                            in_vars += constraint_split[1].strip().split()
+                        else: content += constraint + '\n'
+                    if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
+    for constraint in add_cons: # add addtional constrains
+        if "Binary" in constraint:
+                constraint_split = constraint.split('Binary\n')
+                content += constraint_split[0]
+                bin_vars += constraint_split[1].strip().split()
+        elif "Integer" in constraint:
+            constraint_split = constraint.split('Integer\n')
+            content += constraint_split[0]
+            in_vars += constraint_split[1].strip().split()
+        else: content += constraint + '\n'
+    content += obj + ' - obj = 0\n'
+    if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
+    if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+    with open(filename, "w") as myfile:
+        myfile.write(content)
+    obj = solve_milp(filename)
+    return obj
+
+
+# def relatedkey_differential_path_search_sat(primitive, num_rounds, model_type, obj=0): # TO DO
+
