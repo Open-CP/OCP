@@ -83,11 +83,19 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+            elif model_version == "truncated_diff": 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if model_version == "diff_0": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                return model_list
+            elif model_version == "truncated_diff": 
+                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                model_list = [f"{var_in[0]} - {var_out[0]} = 0"]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self._class_._name_), self.model_version, model_type)
@@ -643,7 +651,11 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         
-    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
+    def differential_branch_number(self):
+        # Return differential branch number of the Matrix. TO DO
+        return 5 # the branch number of matrix for aes is 5, to do for other ciphers
+    
+    def generate_model(self, model_type='python', model_version = "diff_0", unroll=False, branch_num=None):
         if model_type == 'python': 
             if self.model_version == 0:  
                 return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
@@ -653,9 +665,9 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp' or model_type == 'sat': 
-            model_list = []
-            bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
             if model_version == "diff_0" or model_version == "diff_1":
+                model_list = []
+                bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
                 for i in range(len(self.mat)):
                     for j in range(self.input_vars[0].bitsize):
                         var_in = []
@@ -674,6 +686,22 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(self.input_vars[0].bitsize*i+j))
                         cons = n_xor.generate_model(model_type, model_version, unroll)
                         model_list += cons
+                return model_list
+            elif model_type == 'milp' and model_version == "truncated_diff":
+                var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
+                var_d = [f"{self.ID}_d"] 
+                if branch_num == None: branch_num =self.differential_branch_number() 
+                model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
+                model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
+                model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
+                return model_list
+            elif model_type == 'milp' and model_version == "truncated_diff_1":
+                var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
+                var_d = [f"{self.ID}_d"] 
+                if branch_num == None: branch_num =self.differential_branch_number() 
+                model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
+                model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
+                model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
             else:  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -1045,12 +1073,18 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
                     model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
                 return model_list
-            elif model_version == "diff_3": 
+            elif model_version == "truncated_diff": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('out', 0, unroll)]
                 var_d = [self.ID + '_d']
                 i1, i2, o, d = var_in1[0], var_in2[0], var_out[0], var_d[0]
                 model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
+                return model_list
+            elif model_version == "truncated_diff_1": 
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('out', 0, unroll)]
+                i1, i2, o = var_in1[0], var_in2[0], var_out[0]
+                model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
