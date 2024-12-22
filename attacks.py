@@ -22,7 +22,6 @@ except ImportError:
 
 
 
-
 def solve_milp(filename):
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
@@ -264,3 +263,51 @@ def relatedkey_differential_path_search_milp(cipher, nbr_rounds, model_versions=
 
 # def relatedkey_differential_path_search_sat(primitive, num_rounds, model_type, obj=0): # TO DO
 
+
+
+"""
+The above MILP- and SAT-based attacks allow user to customize the process through the following parameters:
+(1) model_versions: A dictionary where the key represents the ID of an operation, and the value specifies the model_version, with model_version defaulting to "diff_0".
+    Default: model_versions = {}.
+(2) add_cons: A list to define additional constraints for MILP models.
+    Default: add_cons = [].
+(3) model_weights: A list to define the weight of operations.
+    Default: model_weights = []. 
+(4) init_obj_sat: The initial value of the objective function for SAT models.
+    Default: init_obj_sat = 0
+"""
+
+# Example: set model_version = "truncated_diff" for all operations of AES, to model truncated differential of AES. 
+def set_model_versions_truncated_diff(cipher):
+    model_versions = {}
+    print("*************constrains in input*************")
+    model_versions["Input_Cons"] = "truncated_diff"
+    for cons in cipher.inputs_constraints:
+        print(cons.ID, cons.__class__.__name__)
+        model_versions[f"{cons.ID}"] = "truncated_diff"
+    print("*************constrains in each round*************")
+    for i in range(1,cipher.nbr_rounds+1):
+        for s in cipher.states: # e.g., cipher.states = ["STATE", "KEY_STATE", "SUBKEYS"]
+            for l in range(cipher.states[s].nbr_layers+1):                 
+                for cons in cipher.states[s].constraints[i][l]: 
+                    print(cons.ID, cons.__class__.__name__)
+                    model_versions[f"{cons.ID}"] = "truncated_diff"
+    return model_versions
+
+
+# Example: set the variable "in0_0" to 0
+def set_add_cons(model_type): 
+    if model_type == "milp": add_cons = ["in0_0 = 0"]
+    elif model_type == "sat": add_cons = ["-in0_0"]
+    return add_cons
+
+
+def set_model_weight(): # TO DO
+    model_weight = []
+    return model_weight
+
+
+# Example: obj = 0
+def set_start_obj_sat(): 
+    obj = 0
+    return obj
