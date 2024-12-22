@@ -139,7 +139,9 @@ def TEST_Equal_MILP_SAT():
     python_code = equal.generate_model(model_type='python', unroll=True)
     print("Python code: \n", python_code)    
     test_operator_MILP(equal)
+    test_operator_MILP(equal, "truncated_diff")
     test_operator_SAT(equal)
+    test_operator_SAT(equal, "truncated_diff")
 
 
 
@@ -258,7 +260,10 @@ def TEST_bitwiseXOR_MILP_SAT():
     xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
     python_code = xor.generate_model(model_type='python', unroll=True)
     print("Python code: \n", python_code)     
-    for v in range(4): test_operator_MILP(xor, model_v = "diff_" + str(v))
+    for v in range(3): 
+        test_operator_MILP(xor, model_v = "diff_" + str(v))
+    test_operator_MILP(xor, model_v = "truncated_diff")
+    test_operator_MILP(xor, model_v = "truncated_diff_1")
     test_operator_SAT(xor)
       
    
@@ -362,7 +367,10 @@ def TEST_Matrix_MILP_SAT():
     matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix')
     test_operator_MILP(matrix)
     test_operator_MILP(matrix, model_v="diff_1")
+    test_operator_MILP(matrix, model_v="truncated_diff")
+    test_operator_MILP(matrix, model_v="truncated_diff_1")
     test_operator_SAT(matrix)
+    
     
     # test future's matrix
     my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
