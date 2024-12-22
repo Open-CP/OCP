@@ -34,7 +34,7 @@ def test_operator_MILP(operator, model_v="diff_0", mode=0):
         return ""
     if "Sbox" in str(type(operator).__name__): milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, mode= mode, unroll=True)
     else: milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, unroll=True)
-    print("MILP constraints: \n", milp_constraints)
+    print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
     content = "Minimize\n obj\nSubject To\n"
     if hasattr(operator, 'weight'): content += operator.weight + ' - obj = 0\n'
     bin_vars = []
@@ -59,12 +59,12 @@ def test_operator_MILP(operator, model_v="diff_0", mode=0):
     model.Params.PoolSearchMode = 2   # Search for all solutions
     model.Params.PoolSolutions = 1000000  # Assuming you want a large number of solutions
     model.optimize()
-    print("Number of total solutions using MILP: ", model.SolCount)
+    print("Number of solutions by solving the MILP model: ", model.SolCount)
     var_list = [v.VarName for v in model.getVars()]
     var_index_map = {v.VarName: idx for idx, v in enumerate(model.getVars())}
-    print("var_list: ", var_list)
     sol_list = []
-    print("Solutions:")
+    # print("Solutions:")
+    # print("var_list: ", var_list)
     for i in range(model.SolCount):
         model.Params.SolutionNumber = i  
         solution = [int(round(model.getVars()[var_index_map[var_name]].Xn)) for var_name in var_list]
@@ -99,10 +99,9 @@ def test_operator_SAT(operator, model_v="diff_0", mode=0):
         return ""
     if "Sbox" in str(type(operator).__name__): sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, mode= mode, unroll=True)    
     else: sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, unroll=True)        
-    print("SAT constraints: \n", sat_constraints)
+    print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
     num_clause = len(sat_constraints)
     num_var, variable_map, numerical_cnf = create_numerical_cnf(sat_constraints)
-    print("variable_map: ", variable_map)
     content = f"p cnf {num_var} {num_clause}\n"   
     for constraint in numerical_cnf:
         content += constraint + ' 0\n'
@@ -119,8 +118,9 @@ def test_operator_SAT(operator, model_v="diff_0", mode=0):
         block_clause = [-l for l in model]
         solver.add_clause(block_clause)
     solver.delete()
-    print("Number of total solutions using SAT: ", len(sol_list))
-    print("Solutions:")
+    print("Number of solutions by solving the SAT model: ", len(sol_list))
+    # print("Solutions:")
+    # print("variable_map: ", variable_map)
     # for solution in sol_list:
     #     print(solution)
     return variable_map, sol_list
@@ -137,7 +137,9 @@ def TEST_Equal_MILP_SAT():
     my_output[0].display()
     equal = op.Equal(my_input, my_output, ID='Equal')
     python_code = equal.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)    
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = equal.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(equal)
     test_operator_MILP(equal, "truncated_diff")
     test_operator_SAT(equal)
@@ -155,7 +157,9 @@ def TEST_Rot_MILP_SAT():
     # rot = op.Rot(my_input, my_output, direction= 'l', amount=2, ID='Rot')
     rot = op.Rot(my_input, my_output, direction= 'r', amount=2, ID='Rot')
     python_code = rot.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)     
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = rot.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))       
     test_operator_MILP(rot)
     test_operator_SAT(rot)
 
@@ -171,24 +175,11 @@ def TEST_Shift_MILP_SAT():
     shift = op.Shift(my_input, my_output, direction='l', amount=1, ID='Shift')
     # shift = op.Shift(my_input, my_output, direction='r', amount=1, ID='Shift')
     python_code = shift.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)  
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = shift.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(shift)
     test_operator_SAT(shift)
-
-
-
-def TEST_ConstantAdd_MILP_SAT(): 
-    print("\n********************* operation: ConstantAdd ********************* ")
-    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    cons_add = op.ConstantAdd(my_input, my_output, 2, "xor", ID = 'ConstantAddXor')
-    python_code = cons_add.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)  
-    test_operator_MILP(cons_add)
-    test_operator_SAT(cons_add)
     
     
 
@@ -202,7 +193,9 @@ def TEST_Modadd_MILP_SAT():
     my_output[0].display()
     mod_add = op.ModAdd(my_input, my_output, ID = 'ModAdd')
     python_code = mod_add.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)  
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = mod_add.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))   
     test_operator_MILP(mod_add)
     test_operator_SAT(mod_add)
     
@@ -218,7 +211,9 @@ def TEST_bitwiseAND_MILP_SAT():
     my_output[0].display()
     bit_and = op.bitwiseAND(my_input, my_output, ID = 'AND')
     python_code = bit_and.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)     
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = bit_and.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))       
     test_operator_MILP(bit_and)
     test_operator_SAT(bit_and)
     # regard bit-wise AND as an S-box and compute its ddt 
@@ -239,7 +234,9 @@ def TEST_bitwiseOR_MILP_SAT():
     my_output[0].display()
     bit_or = op.bitwiseOR(my_input, my_output, ID = 'OR')
     python_code = bit_or.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)     
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = bit_or.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(bit_or)
     test_operator_SAT(bit_or)
     or_sbox = op.Sbox([var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)], input_bitsize=2, output_bitsize=1, ID="or_sbox")
@@ -257,14 +254,16 @@ def TEST_bitwiseXOR_MILP_SAT():
     my_input[1].display()
     print("output:")
     my_output[0].display()
-    xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
-    python_code = xor.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)     
+    bit_xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
+    python_code = bit_xor.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = bit_xor.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))      
     for v in range(3): 
-        test_operator_MILP(xor, model_v = "diff_" + str(v))
-    test_operator_MILP(xor, model_v = "truncated_diff")
-    test_operator_MILP(xor, model_v = "truncated_diff_1")
-    test_operator_SAT(xor)
+        test_operator_MILP(bit_xor, model_v = "diff_" + str(v))
+    test_operator_MILP(bit_xor, model_v = "truncated_diff")
+    test_operator_MILP(bit_xor, model_v = "truncated_diff_1")
+    test_operator_SAT(bit_xor)
       
    
      
@@ -277,7 +276,9 @@ def TEST_bitwiseNOT_MILP_SAT():
     my_output[0].display()
     bit_not = op.bitwiseNOT(my_input, my_output, ID = 'NOT')
     python_code = bit_not.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)  
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = bit_not.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(bit_not)
     test_operator_SAT(bit_not)
     not_sbox = op.Sbox([var.Variable(1,ID="in"+str(i)) for i in range(1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)], input_bitsize=1, output_bitsize=1, ID="not_sbox")
@@ -291,6 +292,10 @@ def TEST_Sbox_MILP_SAT():
     print("\n********************* operation: Sbox ********************* ")
     ascon_sbox = op.ASCON_Sbox([var.Variable(5,ID="in"+str(i)) for i in range(1)], [var.Variable(5,ID="out"+str(i)) for i in range(1)], ID="sbox")
     print("differential branch number of ascon_sbox: ", ascon_sbox.differential_branch_number())
+    python_code = ascon_sbox.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = ascon_sbox.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code)) 
 
     skinny4_sbox = op.Skinny_4bit_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
     print("differential branch number of skinny4_sbox: ", skinny4_sbox.differential_branch_number())
@@ -365,6 +370,10 @@ def TEST_Matrix_MILP_SAT():
     my_output[0].display()
     mat_aes = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
     matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix')
+    python_code = matrix.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = matrix.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
     test_operator_MILP(matrix)
     test_operator_MILP(matrix, model_v="diff_1")
     test_operator_MILP(matrix, model_v="truncated_diff")
@@ -386,11 +395,26 @@ def TEST_Matrix_MILP_SAT():
     test_operator_SAT(matrix)
     
 
+def TEST_ConstantAdd_MILP_SAT(): 
+    print("\n********************* operation: ConstantAdd ********************* ")
+    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
+    print("input:")
+    my_input[0].display()
+    print("output:")
+    my_output[0].display()
+    cons_add = op.ConstantAdd(my_input, my_output, 2, "xor", ID = 'ConstantAddXor')
+    python_code = cons_add.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", python_code)  
+    c_code = cons_add.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
+    test_operator_MILP(cons_add)
+    test_operator_SAT(cons_add)
+
+
 def TEST_OPERATORS_MILP_SAT():  
     TEST_Equal_MILP_SAT()
     TEST_Rot_MILP_SAT()
     TEST_Shift_MILP_SAT()
-    TEST_ConstantAdd_MILP_SAT()
     TEST_Modadd_MILP_SAT()
     TEST_bitwiseAND_MILP_SAT()
     TEST_bitwiseOR_MILP_SAT()
@@ -399,6 +423,7 @@ def TEST_OPERATORS_MILP_SAT():
     TEST_Sbox_MILP_SAT()
     TEST_N_XOR_MILP_SAT()
     TEST_Matrix_MILP_SAT()
+    TEST_ConstantAdd_MILP_SAT()
     
 
 
@@ -442,6 +467,12 @@ def TEST_AES_PERMUTATION(r):
     return my_cipher
 
 
+def TEST_GIFT64_permutation(r):
+    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
+    my_cipher = prim.GIFT_permutation("GIFT64_PERM", 64, my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
 def TEST_SPECK32_BLOCKCIPHER(r):
     my_plaintext, my_key, my_ciphertext = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="k"+str(i)) for i in range(4)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
     my_cipher = prim.Speck_block_cipher("SPECK32", [32, 64], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
@@ -449,14 +480,15 @@ def TEST_SPECK32_BLOCKCIPHER(r):
 
 
 def TEST_SKINNY64_192_BLOCKCIPHER(r):
-    my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="in"+str(i)) for i in range(48)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
+    my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="k"+str(i)) for i in range(48)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.Skinny_block_cipher("SKINNY64_192", [64, 192], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_GIFT64_permutation(r):
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.GIFT_permutation("GIFT64_PERM", 64, my_input, my_output, nbr_rounds=r)
+def TEST_AES_BLOCKCIPHER(r): 
+    version = [128, 128] # block_size = version[0] = 128, key_size = version[1] = 128, 192, 256
+    my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1] / version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
+    my_cipher = prim.AES_block_cipher(f"AES_{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
@@ -465,11 +497,14 @@ if __name__ == '__main__':
     r = 2
     cipher = TEST_SPECK32_PERMUTATION(r)
     # cipher = TEST_SIMON32_PERMUTATION(r)
+    # cipher = TEST_AES_PERMUTATION(r)
     # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
     # cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    # cipher = TEST_AES_PERMUTATION(r) # TO DO
-    # cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
     # cipher = TEST_GIFT64_permutation(r) # TO DO
+
+    # cipher = TEST_SPECK32_BLOCKCIPHER(r)
+    # cipher = TEST_AES_BLOCKCIPHER(r)
+    # cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
     generate_codes(cipher)
 
 
