@@ -26,17 +26,17 @@ def TEST_AES_BLOCKCIPHER(r):
 def set_model_versions_truncated_diff(cipher):
     # Example 1: model truncated differential for AES, that is, model_version = "truncated_diff" for all operations of AES. 
     model_versions = {}
-    print("*************constrains in input*************")
+    # print("*************constrains in input*************")
     model_versions["Input_Cons"] = "truncated_diff"
     for cons in cipher.inputs_constraints:
-        print(cons.ID, cons.__class__.__name__)
+        # print(cons.ID, cons.__class__.__name__)
         model_versions[f"{cons.ID}"] = "truncated_diff"
-    print("*************constrains in each round*************")
+    # print("*************constrains in each round*************")
     for i in range(1,cipher.nbr_rounds+1):
         for s in cipher.states: # cipher.states = ["STATE", "KEY_STATE", "SUBKEYS"]
             for l in range(cipher.states[s].nbr_layers+1):                 
                 for cons in cipher.states[s].constraints[i][l]: 
-                    print(cons.ID, cons.__class__.__name__)
+                    # print(cons.ID, cons.__class__.__name__)
                     model_versions[f"{cons.ID}"] = "truncated_diff"
     return model_versions
 
