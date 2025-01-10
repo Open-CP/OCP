@@ -706,7 +706,7 @@ class AES_block_cipher(Block_cipher):
                 for i in range(1,nbr_rounds+1): 
                     self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [i for i in range(16)], self.states["KEY_STATE"].vars[i][0])
             elif k_bitsize==192: 
-                # key = [0x8e, 0x73, 0xb0, 0xf7, 0xda,0x0e, 0x64, 0x52, 0xc8, 0x10, 0xf3, 0x2b,0x80,0x90,0x79,0xe5, 0x62,0xf8,0xea,0xd2,0x52,0x2c,0x6b,0x7b] 
+                # test key = [0x8e, 0x73, 0xb0, 0xf7, 0xda,0x0e, 0x64, 0x52, 0xc8, 0x10, 0xf3, 0x2b,0x80,0x90,0x79,0xe5, 0x62,0xf8,0xea,0xd2,0x52,0x2c,0x6b,0x7b] 
                 for i in range(1, nbr_rounds+1):
                     if i%3 == 1: 
                         self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [i for i in range(16)], self.states["KEY_STATE"].vars[1+int(i/3)*2][0][0:16])
@@ -720,8 +720,7 @@ class AES_block_cipher(Block_cipher):
                 
             # key schedule
             if k_bitsize==128: 
-                print("k_nbr_rounds", k_nbr_rounds)
-                # test key: key = [0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c]
+                # test key = [0x2b, 0x7e, 0x15, 0x16, 0x28, 0xae, 0xd2, 0xa6, 0xab, 0xf7, 0x15, 0x88, 0x09, 0xcf, 0x4f, 0x3c]
                 for i in range(1,k_nbr_rounds+1): 
                     self.states["KEY_STATE"].PermutationLayer("K_P", i, 0, k_perm) # Permutation layer
                     self.states["KEY_STATE"].SboxLayer("K_SB", i, 1, op.AES_Sbox, mask=([0 for i in range(4*nk)] + [1, 1, 1, 1])) # Sbox layer   
@@ -731,8 +730,6 @@ class AES_block_cipher(Block_cipher):
                     self.states["KEY_STATE"].SingleOperatorLayer("K_XOR", i, 5, op.bitwiseXOR, [[j, j+4] for j in range(4,8)],  [j for j in range(8,12)]) # XOR layer 
                     self.states["KEY_STATE"].SingleOperatorLayer("K_XOR", i, 6, op.bitwiseXOR, [[j, j+4] for j in range(8,12)],  [j for j in range(12,16)]) # XOR layer 
             elif k_bitsize==192: 
-                # print(nbr_rounds, k_nbr_rounds)
-                # print(vbn)
                 for i in range(1,k_nbr_rounds+1): 
                     self.states["KEY_STATE"].PermutationLayer("K_P", i, 0, k_perm) # Permutation layer
                     self.states["KEY_STATE"].SboxLayer("K_SB", i, 1, op.AES_Sbox, mask=([0 for i in range(4*nk)] + [1, 1, 1, 1])) # Sbox layer   
