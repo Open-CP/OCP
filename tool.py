@@ -494,6 +494,12 @@ def TEST_AES_BLOCKCIPHER(r):
     return my_cipher
 
 
+def TEST_Rocca_AD(r):
+    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
+    my_cipher = prim.Rocca_AD(f"ROCCA_AD", my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
 if __name__ == '__main__':
     TEST_OPERATORS_MILP_SAT()
     r = 2
@@ -503,6 +509,7 @@ if __name__ == '__main__':
     # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
     # cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
     # cipher = TEST_GIFT64_permutation(r) # TO DO
+    # cipher = TEST_Rocca_AD(r)
 
     # cipher = TEST_SPECK32_BLOCKCIPHER(r)
     # cipher = TEST_AES_BLOCKCIPHER(r)
