@@ -32,6 +32,22 @@ def set_model_versions_truncated_diff(cipher):
 
 
 
+def addForgeryConstr(r):
+    """
+    constraits:
+    (1) input difference of the state is 0;
+    (2) difference of the first data block is not 0;
+    (3) output difference is not 0
+    """
+    add_cons = []
+    for i in range(128):
+        add_cons += [f"in{i} = 0"]
+    add_cons += [" + ".join([f"in{i}" for i in range(128, 128+32)]) + " >= 1"]
+    add_cons += [" + ".join([f"v_{r}_4_{i}" for i in range(128)]) + " >= 1"]
+    return add_cons
+
+
+
 def diff_Rocca_AD():
     data = {'Rounds': [], 'Result':[], 'Time(s)': []}
     for r in range(2, 20):
@@ -47,21 +63,6 @@ def diff_Rocca_AD():
         df = pd.DataFrame(data)
         latex_code = df.to_latex(index=False, header=True, caption=f'Experimental results for {cipher.name} by solving MILP models')
         print(latex_code)
-
-
-def addForgeryConstr(r):
-    """
-    constraits:
-    (1) input difference of the state is 0;
-    (2) difference of the first data block is not 0;
-    (3) output difference is not 0
-    """
-    add_cons = []
-    for i in range(128):
-        add_cons += [f"in{i} = 0"]
-    add_cons += [" + ".join([f"in{i}" for i in range(128, 128+32)]) + " >= 1"]
-    add_cons += [" + ".join([f"v_{r}_4_{i}" for i in range(128)]) + " >= 1"]
-    return add_cons
 
 
 if __name__ == '__main__':
