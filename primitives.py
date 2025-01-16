@@ -117,6 +117,10 @@ class State:
         m = len(mat)
         for i in mat: 
             if len(i)!=m: raise Exception("MatrixLayer: matrix shape is not square") 
+        flat_indexes = [x for sublist in indexes_list for x in sublist]
+        for j in range(self.nbr_words + self.nbr_temp_words):
+            if j not in flat_indexes: 
+                self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name,crt_round,crt_layer,j)))
         for j, indexes in enumerate(indexes_list): 
             if len(indexes)!=m: raise Exception("MatrixLayer: input vector does not match matrix size") 
             self.constraints[crt_round][crt_layer].append(op.Matrix(name, [self.vars[crt_round][crt_layer][x] for x in indexes], [self.vars[crt_round][crt_layer+1][x] for x in indexes], mat = mat, polynomial = polynomial, ID=generateID(name,crt_round,crt_layer,j)) )
