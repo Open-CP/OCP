@@ -612,7 +612,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
     def generate_header(self, model_type='python'):
         if model_type == 'python': 
             if self.model_version == 0: 
-                model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p): ", "\t pass # TODO\n"]
+                model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
                 model_list.append("#Matrix Macro ")
                 model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")      
                 for i, out_v in enumerate(self.output_vars):
@@ -626,9 +626,9 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                             else: model = model + " ^ " + "x" + str(j)
                         elif self.mat[i][j] != 0:
                             if first: 
-                                model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + ")" 
+                                model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
                                 first = False
-                            else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + ")" 
+                            else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
                     model_list.append(model)
                 model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
                 return model_list
