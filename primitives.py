@@ -134,9 +134,9 @@ class State:
     # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity  
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_state, mask = None):
         if sum(mask)!=sk_state.nbr_words: raise Exception("AddRoundKeyLayer: subkey size does not match the mask") 
-        if mask is None: mask = [1]*self.nbr_words 
+        if len(mask)<(self.nbr_words + self.nbr_temp_words): mask += [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
         cpt = 0
-        for j in range(self.nbr_words):
+        for j in range(self.nbr_words + self.nbr_temp_words):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
             if mask[j]==1: 
                 sk_var = sk_state.vars[crt_round][-1][cpt]                
@@ -844,25 +844,54 @@ class Speck_block_cipher(Block_cipher):
                 self.states["STATE"].SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[0,1]], [1]) # XOR layer
                 
 
-# The Simon block cipher - NOT READY        
+# The Simon block cipher 
 class Simon_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, model_type=0):
                 
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds==None: nbr_rounds=32 if (version[0],version[1])==(32,64) else 36 if (version[0],version[1])==(48,72) else 36 if (version[0],version[1])==(48,96)  else 42 if (version[0],version[1])==(64,96)  else 44 if (version[0],version[1])==(64,128)  else 52 if (version[0],version[1])==(96,96) else 54 if (version[0],version[1])==(96,144) else 68 if (version[0],version[1])==(128,128) else 69 if (version[0],version[1])==(128,192) else 72 if (version[0],version[1])==(128,256) else None
-        # if model_type==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (8, 2, 2, p_bitsize>>1),  (?, int(2*k_bitsize / p_bitsize), 0, p_bitsize>>1),  (1, 1, 0, p_bitsize>>1)
+        if model_type==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (8, 2, 2, p_bitsize>>1),  (7, int(2*k_bitsize/p_bitsize), 2, p_bitsize>>1),  (1, 1, 0, p_bitsize>>1)
+        if k_nbr_words == 4: k_nbr_layers += 1
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
+        
+        # Z Arrays (stored bit reversed for easier usage)
+        z0 = 0b01100111000011010100100010111110110011100001101010010001011111
+        z1 = 0b01011010000110010011111011100010101101000011001001111101110001
+        z2 = 0b11001101101001111110001000010100011001001011000000111011110101
+        z3 = 0b11110000101100111001010001001000000111101001100011010111011011
+        z4 = 0b11110111001001010011000011101000000100011011010110011110001011
+        round_constant = (2 ** (p_bitsize >> 1) - 1) ^ 3
+        z=z0 if (version[0],version[1])==(32,64) else z0 if (version[0],version[1])==(48,72) else z1 if (version[0],version[1])==(48,96)  else z2 if (version[0],version[1])==(64,96)  else z3 if (version[0],version[1])==(64,128)  else z2 if (version[0],version[1])==(96,96) else z3 if (version[0],version[1])==(96,144) else z2 if (version[0],version[1])==(128,128) else z3 if (version[0],version[1])==(128,192) else z4 if (version[0],version[1])==(128,256) else None
         
         # create constraints
         if model_type==0:
             
             for i in range(1,nbr_rounds+1):    
                 # subkeys extraction
-                self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [right_k_index], self.states["KEY_STATE"].vars[i][0])
+                if i <= k_nbr_words:
+                    self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [(k_nbr_words-i%k_nbr_words)%k_nbr_words], self.states["KEY_STATE"].vars[1][0])
+                else:
+                    self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [0], self.states["KEY_STATE"].vars[i-k_nbr_words+1][0])
                 
                 # key schedule
+                if (k_nbr_words == 2 or k_nbr_words == 3) and i > k_nbr_words:
+                    self.states["KEY_STATE"].RotationLayer("ROT1", i-k_nbr_words, 0, ['r', 3], 0, k_nbr_words) # Rotation layer
+                    self.states["KEY_STATE"].SingleOperatorLayer("XOR", i-k_nbr_words, 1, op.bitwiseXOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words-1]) # XOR layer 
+                    self.states["KEY_STATE"].RotationLayer("ROT2", i-k_nbr_words, 2, ['r', 1], k_nbr_words, k_nbr_words) # Rotation layer 
+                    self.states["KEY_STATE"].SingleOperatorLayer("XOR", i-k_nbr_words, 3, op.bitwiseXOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words]) # XOR layer 
+                    self.states["KEY_STATE"].AddConstantLayer("C", i-k_nbr_words, 4, "xor", [round_constant if e==k_nbr_words else None for e in range((self.states["KEY_STATE"].nbr_words+self.states["KEY_STATE"].nbr_temp_words))], code_if_unrolled=f"{round_constant}")  # Constant layer
+                    self.states["KEY_STATE"].AddConstantLayer("C", i-k_nbr_words, 5, "xor", [((z >> ((i-k_nbr_words-1) % 62)) & 1) if e==k_nbr_words else None for e in range((self.states["KEY_STATE"].nbr_words+self.states["KEY_STATE"].nbr_temp_words))], code_if_unrolled=f"{(z0 >> (i % 62)) & 1}")  # Constant layer
+                    self.states["KEY_STATE"].PermutationLayer("PERM", i-k_nbr_words, 6, [k_nbr_words]+[i for i in range(k_nbr_words)]) # Shiftrows layer
                 
-                # TODO
+                elif k_nbr_words == 4 and i > k_nbr_words:
+                    self.states["KEY_STATE"].RotationLayer("ROT1", i-4, 0, ['r', 3], 0, 4) # Rotation layer
+                    self.states["KEY_STATE"].SingleOperatorLayer("XOR", i-4, 1, op.bitwiseXOR, [[2, 4]], [4]) # XOR layer 
+                    self.states["KEY_STATE"].SingleOperatorLayer("XOR", i-4, 2, op.bitwiseXOR, [[3, 4]], [5]) # XOR layer 
+                    self.states["KEY_STATE"].RotationLayer("ROT2", i-4, 3, ['r', 1], 4, 4) # Rotation layer 
+                    self.states["KEY_STATE"].SingleOperatorLayer("XOR", i-4, 4, op.bitwiseXOR, [[4, 5]], [4]) # XOR layer 
+                    self.states["KEY_STATE"].AddConstantLayer("C", i-4, 5, "xor", [round_constant if e==4 else None for e in range((self.states["KEY_STATE"].nbr_words+self.states["KEY_STATE"].nbr_temp_words))], code_if_unrolled=f"{round_constant}")  # Constant layer
+                    self.states["KEY_STATE"].AddConstantLayer("C", i-4, 6, "xor", [((z >> ((i-5) % 62)) & 1) if e==4 else None for e in range((self.states["KEY_STATE"].nbr_words+self.states["KEY_STATE"].nbr_temp_words))], code_if_unrolled=f"{(z0 >> (i % 62)) & 1}")  # Constant layer
+                    self.states["KEY_STATE"].PermutationLayer("PERM", i-4, 7, [4,0,1,2]) # Shiftrows layer           
             
             # Internal permutation
             for i in range(1,nbr_rounds+1):
