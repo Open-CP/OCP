@@ -619,13 +619,12 @@ class ASCON_permutation(Permutation):
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
         cons = [0xf0 - r*0x10 + r*0x1 for r in range(12)]
-
         # create constraints
         if model_type==0: 
             for i in range(1,nbr_rounds+1):
-                self.states["STATE"].AddConstantLayer("C", i, 0, "xor", [None]*120+[int(bit) for bit in format(cons[12-nbr_rounds+i-1], '08b')]+[None]*832)  # Constant layer      
+                self.states["STATE"].AddConstantLayer("C", i, 0, "xor", [None]*184+[int(bit) for bit in format(cons[12-nbr_rounds+i-1], '08b')]+[None]*448)  # Constant layer      
                 self.states["STATE"].SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
-                self.states["STATE"].SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(60+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
+                self.states["STATE"].SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
                 self.states["STATE"].SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
                 
 
