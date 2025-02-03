@@ -1,5 +1,4 @@
 import os, os.path
-import tool
 import operators as op
 
 
@@ -22,36 +21,86 @@ except ImportError:
 
 
 
-def solve_milp(filename):
+def solve_milp(filename, solving_goal="optimaze"):
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
         return ""
     model = gp.read(filename)
-    model.optimize()
-    if model.status == gp.GRB.Status.OPTIMAL:
-        print("Optimal Objective Value:", model.ObjVal)
-        # for v in model.getVars(): 
-            # print(f"{v.VarName} = {v.Xn}")
-        return model.ObjVal
-    else:
-        print("No optimal solution found.")
+    # model.setParam('OutputFlag', 0)   # no output 
+    if solving_goal == "optimaze":
+        model.optimize()
+        if model.status == gp.GRB.Status.OPTIMAL:
+            print("Optimal Objective Value:", model.ObjVal)
+            # for v in model.getVars(): 
+                # print(f"{v.VarName} = {v.Xn}")
+            return model.ObjVal
+        else:
+            print("No optimal solution found.")
+    elif solving_goal == "all_solutions":
+        model.Params.PoolSearchMode = 2   # Search for all solutions
+        model.Params.PoolSolutions = 1000000  # Assuming you want a large number of solutions
+        model.optimize()
+        print("Number of solutions by solving the MILP model: ", model.SolCount)
+        var_list = [v.VarName for v in model.getVars()]
+        var_index_map = {v.VarName: idx for idx, v in enumerate(model.getVars())}
+        sol_list = []
+        # print("Solutions:")
+        # print("var_list: ", var_list)
+        for i in range(model.SolCount):
+            model.Params.SolutionNumber = i  
+            solution = [int(round(model.getVars()[var_index_map[var_name]].Xn)) for var_name in var_list]
+            # print(solution)
+            sol_list.append(solution)
+        return var_list, sol_list, model
 
 
-def solve_SAT(filename):
+def create_numerical_cnf(cnf):
+    # creating dictionary (variable -> string, numeric_id -> int)
+    family_of_variables = ' '.join(cnf).replace('-', '')
+    variables = sorted(set(family_of_variables.split()))
+    variable2number = {variable: i + 1 for (i, variable) in enumerate(variables)}
+    # creating numerical CNF
+    numerical_cnf = []
+    for clause in cnf:
+        literals = clause.split()
+        numerical_literals = []
+        lits_are_neg = (literal[0] == '-' for literal in literals)
+        numerical_literals.extend(tuple(f'{"-" * lit_is_neg}{variable2number[literal[lit_is_neg:]]}'
+                                  for lit_is_neg, literal in zip(lits_are_neg, literals)))
+        numerical_clause = ' '.join(numerical_literals)
+        numerical_cnf.append(numerical_clause)
+    return len(variables), variable2number, numerical_cnf
+
+
+def solve_SAT(filename, solving_goal="optimaze"):
     if pysat_import == False: 
         print("pysat module can't be loaded ... skipping test\n")
         return ""
     cnf = CNF(filename)
     solver = CryptoMinisat()
     solver.append_formula(cnf.clauses)
-    if solver.solve():
-        print("A solution exists.")
-        # solution = solver.get_model()
-        # print("solution: \n", solution)
-        return True
-    else:
-        print("No solution exists.")
-        return False
+    if solving_goal == "optimaze":
+        if solver.solve():
+            print("A solution exists.")
+            # solution = solver.get_model()
+            # print("solution: \n", solution)
+            return True
+        else:
+            print("No solution exists.")
+            return False
+    elif solving_goal == "all_solutions":
+        sol_list = []
+        while solver.solve():
+            model = solver.get_model()
+            sol_list.append(model)
+            block_clause = [-l for l in model]
+            solver.add_clause(block_clause)
+        solver.delete()
+        print("Number of solutions by solving the SAT model: ", len(sol_list))
+        # print("Solutions:")
+        # for solution in sol_list:
+        #     print(solution)
+        return sol_list
     
 
 def singlekey_differential_path_search_milp(cipher, nbr_rounds, model_versions={}, add_cons=[]):
@@ -176,7 +225,7 @@ def singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_version
         obj_cons += [f'-{obj_var[n - 1]} -{dummy_var[n - 2][obj - 1]}']
     model_cons += obj_cons
     # creating numerical CNF
-    num_var, variable_map, numerical_cnf = tool.create_numerical_cnf(model_cons)
+    num_var, variable_map, numerical_cnf = create_numerical_cnf(model_cons)
     num_clause = len(model_cons)
     content = f"p cnf {num_var} {num_clause}\n"  
     for constraint in numerical_cnf:
