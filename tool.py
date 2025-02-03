@@ -4,41 +4,27 @@
 import operators as op
 import primitives as prim
 import variables as var
-import matplotlib.pyplot as plt
-
-
-
-try:
-    import gurobipy as gp
-    gurobipy_import = True
-except ImportError:
-    print("gurobipy module can't be loaded \n")
-    gurobipy_import = False
-    pass
-
-try:
-    from pysat.solvers import CryptoMinisat
-    from pysat.formula import CNF
-    pysat_import = True
-except ImportError:
-    print("pysat module can't be loaded \n")
-    pysat_import = False
-    pass
-
+import attacks 
 
 
     
 def test_operator_MILP(operator, model_v="diff_0", mode=0):
-    if gurobipy_import == False: 
-        print("gurobipy module can't be loaded ... skipping test\n")
-        return ""
+    """
+    This function generates MILP constraints for the given operator and writes them to a .lp file.
+    Args:
+    operator (object): The operator object for which the MILP model will be generated.
+    model_v (str): Version of the model to be used (default is 'diff_0').
+    mode (int): Mode for the operator S-box (default is 0).
+    """
     if "Sbox" in str(type(operator).__name__): milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, mode= mode, unroll=True)
     else: milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, unroll=True)
     print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
+    # Initialize the content for the MILP model, and lists for binary and integer variables
     content = "Minimize\n obj\nSubject To\n"
     if hasattr(operator, 'weight'): content += operator.weight + ' - obj = 0\n'
     bin_vars = []
     in_vars = []
+    # Process each MILP constraint
     for constraint in milp_constraints:
         if "Binary" in constraint:
             constraint_split = constraint.split('Binary\n')
@@ -49,81 +35,36 @@ def test_operator_MILP(operator, model_v="diff_0", mode=0):
             content += constraint_split[0]
             in_vars += constraint_split[1].strip().split()
         else: content += constraint + '\n'
-    if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
-    if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+    # Add binary and integer variables to the MILP content if any exist
+    if bin_vars: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
+    if in_vars: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
     filename = f'files/milp_{type(operator).__name__}_{model_v}.lp'
-    with open(filename, "w") as file:
-        file.write(content)
-    model = gp.read(filename)
-    model.setParam('OutputFlag', 0)   # no output 
-    model.Params.PoolSearchMode = 2   # Search for all solutions
-    model.Params.PoolSolutions = 1000000  # Assuming you want a large number of solutions
-    model.optimize()
-    print("Number of solutions by solving the MILP model: ", model.SolCount)
-    var_list = [v.VarName for v in model.getVars()]
-    var_index_map = {v.VarName: idx for idx, v in enumerate(model.getVars())}
-    sol_list = []
-    # print("Solutions:")
-    # print("var_list: ", var_list)
-    for i in range(model.SolCount):
-        model.Params.SolutionNumber = i  
-        solution = [int(round(model.getVars()[var_index_map[var_name]].Xn)) for var_name in var_list]
-        # print(solution)
-        sol_list.append(solution)
-    return var_list, sol_list, model
-
-    
-
-def create_numerical_cnf(cnf):
-    # creating dictionary (variable -> string, numeric_id -> int)
-    family_of_variables = ' '.join(cnf).replace('-', '')
-    variables = sorted(set(family_of_variables.split()))
-    variable2number = {variable: i + 1 for (i, variable) in enumerate(variables)}
-    # creating numerical CNF
-    numerical_cnf = []
-    for clause in cnf:
-        literals = clause.split()
-        numerical_literals = []
-        lits_are_neg = (literal[0] == '-' for literal in literals)
-        numerical_literals.extend(tuple(f'{"-" * lit_is_neg}{variable2number[literal[lit_is_neg:]]}'
-                                  for lit_is_neg, literal in zip(lits_are_neg, literals)))
-        numerical_clause = ' '.join(numerical_literals)
-        numerical_cnf.append(numerical_clause)
-    return len(variables), variable2number, numerical_cnf
+    with open(filename, "w") as file: file.write(content) # Write the MILP model content to a .lp file
+    attacks.solve_milp(filename, solving_goal="all_solutions") # Solve the MILP model for searching for all solutions
 
 
 
 def test_operator_SAT(operator, model_v="diff_0", mode=0):
-    if pysat_import == False: 
-        print("pysat module can't be loaded ... skipping test\n")
-        return ""
+    """
+    This function generates SAT constraints for the given operator and writes them to a .cnf file.
+    Args:
+    operator (object): The operator object for which the SAT model will be generated.
+    model_v (str): Version of the model to be used (default is 'diff_0').
+    mode (int): Mode for the operator S-box (default is 0).
+    """
     if "Sbox" in str(type(operator).__name__): sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, mode= mode, unroll=True)    
     else: sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, unroll=True)        
     print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
+    # Get the number of clauses, variables, and the numerical CNF representation
     num_clause = len(sat_constraints)
-    num_var, variable_map, numerical_cnf = create_numerical_cnf(sat_constraints)
+    num_var, variable_map, numerical_cnf = attacks.create_numerical_cnf(sat_constraints)
+    # Construct the content of the CNF file
     content = f"p cnf {num_var} {num_clause}\n"   
     for constraint in numerical_cnf:
         content += constraint + ' 0\n'
     filename = f'files/sat_{type(operator).__name__}_{model_v}.cnf'
-    with open(filename, "w") as file:
-        file.write(content)
-    cnf = CNF(filename)
-    solver = CryptoMinisat()
-    solver.append_formula(cnf.clauses)
-    sol_list = []
-    while solver.solve():
-        model = solver.get_model()
-        sol_list.append(model)
-        block_clause = [-l for l in model]
-        solver.add_clause(block_clause)
-    solver.delete()
-    print("Number of solutions by solving the SAT model: ", len(sol_list))
-    # print("Solutions:")
-    # print("variable_map: ", variable_map)
-    # for solution in sol_list:
-    #     print(solution)
-    return variable_map, sol_list
+    with open(filename, "w") as file: file.write(content) # Write the SAT model content to a .cnf file
+    attacks.solve_SAT(filename, solving_goal="all_solutions") # Solve the SAT model for searching for all solutions
 
 
 
@@ -364,12 +305,11 @@ def TEST_Matrix_MILP_SAT():
     # test aes's matrix
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(4)], [var.Variable(8,ID="out"+str(i)) for i in range(4)]
     print("input:")
-    for i in range(len(my_input)):
-        my_input[i].display()
+    for i in range(len(my_input)): my_input[i].display()
     print("output:")
-    my_output[0].display()
+    for i in range(len(my_output)): my_output[i].display()
     mat_aes = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
-    matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix')
+    matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix_AES')
     python_code = matrix.generate_model(model_type='python', unroll=True)
     print("Python code: \n", "\n".join(python_code))    
     c_code = matrix.generate_model(model_type='c', unroll=True)
@@ -379,6 +319,22 @@ def TEST_Matrix_MILP_SAT():
     test_operator_MILP(matrix, model_v="truncated_diff")
     test_operator_MILP(matrix, model_v="truncated_diff_1")
     test_operator_SAT(matrix)
+
+    # test skinny64's matrix
+    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
+    print("input:")
+    for i in range(len(my_input)): my_input[i].display()
+    print("output:")
+    for i in range(len(my_output)): my_output[i].display()
+    mat_skinny64 = [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]]
+    matrix_skinny64 = op.Matrix("mat_skinny", my_input, my_output, mat = mat_skinny64, ID = 'Matrix_SKINNY64')
+    python_code = matrix_skinny64.generate_model(model_type='python', unroll=True)
+    print("Python code: \n", "\n".join(python_code))    
+    c_code = matrix_skinny64.generate_model(model_type='c', unroll=True)
+    print("C code: \n", "\n".join(c_code))    
+    test_operator_MILP(matrix_skinny64)
+    test_operator_MILP(matrix_skinny64, model_v="diff_1")
+    test_operator_SAT(matrix_skinny64)
     
     
     # test future's matrix
@@ -439,81 +395,100 @@ def generate_codes(cipher):
     
 
 # ********************* TEST OF CIPHERS MODELING IN MILP and SAT********************* #   
-def TEST_SPECK32_PERMUTATION(r):
-    my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Speck_permutation("SPECK32_PERM", 32, my_input, my_output, nbr_rounds=r)
+def TEST_SPECK_PERMUTATION(r=None, version=32):
+    p_bitsize, word_size = version, int(version/2)
+    my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = prim.Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
    
 
-def TEST_SIMON32_PERMUTATION(r):
-    my_input, my_output = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Simon_permutation("SIMON32_PERM", 32, my_input, my_output, nbr_rounds=r)
+def TEST_SIMON_PERMUTATION(r=None, version=32):
+    p_bitsize, word_size = version, int(version/2)
+    my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = prim.Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_ASCON_PERMUTATION(r):
-    my_input, my_output = [var.Variable(5,ID="in"+str(i)) for i in range(64)], [var.Variable(5,ID="out"+str(i)) for i in range(64)]
+def TEST_ASCON_PERMUTATION(r=None):
+    my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
     my_cipher = prim.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SKINNY_PERMUTATION(r):
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.Skinny_permutation("SKINNY_PERM", 64, my_input, my_output, nbr_rounds=r)
+def TEST_SKINNY_PERMUTATION(r=None, version=64):
+    my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
+    my_cipher = prim.Skinny_permutation("SKINNY_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_AES_PERMUTATION(r):
+def TEST_AES_PERMUTATION(r=None):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_GIFT64_permutation(r):
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.GIFT_permutation("GIFT64_PERM", 64, my_input, my_output, nbr_rounds=r)
+def TEST_GIFT_PERMUTATION(r=None, version=64): 
+    my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
+    my_cipher = prim.GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SPECK32_BLOCKCIPHER(r):
-    my_plaintext, my_key, my_ciphertext = [var.Variable(16,ID="in"+str(i)) for i in range(2)], [var.Variable(16,ID="k"+str(i)) for i in range(4)], [var.Variable(16,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Speck_block_cipher("SPECK32", [32, 64], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+def TEST_ROCCA_AD(r=None):
+    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
+    my_cipher = prim.Rocca_AD_permutation(f"ROCCA_AD", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SKINNY64_192_BLOCKCIPHER(r):
-    my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="k"+str(i)) for i in range(48)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.Skinny_block_cipher("SKINNY64_192", [64, 192], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+def TEST_SPECK_BLOCKCIPHER(r=None, version = [32, 64]):
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
+    my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = prim.Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_AES_BLOCKCIPHER(r): 
-    version = [128, 128] # block_size = version[0] = 128, key_size = version[1] = 128, 192, 256
-    my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1] / version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
+def TEST_SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
+    my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
+    my_cipher = prim.Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher
+
+
+def TEST_AES_BLOCKCIPHER(r=None, version = [128, 128]): 
+    my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.AES_block_cipher(f"AES_{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_Rocca_AD(r):
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = prim.Rocca_AD(f"ROCCA_AD", my_input, my_output, nbr_rounds=r)
+def TEST_SIMON_BLOCKCIPHER(r=None, version=[32,64]):
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
+    my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = prim.Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher
+
+
+def TEST_GIFT_BLOCKCIPHER(r=None, version = [64, 128]): 
+    p_bitsize, k_bitsize = version[0], version[1]
+    my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
+    my_cipher = prim.GIFT_block_cipher(f"gift_{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
 if __name__ == '__main__':
     TEST_OPERATORS_MILP_SAT()
     r = 2
-    cipher = TEST_SPECK32_PERMUTATION(r)
-    # cipher = TEST_SIMON32_PERMUTATION(r)
-    # cipher = TEST_AES_PERMUTATION(r)
-    # cipher = TEST_ASCON_PERMUTATION(r) # TO DO
-    # cipher = TEST_SKINNY_PERMUTATION(r) # TO DO
-    # cipher = TEST_GIFT64_permutation(r) # TO DO
-    # cipher = TEST_Rocca_AD(r)
+    cipher = TEST_SPECK_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
+    cipher = TEST_SIMON_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
+    cipher = TEST_AES_PERMUTATION(r)
+    cipher = TEST_ASCON_PERMUTATION(r) 
+    cipher = TEST_SKINNY_PERMUTATION(r, version = 64) # version = 64, 128
+    cipher = TEST_GIFT_PERMUTATION(r, version = 64) # version = 64, 128
+    cipher = TEST_ROCCA_AD(r)
 
-    # cipher = TEST_SPECK32_BLOCKCIPHER(r)
-    # cipher = TEST_AES_BLOCKCIPHER(r)
-    # cipher = TEST_SKINNY64_192_BLOCKCIPHER(r) # TO DO
+    cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    cipher = TEST_SIMON_BLOCKCIPHER(r, version = [32, 64]) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    cipher = TEST_AES_BLOCKCIPHER(r, version = [128, 128]) # version = [128, 128], [128, 192], [128, 256] 
+    cipher = TEST_SKINNY_BLOCKCIPHER(r,  version = [64, 64]) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 192], [128, 384]  
+    cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128]) # version = [64, 128],  [128, 128]
     generate_codes(cipher)
 
 
