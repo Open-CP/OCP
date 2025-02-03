@@ -1,3 +1,5 @@
+import numpy as np
+
 def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
     for candidate in range(2, 1 << degree):  
         num_elements = (1 << degree) - 1 
@@ -21,7 +23,7 @@ def gf2_multiply(a, b, mod_poly, degree): #  Multiply two elements in GF(2^m) un
         if a & (1 << degree):  # If `a` exceeds m bits, reduce modulo `mod_poly`.
             a ^= mod_poly
         b >>= 1
-    return result
+    return result & ((1 << degree) - 1)
 
 
 def generate_gf2_elements_and_exponents(pri, mod_poly, degree): # Generate all elements of GF(2^m) and map them to their corresponding exponents (α^k).
@@ -101,7 +103,22 @@ def generate_pmr_for_mds(mds, mod_poly, degree): # Generate the Primitive Matrix
                 end_index = start_index + degree
                 pmr_new[base_index][start_index:end_index] = pmr[i][j][row_offset]
     return pmr_new
-    
+
+
+def generate_bin_matrix(mat, bitsize):
+    bin_matrix = []
+    for i in range(len(mat)):
+        row = []
+        for j in range(len(mat[i])):
+            if mat[i][j] == 1: 
+                row.append(np.eye(bitsize, dtype=int))
+            elif mat[i][j] == 0: 
+                row.append(np.zeros((bitsize, bitsize), dtype=int))
+        bin_matrix.append(row)
+    bin_matrix = np.block(bin_matrix)
+    for row in bin_matrix:
+        print(row)
+
 
 if __name__ == '__main__':
     # Example for GF(2^4)
@@ -138,4 +155,15 @@ if __name__ == '__main__':
     print("mds:\n", mds_aes)
     prm = generate_pmr_for_mds(mds_aes, mod_poly_8, degree_8)
     print("\nPrimitive Matrix Representation:\n", prm)
+
+
+    # Example for skinny matrix
+    mat_skinny = [
+    [1, 0, 1, 1],
+    [1, 0, 0, 0],
+    [0, 1, 1, 0],
+    [1, 0, 1, 0]
+    ]
+    expanded_list = generate_bin_matrix(mat_skinny, 4)
+    print(expanded_list)
 
