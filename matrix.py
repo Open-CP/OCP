@@ -116,8 +116,9 @@ def generate_bin_matrix(mat, bitsize):
                 row.append(np.zeros((bitsize, bitsize), dtype=int))
         bin_matrix.append(row)
     bin_matrix = np.block(bin_matrix)
-    for row in bin_matrix:
-        print(row)
+    # for row in bin_matrix:
+    #     print(row)
+    return bin_matrix
 
 
 if __name__ == '__main__':
