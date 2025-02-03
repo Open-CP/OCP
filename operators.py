@@ -31,12 +31,28 @@ class Operator(ABC):
         
     def display(self): return self.__class__.__name__    
         
-    def get_var_ID(self, in_out, index, unroll=False):    # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
-        if in_out == 'out': return self.output_vars[index].ID if unroll else self.output_vars[index].remove_round_from_ID()
-        if in_out == 'in': return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
-    
+    def get_var_ID(self, in_out, index, unroll=False, index2=None):    # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
+        if in_out == 'out': 
+            if index2 is not None: return self.output_vars[index][index2].ID if unroll else self.output_vars[index][index2].remove_round_from_ID()
+            else: return self.output_vars[index].ID if unroll else self.output_vars[index].remove_round_from_ID()
+        if in_out == 'in':
+            if index2 is not None: return self.input_vars[index][index2].ID if unroll else self.input_vars[index][index2].remove_round_from_ID()
+            else: return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
+            
     def generate_header(self, model_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
+    
+    def get_vars(self, in_out, index=0, unroll=False):
+        if not isinstance(self.input_vars[index], list):
+            if in_out == 'in':
+                return [self.get_var_ID('in', index, unroll) + '_' + str(i) for i in range(self.input_vars[index].bitsize)]
+            elif in_out == 'out':
+                return [self.get_var_ID('out', index, unroll) + '_' + str(i) for i in range(self.output_vars[index].bitsize)]
+        elif isinstance(self.input_vars[index], list):
+            if in_out == 'in':
+                return [self.get_var_ID('in', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.input_vars[index])) for j in range(self.input_vars[index][i].bitsize)]
+            elif in_out == 'out':
+                return [self.get_var_ID('out', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.output_vars[index])) for j in range(self.output_vars[index][i].bitsize)]
     
     @abstractmethod
     def generate_model(self, model_type='python'):  # generic method (abstract) that generates the code for the modeling of that operator
@@ -286,71 +302,105 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     if w < ret: ret = w
         return ret
     
+    def is_bijective(self):
+        # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
+        return len(set(self.table)) == len(self.table) and all(i in self.table for i in range(len(self.table)))
 
-    def generate_model(self, model_type='python', model_version="diff_0", mode = 0, unroll=False):
+    def generate_model(self, model_type='python', model_version="diff_0", mode = 0, unroll=False, weight=True):
         if model_type == 'python': 
-            if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
+            if self.model_version == 0: 
+                if not isinstance(self.input_vars[0], list):
+                    return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
+                elif isinstance(self.input_vars[0], list):
+                    x_bits = len(self.input_vars[0])
+                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))
+                    model_list = [x_expr]
+                    model_list.append(f'y = {self.__class__.__name__}[x]')
+                    y_vars = ', '.join(f'{self.get_var_ID("out", 0, unroll=unroll, index2=i)}' for i in range(x_bits))
+                    y_bits = ', '.join(f'(y >> {x_bits - 1 - i}) & 1' for i in range(x_bits))
+                    model_list.append(f'{y_vars} = {y_bits}')
+                    return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': 
-            if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
+            if self.model_version == 0:
+                if not isinstance(self.input_vars[0], list):
+                    return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
+                elif isinstance(self.input_vars[0], list):
+                    x_bits = len(self.input_vars[0])
+                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("out", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))
+                    model_list = [x_expr]
+                    model_list.append(f'y = {str(self.__class__.__name__)}[x]')
+                    y_vars = ', '.join(f'{self.get_var_ID("out", 0, unroll=unroll, index2=i)}' for i in range(x_bits))
+                    y_bits = ', '.join(f'(y >> {i}) & 1' for i in range(x_bits))
+                    model_list.append(f'{y_vars} = {y_bits}')
+                    return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
             filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
             if model_version == "diff_0":
-                # modeling all possible (input difference, output difference) to calculate the minimum number of differentially active s-boxes
+                # modeling all possible (input difference, output difference)
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_At = [self.ID + '_At']    
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
+                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
                     model_list += [temp]
-                model_list += [f"-{var} {var_At[0]}" for var in var_in]
-                model_list += [" ".join(var_in) + ' -' + var_At[0]]
-                self.weight = var_At         
+                if weight:
+                    var_At = [self.ID + '_At']    
+                    model_list += [f"-{var} {var_At[0]}" for var in var_in]
+                    model_list += [" ".join(var_in) + ' -' + var_At[0]]
+                    self.weight = var_At         
                 return model_list
             elif model_version == "diff_1":
                 # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 var_p = []
                 for i in range(sbox_weight.count('+') + 1): var_p.append(f"{self.ID}_p{i}")
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
+                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
                     for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
                     model_list += [temp]
                 self.weight = var_p                
                 return model_list
-            elif model_version == "truncated_diff":
+            elif model_version == "truncated_diff" and (not isinstance(self.input_vars[0], list)):
                 # word-wise difference propagations, the input difference equals the ouput difference
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 model_list = [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
-                self.weight = var_in           
+                if weight: self.weight = var_in               
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if model_version == "diff_0":
-                # modeling all possible (input difference, output difference) to calculate the minimum number of differentially active s-boxes
+                # modeling all possible (input difference, output difference)
                 filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
                 sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, model_version, mode)
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_At = [self.ID + '_At']    
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
+                vars = var_in + var_out
                 model_list = []
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(self.input_bitsize): 
+                        temp = temp.replace(f"a{i}", var_in[i])
+                    for i in range(self.output_bitsize): 
+                        temp = temp.replace(f"b{i}", var_out[i])
                     model_list += [temp]
-                model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
-                model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_At))
-                self.weight = var_At[0]
+                if weight:
+                    var_At = [self.ID + '_At']    
+                    model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
+                    model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
+                    vars += var_At
+                    self.weight = var_At[0]
+                model_list.append('Binary\n' +  ' '.join(v for v in vars))
                 return model_list
             elif model_version == "diff_1":
-                # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                # modeling all possible (input difference, output difference, probablity)
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 var_p = []    
                 filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{model_version}.txt'
@@ -360,7 +410,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     sbox_weight = sbox_weight.replace(f"p{i}", f"{self.ID}_p{i}")
                 for ineq in sbox_inequalities:
                     temp = ineq
-                    for i in range(self.input_vars[0].bitsize): temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
+                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
                     for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
                     model_list += [temp]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_p))
@@ -368,7 +419,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 return model_list
             elif model_version == "diff_p":
                 # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 var_p = []    
                 ddt = self.computeDDT()
@@ -380,8 +431,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, f"diff_p{diff_spectrum[w]}", mode)
                     for ineq in sbox_inequalities:
                         temp = ineq
-                        for i in range(self.input_vars[0].bitsize):
-                            temp = temp.replace(f"a{i}", var_in[i]).replace(f"b{i}", var_out[i])
+                        for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
+                        for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
                         temp_0, temp_1 = temp.split(">=")[0], int(temp.split(" >= ")[1])
                         temp = temp_0 + f"- 10000 {var_p[w]} >= {temp_1-10000}"
                         model_list += [temp]
@@ -389,25 +440,33 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 model_list += [' + '.join(var_p) + ' = 1\n']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_p))
                 return model_list
-            elif model_version == "truncated_diff":
+            elif model_version == "truncated_diff" and (not isinstance(self.input_vars[0], list)):
                 # word-wise difference propagations, the input difference equals the ouput difference
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                self.weight = var_in[0]              
+                if weight: self.weight = var_in[0]              
                 return model_list
             elif model_version == "truncated_diff_1":
                 # modeling the differential branch number of sbox to calculate the minimum number of differentially active s-boxes
                 branch_num = self.differential_branch_number()
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_At = [self.ID + '_At'] 
-                var_d = [self.ID + '_d'] 
-                model_list = [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
-                model_list += [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d[0] + ' >= 0']
-                model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
-                model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_At + var_d))
-                self.weight = var_At[0]       
+                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
+                vars = var_in + var_out
+                if branch_num >= 3: # modeling the differential branch number of sbox 
+                    var_d = [self.ID + '_d'] 
+                    model_list = [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
+                    model_list += [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d[0] + ' >= 0']
+                    vars += var_d
+                if self.is_bijective(): # For bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
+                    model_list += [" {len(var_in)} + ".join(var_out) +  " - ".join(var_in) + ' >= 0']
+                    model_list += [" {len(var_out)} + ".join(var_in) +  " - ".join(var_out) + ' >= 0']                    
+                if weight:
+                    var_At = [self.ID + '_At'] 
+                    model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
+                    model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
+                    self.weight = var_At[0]  
+                    vars += var_At
+                model_list.append('Binary\n' +  ' '.join(v for v in vars))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -420,8 +479,16 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': 
             if self.model_version == 0: 
-                if self.input_bitsize <= 8: return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-                else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+                if self.input_bitsize <= 8: 
+                    if isinstance(self.input_vars[0], str):
+                        return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+                    elif isinstance(self.input_vars[0], list):
+                        return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
+                else: 
+                    if isinstance(self.input_vars[0], str):
+                        return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+                    elif isinstance(self.input_vars[0], list):
+                        return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: return None
 
