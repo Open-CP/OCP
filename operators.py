@@ -646,8 +646,9 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 var_d = [[f"{self.ID}_d_{i}_{j}" for i in range(int((len(self.input_vars)+1)/2))] for j in range(self.input_vars[0].bitsize)] 
                 model_list = []
                 for i in range(self.input_vars[0].bitsize):
-                    s = " + ".join(v for v in (var_in[i])) + f" + {var_out[i]} - {2*len(var_d[i])} {var_d[i][0]} + "
-                    s += " + ".join(f"{2 * (len(var_d[i]) - j)} {var_d[i][j]}" for j in range(1, len(var_d[i]))) + " = 0"
+                    s = " + ".join(var_in[i]) + f" + {var_out[i]} - {2 * len(var_d[i])} {var_d[i][0]}"
+                    s += " - " + " - ".join(f"{2 * (len(var_d[i]) - j)} {var_d[i][j]}" for j in range(1, len(var_d[i]))) if len(var_d[i]) > 1 else ""
+                    s += " = 0"
                     model_list += [s]
                 model_list.append('Binary\n' + ' '.join(sum(var_in, []) + sum(var_d, []) + var_out))
                 return model_list
@@ -740,7 +741,11 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         elif model_type == 'milp' or model_type == 'sat': 
             if model_version == "diff_0" or model_version == "diff_1":
                 model_list = []
-                bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
+                if self.polynomial: bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
+                elif self.input_vars[0].bitsize * len(self.input_vars) > len(self.mat):
+                    bin_matrix = matrix.generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
+                elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):
+                    bin_matrix = self.mat
                 for i in range(len(self.mat)):
                     for j in range(self.input_vars[0].bitsize):
                         var_in = []
