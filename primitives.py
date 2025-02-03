@@ -61,14 +61,28 @@ class State:
         print("Constraints: [" + str([ len(self.constraints[i]) for i in range(len(self.constraints))])  + "]")
         
     # apply a layer "name" of an Sbox, at the round "crt_round", at the layer "crt_layer", with the Sbox operator "sbox_operator". Only the positions where mask=1 will have the Sbox applied, the rest being just identity  
-    def SboxLayer(self, name, crt_round, crt_layer, sbox_operator, mask = None):
-        if mask is None: mask = [1]*self.nbr_words 
-        if len(mask)<(self.nbr_words + self.nbr_temp_words): mask = mask + [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
-        for j in range(self.nbr_words + self.nbr_temp_words):
-            in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-            if mask[j]==1: self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
-            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
-        
+    def SboxLayer(self, name, crt_round, crt_layer, sbox_operator, mask = None, index=None):
+        if index is not None:
+            bitsize = len(index[0])
+            n_words = int((self.nbr_words+self.nbr_temp_words)/bitsize)
+            if mask is None: mask = [1]*int(self.nbr_words/bitsize) 
+            if len(mask)<n_words: mask = mask + [0]*(n_words - len(mask))
+            for j in range(n_words):
+                if mask[j]==1: 
+                    in_var, out_var = [self.vars[crt_round][crt_layer][i] for i in index[j]], [self.vars[crt_round][crt_layer+1][i] for i in index[j]]
+                    self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+                else: 
+                    for i in range(bitsize):
+                        in_var, out_var = self.vars[crt_round][crt_layer][j*bitsize+i], self.vars[crt_round][crt_layer+1][j*bitsize+i]
+                        self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+        else:
+            if mask is None: mask = [1]*self.nbr_words 
+            if len(mask)<(self.nbr_words + self.nbr_temp_words): mask = mask + [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
+            for j in range(self.nbr_words + self.nbr_temp_words):
+                in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
+                if mask[j]==1: self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+                else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+       
     # apply a layer "name" of a Permutation, at the round "crt_round", at the layer "crt_layer", with the permutation "permutation". 
     def PermutationLayer(self, name, crt_round, crt_layer, permutation):
         if len(permutation)<(self.nbr_words + self.nbr_temp_words): permutation = permutation + [i for i in range(len(permutation), self.nbr_words + self.nbr_temp_words)] 
@@ -457,11 +471,21 @@ class Primitive(ABC):
                            in_x_coord, in_y_coord = list(linspace(x_coord,x_coord+op_length,len(my_inputs)+2)[1:-1]), -y_coord+elements_height/2
                            out_x_coord, out_y_coord = list(linspace(x_coord,x_coord+op_length,len(my_outputs)+2)[1:-1]), -y_coord-elements_height/2
                            for j in range(len(my_inputs)):
-                               (var_x_coord, var_y_coord) = vars_coord[my_inputs[j].ID]
-                               ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                                if isinstance(my_inputs[j], list):
+                                    for jj in range(len(my_inputs[j])):
+                                        (var_x_coord, var_y_coord) = vars_coord[my_inputs[j][jj].ID]
+                                        ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                                else:
+                                    (var_x_coord, var_y_coord) = vars_coord[my_inputs[j].ID]
+                                    ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
                            for j in range(len(my_outputs)):
-                               (var_x_coord, var_y_coord) = vars_coord[my_outputs[j].ID]
-                               ax.arrow(out_x_coord[j], out_y_coord, var_x_coord-out_x_coord[j], var_y_coord-out_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                                if isinstance(my_outputs[j], list):
+                                    for jj in range(len(my_outputs[j])):
+                                        (var_x_coord, var_y_coord) = vars_coord[my_outputs[j][jj].ID]
+                                        ax.arrow(out_x_coord[j], out_y_coord, var_x_coord-out_x_coord[j], var_y_coord-out_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                                else:
+                                    (var_x_coord, var_y_coord) = vars_coord[my_outputs[j].ID]
+                                    ax.arrow(out_x_coord[j], out_y_coord, var_x_coord-out_x_coord[j], var_y_coord-out_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
                        else:
                            (var_in_x_coord, var_in_y_coord) = vars_coord[constraints_table[i][r][l][w].input_vars[0].ID]
                            (var_out_x_coord, var_out_y_coord) = vars_coord[constraints_table[i][r][l][w].output_vars[0].ID]
@@ -524,12 +548,22 @@ class Skinny_permutation(Permutation):
         if model_type==0:  nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 16, 0, int(p_bitsize/16)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
+        round_constants = [0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33,
+                                  0x27, 0x0E, 0x1D, 0x3A, 0x35, 0x2B, 0x16, 0x2C, 0x18, 0x30, 0x21, 0x02, 0x05, 0x0B,
+                                  0x17, 0x2E, 0x1C, 0x38, 0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A, 0x34, 0x29,
+                                  0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a,
+                                  0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
+        
         # create constraints
         if model_type==0:
             for i in range(1,nbr_rounds+1):              
                 if word_bitsize==4: self.states["STATE"].SboxLayer("SB", i, 0, op.Skinny_4bit_Sbox) 
                 else: self.states["STATE"].SboxLayer("SB", i, 0, op.Skinny_8bit_Sbox)  # Sbox layer            
-                self.states["STATE"].AddConstantLayer("C", i, 1, "xor", [0,0,0,0, 0,0,0,0, 2,0,0,0, 0,0,0,0])  # Constant layer            
+                rc = round_constants[i-1]
+                c0 = rc & 0xF
+                c1 = rc >> 4
+                c2 = 0x2     
+                self.states["STATE"].AddConstantLayer("C", i, 1, "xor", [c0,None,None,None, c1,None,None,None, c2,None,None,None, None,None,None,None])  # Constant layer            
                 self.states["STATE"].PermutationLayer("SR", i, 2, [0,1,2,3, 7,4,5,6, 10,11,8,9, 13,14,15,12]) # Shiftrows layer
                 self.states["STATE"].MatrixLayer("MC", i, 3, [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]])  #Mixcolumns layer
 
@@ -581,17 +615,21 @@ class ASCON_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, model_type=0):
         
         if nbr_rounds==None: nbr_rounds=12
-        if model_type==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 5, 64, 0, 5
+        if model_type==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 320, 320, 1
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
+        cons = [0xf0 - r*0x10 + r*0x1 for r in range(12)]
+
         # create constraints
         if model_type==0: 
             for i in range(1,nbr_rounds+1):
-                self.states["STATE"].SboxLayer("SB", i, 0, op.ASCON_Sbox) # Sbox layer   
-                pass #TODO
+                self.states["STATE"].AddConstantLayer("C", i, 0, "xor", [None]*120+[int(bit) for bit in format(cons[12-nbr_rounds+i-1], '08b')]+[None]*832)  # Constant layer      
+                self.states["STATE"].SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
+                self.states["STATE"].SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(60+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
+                self.states["STATE"].SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
                 
 
-# The GIFT internal permutation - NOT READY              
+# The GIFT internal permutation               
 class GIFT_permutation(Permutation):
     def __init__(self, name, version, s_input, s_output, nbr_rounds=None, model_type=0):
         
@@ -600,14 +638,17 @@ class GIFT_permutation(Permutation):
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
         const = [0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E, 0x1D, 0x3A, 0x35, 0x2B, 0x16, 0x2C, 0x18, 0x30, 0x21, 0x02, 0x05, 0x0B, 0x17, 0x2E, 0x1C, 0x38, 0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A, 0x34, 0x29, 0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a, 0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
+        if version == 64: perm = [12, 1, 6, 11, 28, 17, 22, 27, 44, 33, 38, 43, 60, 49, 54, 59, 8, 13, 2, 7, 24, 29, 18, 23, 40, 45, 34, 39, 56, 61, 50, 55, 4, 9, 14, 3, 20, 25, 30, 19, 36, 41, 46, 35, 52, 57, 62, 51, 0, 5, 10, 15, 16, 21, 26, 31, 32, 37, 42, 47, 48, 53, 58, 63]
+        elif version == 128: perm = [12, 1, 6, 11, 28, 17, 22, 27, 44, 33, 38, 43, 60, 49, 54, 59, 76, 65, 70, 75, 92, 81, 86, 91, 108, 97, 102, 107, 124, 113, 118, 123, 8, 13, 2, 7, 24, 29, 18, 23, 40, 45, 34, 39, 56, 61, 50, 55, 72, 77, 66, 71, 88, 93, 82, 87, 104, 109, 98, 103, 120, 125, 114, 119, 4, 9, 14, 3, 20, 25, 30, 19, 36, 41, 46, 35, 52, 57, 62, 51, 68, 73, 78, 67, 84, 89, 94, 83, 100, 105, 110, 99, 116, 121, 126, 115, 0, 5, 10, 15, 16, 21, 26, 31, 32, 37, 42, 47, 48, 53, 58, 63, 64, 69, 74, 79, 80, 85, 90, 95, 96, 101, 106, 111, 112, 117, 122, 127]
         
         # create constraints
         if model_type==0:
             for i in range(1,nbr_rounds+1):              
-                self.states["STATE"].SboxLayer("SB", i, 0, op.GIFT_Sbox)  # Sbox layer            
-                self.states["STATE"].PermutationLayer("P", i, 1, [0, 17, 34, 51, 48, 1, 18, 35, 32, 49, 2, 19, 16, 33, 50, 3, 4, 21, 38, 55, 52, 5, 22, 39, 36, 53, 6, 23, 20, 37, 54, 7, 8, 25, 42, 59, 56, 9, 26, 43, 40, 57, 10, 27, 24, 41, 58, 11, 12, 29, 46, 63, 60, 13, 30, 47, 44, 61, 14, 31, 28, 45, 62, 15]) # Permutation layer
-                self.states["STATE"].AddConstantLayer("C", i, 2, "xor", [0,0,0,const[i-1]&1, 0,0,0,(const[i-1]>>1)&1, 0,0,0,(const[i-1]>>2)&1, 0,0,0,(const[i-1]>>3)&1, 0,0,0,(const[i-1]>>4)&1, 0,0,0,(const[i-1]>>5)&1, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,0, 0,0,0,1])  # Constant layer            
-                
+                self.states["STATE"].SboxLayer("SB", i, 0, op.GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer            
+                self.states["STATE"].PermutationLayer("P", i, 1, perm) # Permutation layer
+                if version == 64: self.states["STATE"].AddConstantLayer("C", i, 2, "xor", [1]+[None]*39+[(const[i-1]>>5)&1]+[None]*3+[(const[i-1]>>4)&1]+[None]*3+[(const[i-1]>>3)&1]+[None]*3+[(const[i-1]>>2)&1]+[None]*3 +[(const[i-1]>>1)&1]+[None]*3+[(const[i-1])&1]+[None]*3)# Constant layer            
+                elif version == 128: self.states["STATE"].AddConstantLayer("C", i, 2, "xor", [1]+[None]*103+[(const[i-1]>>5)&1]+[None]*3+[(const[i-1]>>4)&1]+[None]*3+[(const[i-1]>>3)&1]+[None]*3+[(const[i-1]>>2)&1]+[None]*3 +[(const[i-1]>>1)&1]+[None]*3+[(const[i-1])&1]+[None]*3)# Constant layer            
+                    
 
 # The AES internal permutation  
 class AES_permutation(Permutation):
@@ -944,4 +985,40 @@ class Simon_block_cipher(Block_cipher):
                 self.states["STATE"].AddRoundKeyLayer("ARK", i, 6, op.bitwiseXOR, self.states["SUBKEYS"], [0,1]) # Addroundkey layer 
                 self.states["STATE"].PermutationLayer("PERM", i, 7, [1,0]) # Permutation layer
 
+
+# The GIFT block cipher              
+class GIFT_block_cipher(Block_cipher):
+    def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, model_type=0):
+
+        p_bitsize, k_bitsize = version[0], version[1]
+        if nbr_rounds==None: nbr_rounds=28 if p_bitsize==64 else 40 if p_bitsize==128 else None
+        if model_type==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, p_bitsize, 0, 1),  (1, k_bitsize, 0, 1),  (1, int(p_bitsize/2), 0, 1)
+        super().__init__(name, p_input, k_input, c_output, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
+        
+        const = [0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33, 0x27, 0x0E, 0x1D, 0x3A, 0x35, 0x2B, 0x16, 0x2C, 0x18, 0x30, 0x21, 0x02, 0x05, 0x0B, 0x17, 0x2E, 0x1C, 0x38, 0x31, 0x23, 0x06, 0x0D, 0x1B, 0x36, 0x2D, 0x1A, 0x34, 0x29, 0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a, 0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
+        # perm_64 = [0, 17, 34, 51, 48, 1, 18, 35, 32, 49, 2, 19, 16, 33, 50, 3, 4, 21, 38, 55, 52, 5, 22, 39, 36, 53, 6, 23, 20, 37, 54, 7, 8, 25, 42, 59, 56, 9, 26, 43, 40, 57, 10, 27, 24, 41, 58, 11, 12, 29, 46, 63, 60, 13, 30, 47, 44, 61, 14, 31, 28, 45, 62, 15]
+        # perm_128 = [0, 33, 66, 99, 96,  1, 34, 67, 64, 97,  2, 35, 32, 65, 98,  3, 4, 37, 70,103,100,  5, 38, 71, 68,101,  6, 39, 36, 69, 102, 7, 8, 41, 74,107,104,  9, 42, 75, 72,105, 10, 43, 40, 73,106, 11, 12, 45, 78,111,108, 13, 46, 79, 76,109, 14, 47, 44, 77,110, 15, 16, 49, 82,115,112, 17, 50, 83, 80,113, 18, 51, 48, 81,114, 19, 20, 53, 86,119,116, 21, 54, 87, 84,117, 22, 55, 52, 85,118, 23, 24, 57, 90,123,120, 25, 58, 91, 88,121, 26, 59, 56, 89,122, 27, 28, 61, 94,127,124, 29, 62, 95, 92,125, 30, 63, 60, 93,126, 31]
+        if p_bitsize == 64: perm = [12, 1, 6, 11, 28, 17, 22, 27, 44, 33, 38, 43, 60, 49, 54, 59, 8, 13, 2, 7, 24, 29, 18, 23, 40, 45, 34, 39, 56, 61, 50, 55, 4, 9, 14, 3, 20, 25, 30, 19, 36, 41, 46, 35, 52, 57, 62, 51, 0, 5, 10, 15, 16, 21, 26, 31, 32, 37, 42, 47, 48, 53, 58, 63]
+        elif p_bitsize == 128: perm = [12, 1, 6, 11, 28, 17, 22, 27, 44, 33, 38, 43, 60, 49, 54, 59, 76, 65, 70, 75, 92, 81, 86, 91, 108, 97, 102, 107, 124, 113, 118, 123, 8, 13, 2, 7, 24, 29, 18, 23, 40, 45, 34, 39, 56, 61, 50, 55, 72, 77, 66, 71, 88, 93, 82, 87, 104, 109, 98, 103, 120, 125, 114, 119, 4, 9, 14, 3, 20, 25, 30, 19, 36, 41, 46, 35, 52, 57, 62, 51, 68, 73, 78, 67, 84, 89, 94, 83, 100, 105, 110, 99, 116, 121, 126, 115, 0, 5, 10, 15, 16, 21, 26, 31, 32, 37, 42, 47, 48, 53, 58, 63, 64, 69, 74, 79, 80, 85, 90, 95, 96, 101, 106, 111, 112, 117, 122, 127]
+        # create constraints
+        if model_type==0:
+            for i in range(1,nbr_rounds+1):    
+                # subkeys extraction
+                if p_bitsize == 64:
+                    self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [item for pair in zip(range(96, 112), range(112, 128)) for item in pair], self.states["KEY_STATE"].vars[i][0])
+                elif p_bitsize == 128:
+                    self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [item for pair in zip(range(32, 64), range(96, 128)) for item in pair], self.states["KEY_STATE"].vars[i][0])
+                
+                # key schedule
+                self.states["KEY_STATE"].PermutationLayer("PERM", i, 0, [110,111]+[i for i in range(96,110)]+[i for i in range(116,128)]+[i for i in range(112,116)]+[i for i in range(96)]) # key schedule 
+        
+            for i in range(1,nbr_rounds+1):              
+                self.states["STATE"].SboxLayer("SB", i, 0, op.GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
+                self.states["STATE"].PermutationLayer("P", i, 1, perm) # Permutation layer
+                if p_bitsize == 64:
+                    self.states["STATE"].AddConstantLayer("C", i, 2, "xor", [1]+[None]*39+[(const[i-1]>>5)&1]+[None]*3+[(const[i-1]>>4)&1]+[None]*3+[(const[i-1]>>3)&1]+[None]*3+[(const[i-1]>>2)&1]+[None]*3 +[(const[i-1]>>1)&1]+[None]*3+[(const[i-1])&1]+[None]*3)# Constant layer            
+                    self.states["STATE"].AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, self.states["SUBKEYS"], [0,0,1,1]*16) # Addroundkey layer 
+                elif p_bitsize == 128:
+                    self.states["STATE"].AddConstantLayer("C", i, 2, "xor", [1]+[None]*103+[(const[i-1]>>5)&1]+[None]*3+[(const[i-1]>>4)&1]+[None]*3+[(const[i-1]>>3)&1]+[None]*3+[(const[i-1]>>2)&1]+[None]*3 +[(const[i-1]>>1)&1]+[None]*3+[(const[i-1])&1]+[None]*3)# Constant layer            
+                    self.states["STATE"].AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, self.states["SUBKEYS"], [0,1,1,0]*32) # Addroundkey layer 
 
