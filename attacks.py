@@ -21,13 +21,37 @@ except ImportError:
 
 
 
-def solve_milp(filename, solving_goal="optimaze"):
+"""
+attacks.py
+
+This module provides functions for performing MILP- and SAT-based attacks on cryptographic ciphers.
+
+### Features:
+1. **MILP-Based Attack**:
+   - Formulates the attack as a Mixed Integer Linear Programming (MILP) problem.
+   - Uses **Gurobi** to solve MILP models.
+   - Supports both optimizing for the best solution and exhaustive search for all possible solutions.
+
+2. **SAT-Based Attack**:
+   - Formulates the attack as a Boolean Satisfiability Problem (SAT).
+   - Uses **CryptoMiniSat** to solve SAT models.
+   - Supports both optimizing for the best solution and exhaustive search for all possible solutions.
+
+3. **Customization Options**:
+   - Automates constraint generation for operations within ciphers.
+   - Supports additional constraints (`add_cons`).
+   - Allows specifying different model versions (`model_versions`) to control modelling the difference propagation behavior.
+   - Enables defining the objective function (`model_weights`).
+"""
+
+
+def solve_milp(filename, solving_goal="optimize"): # Solve a MILP problem using Gurobi.
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
         return ""
     model = gp.read(filename)
     # model.setParam('OutputFlag', 0)   # no output 
-    if solving_goal == "optimaze":
+    if solving_goal == "optimize":
         model.optimize()
         if model.status == gp.GRB.Status.OPTIMAL:
             print("Optimal Objective Value:", model.ObjVal)
@@ -72,14 +96,14 @@ def create_numerical_cnf(cnf):
     return len(variables), variable2number, numerical_cnf
 
 
-def solve_SAT(filename, solving_goal="optimaze"):
+def solve_sat(filename, solving_goal="optimize"): # Solve a SAT problem using CryptoMiniSat.
     if pysat_import == False: 
         print("pysat module can't be loaded ... skipping test\n")
         return ""
     cnf = CNF(filename)
     solver = CryptoMinisat()
     solver.append_formula(cnf.clauses)
-    if solving_goal == "optimaze":
+    if solving_goal == "optimize":
         if solver.solve():
             print("A solution exists.")
             # solution = solver.get_model()
@@ -103,59 +127,178 @@ def solve_SAT(filename, solving_goal="optimaze"):
         return sol_list
     
 
-def singlekey_differential_path_search_milp(cipher, nbr_rounds, model_versions={}, add_cons=[]):
-    filename = f"files/{nbr_rounds}_round_{cipher.name}_singlekey_differential_path_search_milp.lp"
+def gen_round_constraints(cipher, model_type = "milp", rounds=None, states=None, layers=None, positions=None, model_versions={}, no_weights={}):
+    """
+    Generate constraints for a given cipher based on user-specified parameters.
+
+    Args:
+        cipher (object): The cipher instance.
+        rounds (list[int, str] | None, optional): List of rounds to consider. Options: "inputs" and int (e.g., 1, 2, 3). Defaults to "inputs" and all rounds.
+        states (list[str] | None, optional): List of states to consider. Options: "STATE", "KEY_STATE", "SUBKEYS". Defaults to all states.
+        layers (dict | None, optional): Dictionary specifying the layers of each state. Options: int (e.g., 0, 1, 2). Defaults to all layers.
+        positions (dict | None, optional): Dictionary mapping positions for constraints. Options: int (e.g., 0, 1, 2). Defaults to all positions.
+        model_versions (dict | None, optional): Dictionary mapping constraint IDs to model versions.
+        no_weights (dict | None, optional): Dictionary mapping constraint IDs to specify which constraints should be excluded from the objective function.
+
+    Returns:
+        tuple: 
+            - **list[str]**: Generated constraints in string format.
+            - **list[str]**: Objective function terms.
+    """
+
+    if rounds is None:
+        rounds = ["inputs"] + list(range(1, cipher.nbr_rounds + 1))
+
+    if states is None:
+        states = cipher.states
+
+    if layers is None:
+        layers = {s: list(range(cipher.states[s].nbr_layers + 1)) for s in states}
+
+    if positions is None:
+        for r in rounds:
+            if r == "inputs": 
+                positions = {"inputs": list(range(len(cipher.inputs_constraints)))}
+            if r != "inputs":
+                positions[r] = {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s]} for s in states}
+
+
+    constraint, obj = [], []
+    for r in rounds:
+        if r == "inputs": # constrains for linking the input and the first round 
+            for p in positions["inputs"]:
+                cons = cipher.inputs_constraints[p]
+                model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
+                cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
+                constraint += cons_gen
+        else:  # constrains for each round 
+            for s in states:
+                for l in layers[s]:
+                    for p in positions[r][s][l]:
+                        cons = cipher.states[s].constraints[r][l][p]
+                        model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
+                        cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
+                        constraint += cons_gen
+                        if cons.ID not in no_weights and hasattr(cons, 'weight'): obj += [cons.weight]
+    return constraint, obj
+
+
+def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=None, states=None, layers=None, positions=None, bitwise=True, vars=None, value=None): 
+    """
+    Generate additional constraints to the model based on specified parameters.
+
+    Args:
+        cipher (object): The cipher instance.
+        model_type (str): The type of model to use. Options: "milp", "sat", "cp".
+        cons_type (str): The type of constraint to generate. Options:
+            - "EQUAL": Enforces the selected variable equals `value`.
+            - "GREATER_EQUAL": Enforces the selected variable is at least `value`.
+            - "LESS_EQUAL": Enforces the selected variable does not exceed `value`.
+            - "SUM_EQUAL": Enforces the sum of selected variables equals `value`.
+            - "SUM_GREATER_EQUAL": Enforces the sum of selected variables is at least `value`.
+            - "SUM_LESS_EQUAL": Enforces the sum of selected variables does not exceed `value`.
+        rounds (list[int] | None, optional): List of rounds to consider. Options: "inputs" and int (e.g., 1, 2, 3).  Defaults to None.
+        states (list[str] | None, optional): List of states to consider. Options: "STATE", "KEY_STATE", "SUBKEYS".  Defaults to None.
+        layers (dict | None, optional): Dictionary specifying the layers of each state. Options: int (e.g., 0, 1, 2). Defaults to None.
+        positions (dict | None, optional): Dictionary mapping positions for constraints. Options: int (e.g., 0, 1, 2). Defaults to None.
+        bitwise (bool, optional): If True, constraints are applied at the bit level. Defaults to True.
+        vars (list[str] | None, optional): List of variable names to include in the constraints.
+        value (int | None, optional): The target value for the constraint. Options: int(e.g., 0, 1, 2).
+
+    Returns:
+        list[str]: A list of generated constraints in string format.
+    """
+
+    add_cons, add_vars = [], []
+    if (rounds is not None) and (states is not None) and (layers is not None) and (positions is not None):
+        for r in rounds:
+            for s in states:
+                for l in layers[s]:
+                    if bitwise: add_vars += [f"{cipher.states[s].vars[r][l][p].ID}_{j}" for p in positions[r][s][l] for j in range(cipher.states[s].vars[r][l][p].bitsize)]
+                    else: add_vars += [cipher.states[s].vars[r][l][p].ID for p in positions[r][s][l]]
+    if vars: add_vars += vars    
+    if cons_type == "EQUAL":
+        if model_type == "milp": add_cons += [f"{add_vars[i]} = {value}" for i in range(len(add_vars))]
+        elif model_type == "sat" and value == 0: add_cons += [f"-{add_vars[i]}" for i in range(len(add_vars))]
+        elif model_type == "sat" and value == 1: add_cons += [f"{add_vars[i]}" for i in range(len(add_vars))]
+    elif cons_type == "GREATER_EQUAL":
+        if model_type == "milp": add_cons += [f"{add_vars[i]} >= {value}" for i in range(len(add_vars))]
+    elif cons_type == "LESS_EQUAL":
+        if model_type == "milp": add_cons += [f"{add_vars[i]} <= {value}" for i in range(len(add_vars))]
+    elif cons_type == "SUM_EQUAL":
+        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" = {value}"]
+    elif cons_type == "SUM_GREATER_EQUAL":
+        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" >= {value}"]
+        elif model_type == "sat" and value == 1: add_cons += [' '.join(f"{add_vars[i]}" for i in range(len(add_vars)))]
+    elif cons_type == "SUM_LESS_EQUAL":
+        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" <= {value}"]
+    return add_cons
+
+
+def set_model_versions(cipher, version, rounds=None, states=None, layers=None, positions=None, consIDs=None):
+    """
+    Assigns a specified model_version to constraints in the cipher based on specified parameters.
+
+    Args:
+        cipher (object): The cipher instance.
+        version (str): The model_version to apply.
+        rounds (list[int, str] | None, optional): List of rounds to consider. Options: "inputs" and int (e.g., 1, 2, 3).  Defaults to None.
+        states (list[str] | None, optional): List of states to consider. Options: "STATE", "KEY_STATE", "SUBKEYS".  Defaults to None.
+        layers (dict | None, optional): Dictionary specifying the layers of each state. Options: int (e.g., 0, 1, 2). Defaults to None.
+        positions (dict | None, optional): Dictionary mapping positions for constraints. Options: int (e.g., 0, 1, 2). Defaults to None.
+        consIDs (list[str] | None, optional): List of constraint IDs to consider. If provided, only these constraints' model_version will be assigned.
+
+    Returns:
+        dict: A dictionary mapping constraint IDs to their assigned model version.
+    """
+    
+    model_versions = {}
+
+    if consIDs: # Assign the model version to a specific constraint ID.
+        for consID in consIDs:
+            model_versions[consID] = version
+        return model_versions
+
+    if rounds: # Handle input constraints when "inputs" or a number is specified for rounds.
+        for r in rounds:
+            if r == "inputs":
+                model_versions["Input_Cons"] = version
+                for p in positions["inputs"]:
+                    model_versions[cipher.inputs_constraints[p].ID] = version
+            elif isinstance(r, int): # Set model versions for constraints in a specific round
+                for s in states: # Set model versions for constraints in a specific state
+                    for l in layers[s]: # Set model versions for constraints in a specific layer
+                        for p in positions[r][s][l]:
+                            model_versions[f"{ cipher.states[s].constraints[r][l][p].ID}"] = version    
+    return model_versions
+
+
+def attacks_milp_model(constraints=[], obj_fun=[], solving_goal="optimize", filename=""):
+    """
+    Generate and solve a MILP model based on the given constraints and objective function.
+
+    Args:
+        constraints (list[str]): A list of MILP constraints in string format.
+        obj_fun (list[str]): A list of terms to be used in the objective function.
+        solving_goal (str): The optimization goal. Possible values:
+            - "optimize": Minimize the objective function.
+            - "all_solutions": Find all feasible solutions.
+        filename (str): The file path to save the MILP model.
+
+    Returns:
+        The result of the MILP solver, depending on the solving goal.
+    """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    bin_vars = []
-    in_vars = []
-    obj = ""
-    content = "Minimize\nobj\nSubject To\n"
-    # add constraint that the input difference of the cipher is non-zero
-    if "permutation" in cipher.__class__.__name__: # for permutation
-        if "Input_Cons" in model_versions:
-            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['IN'][i].ID}" for i in range(len(cipher.inputs['IN']))) + ' >= 1\n'
-        else: content += ' + '.join(f"{cipher.inputs['IN'][i].ID}_{j}" for i in range(len(cipher.inputs['IN'])) for j in range(cipher.inputs['IN'][i].bitsize)) + ' >= 1\n'
-    elif "block_cipher" in cipher.__class__.__name__: # for block cipher
-        if "Input_Cons" in model_versions:
-            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext']))) + ' >= 1\n'
-        else: content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize)) + ' >= 1\n'
-    # constrains for linking the input and the first round 
-    for cons in cipher.inputs_constraints:
-        if "_K_" not in cons.ID: # ignoring the key of block ciphers
-            model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
-            cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
-            for constraint in cons_gen:
-                if "Binary" in constraint:
-                    constraint_split = constraint.split('Binary\n')
-                    content += constraint_split[0]
-                    bin_vars += constraint_split[1].strip().split()
-                elif "Integer" in constraint:
-                    constraint_split = constraint.split('Integer\n')
-                    content += constraint_split[0]
-                    in_vars += constraint_split[1].strip().split()
-                else: content += constraint + '\n'
-    # constrains for each operation 
-    for r in range(1,cipher.nbr_rounds+1):
-        for l in range(cipher.states["STATE"].nbr_layers+1):                        
-            for cons in cipher.states["STATE"].constraints[r][l]: 
-                model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
-                if cons.ID[0:3] == 'ARK' and cons.__class__.__name__ == "bitwiseXOR": # regarding XOR as Equal
-                    equal = op.Equal([cons.input_vars[0]], cons.output_vars, ID=cons.ID)
-                    cons_gen = equal.generate_model("milp", model_version = model_v, unroll=True)
-                else:
-                    cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
-                for constraint in cons_gen:
-                    if "Binary" in constraint:
-                        constraint_split = constraint.split('Binary\n')
-                        content += constraint_split[0]
-                        bin_vars += constraint_split[1].strip().split()
-                    elif "Integer" in constraint:
-                        constraint_split = constraint.split('Integer\n')
-                        content += constraint_split[0]
-                        in_vars += constraint_split[1].strip().split()
-                    else: content += constraint + '\n'
-                if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
-    for constraint in add_cons: # add addtional constrains
+    
+    # === Step 1: Define the MILP Model Structure === #
+    content = ""
+    if solving_goal == "optimize": 
+        content += "Minimize\nobj\n"
+    content += "Subject To\n"
+
+    # === Step 2: Process Constraints === #
+    bin_vars, in_vars = [], []
+    for constraint in constraints:
         if "Binary" in constraint:
             constraint_split = constraint.split('Binary\n')
             content += constraint_split[0]
@@ -165,51 +308,41 @@ def singlekey_differential_path_search_milp(cipher, nbr_rounds, model_versions={
             content += constraint_split[0]
             in_vars += constraint_split[1].strip().split()
         else: content += constraint + '\n'
-    content += obj + ' - obj = 0\n'
-    if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
-    if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+    
+    # === Step 3: Define the Objective Function === #
+    if solving_goal == "optimize": content += " + ".join(obj_fun) + ' - obj = 0\n'
+    
+    # === Step 4: Declare Binary and Integer Variables === #
+    if bin_vars: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
+    if in_vars: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+    
+    # === Step 5: Write Model to File === #
     with open(filename, "w") as myfile:
         myfile.write(content)
-    obj = solve_milp(filename)
-    return obj
+    
+    # === Step 6: Solve the MILP Model === #
+    return solve_milp(filename, solving_goal)
 
 
+def attacks_sat_model_obj(constraints=[], obj=0, obj_var=[], solving_goal="optimize", filename=""):       
+    """
+    Generate and solve a SAT model based on the given constraints and objective variables.
 
-def singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_versions={}, add_cons=[], obj=0):       
-    filename = f"files/{nbr_rounds}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf"
+    Args:
+        constraints (list[str]): A list of SAT constraints in string format.
+        obj (int): The target value (lower bound) for the objective function.
+        obj_var (list[str]): A list of variables representing the objective function.
+        solving_goal (str): The optimization goal. Possible values:
+            - "optimize": Find one feasible solutions.
+            - "all_solutions": Find all feasible solutions.
+        filename (str): The file path to save the SAT model.
+
+    Returns:
+        The result of the SAT solver.
+    """
     os.makedirs(os.path.dirname(filename), exist_ok=True)
-    obj_var = []
-    # constraints of non-zero input
-    if "permutation" in cipher.__class__.__name__: # for permutation
-        if "Input_Cons" in model_versions:
-            if model_versions["Input_Cons"] == "truncated_diff":
-                model_cons = [" ".join(f"{cipher.inputs['IN'][i].ID}" for i in range(len(cipher.inputs['IN'])))]
-        else: model_cons = [" ".join(f"{cipher.inputs['IN'][i].ID}_{j}" for i in range(len(cipher.inputs['IN'])) for j in range(cipher.inputs['IN'][i].bitsize))]
-    elif "block_cipher" in cipher.__class__.__name__: # for block cipher
-        if "Input_Cons" in model_versions:
-            if model_versions["Input_Cons"] == "truncated_diff": 
-                model_cons = [" ".join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext'])))]
-        else: model_cons = [" ".join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize))]
-    # constraints for linking the input and the first round 
-    for cons in cipher.inputs_constraints:
-        if "_K_" not in cons.ID: # ignoring the key of block ciphers
-            model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
-            cons_gen = cons.generate_model("sat", model_version = model_v, unroll=True)
-            model_cons += cons_gen  
-    # constrains for each operation 
-    for r in range(1,cipher.nbr_rounds+1):
-        for s in ["STATE"]:
-            for l in range(cipher.states[s].nbr_layers+1):                        
-                for cons in cipher.states[s].constraints[r][l]: 
-                    model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
-                    if cons.ID[0:3] == 'ARK' and cons.__class__.__name__ == "bitwiseXOR": # regarding XOR as Equal
-                        equal = op.Equal([cons.input_vars[0]], cons.output_vars, ID=cons.ID)
-                        cons_gen = equal.generate_model("sat", model_version = model_v, unroll=True)
-                    else: cons_gen = cons.generate_model("sat", model_version = model_v, unroll=True)    
-                    model_cons += cons_gen  
-                    if hasattr(cons, 'weight'): obj_var += cons.weight
-    model_cons += add_cons # add addtional constrains
-    # modeling the constraint "weight greater or equal to the given obj using sequential encoding method 
+
+    # === Step 1: Generate The Constraint of "Weight Greater or Equal to the Given obj" Using the Sequential Encoding Method === #
     if obj == 0: obj_cons = [f'-{var}' for var in obj_var] 
     else:
         n = len(obj_var)
@@ -223,140 +356,50 @@ def singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_version
             obj_cons += [f'-{dummy_var[i - 1][j]} {dummy_var[i][j]}' for j in range(1, obj)]
             obj_cons += [f'-{obj_var[i]} -{dummy_var[i - 1][obj - 1]}']
         obj_cons += [f'-{obj_var[n - 1]} -{dummy_var[n - 2][obj - 1]}']
-    model_cons += obj_cons
-    # creating numerical CNF
+    model_cons = constraints + obj_cons
+    
+    # === Step 2: Convert Constraints to Numerical CNF Format === #
     num_var, variable_map, numerical_cnf = create_numerical_cnf(model_cons)
+    
+    # === Step 3: Write the CNF Model to a File === #
     num_clause = len(model_cons)
     content = f"p cnf {num_var} {num_clause}\n"  
     for constraint in numerical_cnf:
         content += constraint + ' 0\n'
     with open(filename, "w") as myfile:
         myfile.write(content)
-    return solve_SAT(filename)
+
+    # === Step 4: Solve the SAT Model === #
+    return solve_sat(filename, solving_goal=solving_goal)
 
 
-def singlekey_differential_path_search_sat(cipher, nbr_rounds, model_versions={}, add_cons=[], obj=0):
-    print(model_versions)
+def attacks_sat_model(constraints=[], obj=0, obj_var=[], solving_goal="optimize", filename=""):
+    """
+    Iteratively solve a SAT model while increasing the objective value until a valid solution is found.
+
+    Args:
+        constraints (list[str]): A list of SAT constraints in string format.
+        obj (int): The initial objective value to test.
+        obj_var (list[str]): A list of variables representing the objective function.
+        filename (str): The file path to save the SAT model.
+
+    Returns:
+        int: The minimum objective value for which a valid solution exists.
+    """
     flag = False
     while not flag:
         print("obj", obj)
-        flag = singlekey_differential_path_search_sat_obj(cipher, nbr_rounds, model_versions=model_versions, add_cons=add_cons, obj=obj)
+        flag = attacks_sat_model_obj(constraints=constraints, obj=obj, obj_var=obj_var, solving_goal=solving_goal, filename=filename)
         obj += 1
     return obj-1
 
 
+def set_model_noweight(): # TO DO
+    """
+    Specify constraints IDs that should not contribute to the objective function.
 
-def relatedkey_differential_path_search_milp(cipher, nbr_rounds, model_versions={}, add_cons=[]):
-    if "block_cipher" not in cipher.__class__.__name__: raise Exception("only support relatedkey differential cryptanalysis for block_ciphers")
-    filename = f"files/{nbr_rounds}_round_{cipher.name}_relatedkey_differential_path_search_milp.lp"
-    os.makedirs(os.path.dirname(filename), exist_ok=True)
-    bin_vars = []
-    in_vars = []
-    obj = ""
-    content = "Minimize\nobj\nSubject To\n"
-    # add constraint that the input difference of the cipher is non-zero
-    if "block_cipher" in cipher.__class__.__name__: # for block cipher
-        if "Input_Cons" in model_versions: 
-            if model_versions["Input_Cons"] == "truncated_diff": content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}" for i in range(len(cipher.inputs['plaintext']))) + ' + ' + ' + '.join(f"{cipher.inputs['key'][i].ID}" for i in range(len(cipher.inputs['key']))) + ' >= 1\n'
-        else: content += ' + '.join(f"{cipher.inputs['plaintext'][i].ID}_{j}" for i in range(len(cipher.inputs['plaintext'])) for j in range(cipher.inputs['plaintext'][i].bitsize)) + ' + ' + ' + '.join(f"{cipher.inputs['key'][i].ID}_{j}" for i in range(len(cipher.inputs['key'])) for j in range(cipher.inputs['key'][i].bitsize)) + ' >= 1\n'
-    # constrains for linking the input and the first round 
-    for cons in cipher.inputs_constraints:
-        model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
-        cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
-        for constraint in cons_gen:
-            if "Binary" in constraint:
-                constraint_split = constraint.split('Binary\n')
-                content += constraint_split[0]
-                bin_vars += constraint_split[1].strip().split()
-            elif "Integer" in constraint:
-                constraint_split = constraint.split('Integer\n')
-                content += constraint_split[0]
-                in_vars += constraint_split[1].strip().split()
-            else: content += constraint + '\n'
-    # constrains for each operation 
-    for s in cipher.states: 
-        for r in range(1,cipher.nbr_rounds+1):
-            for l in range(cipher.states[s].nbr_layers+1):                        
-                for cons in cipher.states[s].constraints[r][l]: 
-                    model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
-                    cons_gen = cons.generate_model("milp", model_version = model_v, unroll=True)
-                    for constraint in cons_gen:
-                        if "Binary" in constraint:
-                            constraint_split = constraint.split('Binary\n')
-                            content += constraint_split[0]
-                            bin_vars += constraint_split[1].strip().split()
-                        elif "Integer" in constraint:
-                            constraint_split = constraint.split('Integer\n')
-                            content += constraint_split[0]
-                            in_vars += constraint_split[1].strip().split()
-                        else: content += constraint + '\n'
-                    if hasattr(cons, 'weight'): obj += ' + ' + cons.weight
-    for constraint in add_cons: # add addtional constrains
-        if "Binary" in constraint:
-                constraint_split = constraint.split('Binary\n')
-                content += constraint_split[0]
-                bin_vars += constraint_split[1].strip().split()
-        elif "Integer" in constraint:
-            constraint_split = constraint.split('Integer\n')
-            content += constraint_split[0]
-            in_vars += constraint_split[1].strip().split()
-        else: content += constraint + '\n'
-    content += obj + ' - obj = 0\n'
-    if len(bin_vars) > 0: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
-    if len(in_vars) > 0: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
-    with open(filename, "w") as myfile:
-        myfile.write(content)
-    obj = solve_milp(filename)
-    return obj
-
-
-# def relatedkey_differential_path_search_sat(primitive, num_rounds, model_type, obj=0): # TO DO
-
-
-
-"""
-The above MILP- and SAT-based attacks allow user to customize the process through the following parameters:
-(1) model_versions: A dictionary where the key represents the ID of an operation, and the value specifies the model_version, with model_version defaulting to "diff_0".
-    Default: model_versions = {}.
-(2) add_cons: A list to define additional constraints for MILP models.
-    Default: add_cons = [].
-(3) model_weights: A list to define the weight of operations.
-    Default: model_weights = []. 
-(4) init_obj_sat: The initial value of the objective function for SAT models.
-    Default: init_obj_sat = 0
-"""
-
-# Example: set model_version = "truncated_diff" for all operations of AES, to model truncated differential of AES. 
-def set_model_versions_truncated_diff(cipher):
-    model_versions = {}
-    print("*************constrains in input*************")
-    model_versions["Input_Cons"] = "truncated_diff"
-    for cons in cipher.inputs_constraints:
-        print(cons.ID, cons.__class__.__name__)
-        model_versions[f"{cons.ID}"] = "truncated_diff"
-    print("*************constrains in each round*************")
-    for i in range(1,cipher.nbr_rounds+1):
-        for s in cipher.states: # e.g., cipher.states = ["STATE", "KEY_STATE", "SUBKEYS"]
-            for l in range(cipher.states[s].nbr_layers+1):                 
-                for cons in cipher.states[s].constraints[i][l]: 
-                    print(cons.ID, cons.__class__.__name__)
-                    model_versions[f"{cons.ID}"] = "truncated_diff"
-    return model_versions
-
-
-# Example: set the variable "in0_0" to 0
-def set_add_cons(model_type): 
-    if model_type == "milp": add_cons = ["in0_0 = 0"]
-    elif model_type == "sat": add_cons = ["-in0_0"]
-    return add_cons
-
-
-def set_model_weight(): # TO DO
-    model_weight = []
-    return model_weight
-
-
-# Example: obj = 0
-def set_start_obj_sat(): 
-    obj = 0
-    return obj
+    Returns:
+        dict: A list of constraints IDs.
+    """
+    noweight = []
+    return noweight
