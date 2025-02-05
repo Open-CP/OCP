@@ -473,6 +473,92 @@ def TEST_GIFT_BLOCKCIPHER(r=None, version = [64, 128]):
     return my_cipher
 
 
+def TEST_DIFF_ATTACK(r=6, model_type= "milp"):
+    # === TEST: Search for the best (related-key) differential trails === #
+
+
+    # === Step 1: Cipher Selection === #
+    
+    # Select the permutation for searching for the best differential trails
+    cipher = TEST_SPECK_PERMUTATION(r, version = 32)  
+    # cipher = TEST_SIMON_PERMUTATION(r, version = 32)
+    # cipher = TEST_ASCON_PERMUTATION(r) 
+    # cipher = TEST_GIFT_PERMUTATION(r, version = 64)
+
+    # Select the block cipher for searching for the best related-key differential trails
+    # cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) 
+    # cipher = TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])
+    # cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])
+
+
+    # === Step 2: Configure Model Versions === #
+    # By default, model_versions = {} (i.e., all operations within the cipher follow `"diff_0"`). For ARX ciphers, this setting enables the search for differential trails with the highest probability. For S-box-based ciphers, it models difference propagation without considering probabilities, allowing the search for differential trails with the minimal number of active S-boxes.
+    # For S-box-based ciphers such as GIFT, setting `model_version = "diff_1"` for each S-box enables modeling of difference propagation with probabilities, allowing the search for differential trails with the highest probability.
+    model_versions = {}
+    # model_versions = attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
+    
+
+    # === Step 3: Generate Constraints === #
+
+    # Generate constraints for the input, each round, and objective function
+    constraints, obj_fun = attacks.gen_round_constraints(cipher=cipher, model_type=model_type, model_versions=model_versions)
+    
+    # Generate constraints ensuring that the input difference of the first round is not zero
+    states = {s: cipher.states[s] for s in ["STATE", "KEY_STATE"] if s in cipher.states}
+    constraints += attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, value=1)    
+    
+
+    # === Step 4: Build and Solve MILP or SAT Model === #
+    if model_type == "milp": result = attacks.attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
+    elif model_type == "sat": result = attacks.attacks_sat_model(constraints=constraints, obj_var=list(sum(obj_fun, [])), filename=f"files/{r}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf")
+    return result
+    
+
+
+def TEST_TRUNCATED_DIFF_ATTACK(r=3, model_type= "milp"):
+    # === TEST: Search for the best truncated (related-key) differential trails === #
+
+
+    # === Step 1: Cipher Selection === #
+    # Select the permutation for searching for the best differential trails
+    cipher = TEST_AES_PERMUTATION(r)
+    # cipher = TEST_ROCCA_AD(r)
+
+    # Select the block cipher for searching for the best related-key differential trails
+    # cipher = TEST_AES_BLOCKCIPHER(r, version = [128, 128])
+
+    
+    # === Step 2: Configure Model Versions === #
+    # set model_version = "truncated_diff" for each operation within the cipher
+    states = cipher.states
+    layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
+    positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
+    model_versions = attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
+    
+
+    # === Step 3: Generate Constraints === #
+    # Generate constraints for the input, each round, and objective function
+    constraints, obj_fun = attacks.gen_round_constraints(cipher=cipher, model_type=model_type, model_versions=model_versions)
+    
+    # Generate constraints ensuring that the input difference of the first round is not zero
+    states = {s: cipher.states[s] for s in ["STATE", "KEY_STATE"] if s in cipher.states}
+    constraints += attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, bitwise=False, value=1)
+    
+    # for ROCCA_AD, generate the following constraints to search for truncated differential used in Forgery attacks:
+    # (1) input difference of the state is 0;
+    # (2) difference of the data block is not 0;
+    # (3) output difference of the state is 0
+    # add_cons = attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128)]}}}, bitwise=False, value=0)
+    # add_cons += attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="EQUAL", rounds=[cipher.nbr_rounds], states=["STATE"], layers={"STATE":[4]}, positions={cipher.nbr_rounds:{"STATE":{4:[i for i in range(128)]}}}, bitwise=False, value=0)
+    # add_cons += attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128, 128+32*r)]}}}, bitwise=False, value=1)
+    # constraints += add_cons
+
+    # === Step 4: Build and Solve MILP or SAT Model === #
+    if model_type == "milp": result = attacks.attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
+    elif model_type == "sat": result = attacks.attacks_sat_model(constraints=constraints, obj_var=list(sum(obj_fun, [])), filename=f"files/{r}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf")
+    return result
+
+
 if __name__ == '__main__':
     TEST_OPERATORS_MILP_SAT()
     r = 2
@@ -490,6 +576,9 @@ if __name__ == '__main__':
     cipher = TEST_SKINNY_BLOCKCIPHER(r,  version = [64, 64]) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 192], [128, 384]  
     cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128]) # version = [64, 128],  [128, 128]
     generate_codes(cipher)
+
+    TEST_DIFF_ATTACK()
+    TEST_TRUNCATED_DIFF_ATTACK() 
 
 
 
