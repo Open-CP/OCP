@@ -16,32 +16,15 @@ def test_operator_MILP(operator, model_v="diff_0", mode=0):
     model_v (str): Version of the model to be used (default is 'diff_0').
     mode (int): Mode for the operator S-box (default is 0).
     """
+    
+    # generate milp constraints
     if "Sbox" in str(type(operator).__name__): milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, mode= mode, unroll=True)
     else: milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, unroll=True)
     print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
-    # Initialize the content for the MILP model, and lists for binary and integer variables
-    content = "Minimize\n obj\nSubject To\n"
-    if hasattr(operator, 'weight'): content += operator.weight + ' - obj = 0\n'
-    bin_vars = []
-    in_vars = []
-    # Process each MILP constraint
-    for constraint in milp_constraints:
-        if "Binary" in constraint:
-            constraint_split = constraint.split('Binary\n')
-            content += constraint_split[0]
-            bin_vars += constraint_split[1].strip().split()
-        elif "Integer" in constraint:
-            constraint_split = constraint.split('Integer\n')
-            content += constraint_split[0]
-            in_vars += constraint_split[1].strip().split()
-        else: content += constraint + '\n'
-    # Add binary and integer variables to the MILP content if any exist
-    if bin_vars: content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
-    if in_vars: content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+    
+    # generate and solve the milp model 
     filename = f'files/milp_{type(operator).__name__}_{model_v}.lp'
-    with open(filename, "w") as file: file.write(content) # Write the MILP model content to a .lp file
-    attacks.solve_milp(filename, solving_goal="all_solutions") # Solve the MILP model for searching for all solutions
-
+    attacks.attacks_milp_model(constraints=milp_constraints, solving_goal="all_solutions", filename=filename)
 
 
 def test_operator_SAT(operator, model_v="diff_0", mode=0):
@@ -52,20 +35,15 @@ def test_operator_SAT(operator, model_v="diff_0", mode=0):
     model_v (str): Version of the model to be used (default is 'diff_0').
     mode (int): Mode for the operator S-box (default is 0).
     """
+
+    # generate sat constraints
     if "Sbox" in str(type(operator).__name__): sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, mode= mode, unroll=True)    
     else: sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, unroll=True)        
     print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
-    # Get the number of clauses, variables, and the numerical CNF representation
-    num_clause = len(sat_constraints)
-    num_var, variable_map, numerical_cnf = attacks.create_numerical_cnf(sat_constraints)
-    # Construct the content of the CNF file
-    content = f"p cnf {num_var} {num_clause}\n"   
-    for constraint in numerical_cnf:
-        content += constraint + ' 0\n'
+    
+    # generate and solve the sat model 
     filename = f'files/sat_{type(operator).__name__}_{model_v}.cnf'
-    with open(filename, "w") as file: file.write(content) # Write the SAT model content to a .cnf file
-    attacks.solve_SAT(filename, solving_goal="all_solutions") # Solve the SAT model for searching for all solutions
-
+    attacks.attacks_sat_model(constraints=sat_constraints, solving_goal="all_solutions", filename=filename)
 
 
 # ********************* TEST OF OPERATORS MODELING IN MILP and SAT********************* #   
