@@ -1,62 +1,14 @@
 import primitives as prim
 import variables as var
-import attacks as at
-import time
-import pandas as pd
-import tool
 import operators as op
+import attacks
 
-    
+# implement Boura's MILP models for searching related-key differetial charactristics of AES, cited: "Related-Key Differential Analysis of the AES". 
 
-# ********************* TEST OF AES ********************* #   
-def TEST_AES_PERMUTATION(r):
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
-    return my_cipher
-
-
-def TEST_AES_BLOCKCIPHER(r): 
-    version = [128, 256] # block_size = version[0] = 128, key_size = version[1] = 128, 192, 256
+def TEST_AES_BLOCKCIPHER(r, version = [128, 128]): 
     my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1] / version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = prim.AES_block_cipher(f"AES_{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
-
-
-# The user can specify modeling versions by setting model_version. By defult, model_version = "diff_0".
-def set_model_versions_truncated_diff(cipher):
-    # Example 1: model truncated differential for AES, that is, model_version = "truncated_diff" for all operations of AES. 
-    model_versions = {}
-    # print("*************constrains in input*************")
-    model_versions["Input_Cons"] = "truncated_diff"
-    for cons in cipher.inputs_constraints:
-        # print(cons.ID, cons.__class__.__name__)
-        model_versions[f"{cons.ID}"] = "truncated_diff"
-    # print("*************constrains in each round*************")
-    for i in range(1,cipher.nbr_rounds+1):
-        for s in cipher.states: # cipher.states = ["STATE", "KEY_STATE", "SUBKEYS"]
-            for l in range(cipher.states[s].nbr_layers+1):                 
-                for cons in cipher.states[s].constraints[i][l]: 
-                    # print(cons.ID, cons.__class__.__name__)
-                    model_versions[f"{cons.ID}"] = "truncated_diff"
-    return model_versions
-
-
-
-def single_key_diff_AES():
-    data = {'Rounds': [], 'Result':[], 'Time(s)': []}
-    for r in range(1, 15):
-        # cipher = TEST_AES_PERMUTATION(r)
-        cipher = TEST_AES_BLOCKCIPHER(r)
-        strat_time = time.time()
-        model_versions = set_model_versions_truncated_diff(cipher)
-        obj = at.singlekey_differential_path_search_milp(cipher, r, model_versions=model_versions)
-        end_time = time.time()
-        data['Rounds'].append(r)
-        data['Result'].append(obj)
-        data['Time(s)'].append("{:.2f}".format(end_time - strat_time))
-        df = pd.DataFrame(data)
-        latex_code = df.to_latex(index=False, header=True, caption=f'Experimental results for {cipher.name} by solving MILP models')
-        print(latex_code)
 
 
 def addkeyScheduleExtraConstr(cipher):
@@ -149,31 +101,35 @@ def addMixColumnsExtraConstr(cipher):
     return add_cons
 
 
-# implement Boura's MILP models for searching related-key differetial charactristics of AES, cited: "Related-Key Differential Analysis of the AES". 
-def related_key_diff_AES():
-    data = {'Rounds': [], 'Num':[], 'Time(s)': []}
-    for r in range(3, 6):
-        strat_time = time.time()
-        cipher = TEST_AES_BLOCKCIPHER(r)
-        model_versions = set_model_versions_truncated_diff(cipher)
-        add_cons = []
-        add_cons += addkeyScheduleExtraConstr(cipher)
-        add_cons += addMixColumnsExtraConstr(cipher)
-        obj = at.relatedkey_differential_path_search_milp(cipher, r, model_versions=model_versions, add_cons=add_cons)
-        end_time = time.time()
-        data['Rounds'].append(r)
-        data['Num'].append(int(obj))
-        data['Time(s)'].append("{:.2f}".format(end_time - strat_time))
-    df = pd.DataFrame(data)
-    latex_code = df.to_latex(index=False, header=True, caption=f'Experimental results for related-key differential cryptanalysis of {cipher.name} by solving MILP models')
-    print(data)
-    print(latex_code)
+def related_key_diff_AES(cipher, r):
+    model_type = "milp"
+    # set model_version = "truncated_diff" for each operation of the cipher
+    states = cipher.states
+    layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
+    positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
+    model_versions = attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
+    
+    # generate the constraints in the input and each round, and objective function for weight
+    constraints, obj_fun = attacks.gen_round_constraints(cipher=cipher, model_type=model_type, model_versions=model_versions)
+    
+    # generate the constraints that the first input difference is not zero
+    states = {s: cipher.states[s] for s in ["STATE", "KEY_STATE"] if s in cipher.states}
+    constraints += attacks.gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, bitwise=False, value=1)
+    
+    # generate two types of additional constraints 
+    constraints += addkeyScheduleExtraConstr(cipher)
+    constraints += addMixColumnsExtraConstr(cipher)
+
+    # build and solve the milp model
+    result = attacks.attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
+    
+    return result
 
 
 if __name__ == '__main__':
-
-    single_key_diff_AES()
-    related_key_diff_AES()
+    r = 5
+    cipher = TEST_AES_BLOCKCIPHER(r, version=[128, 128])
+    related_key_diff_AES(cipher, r)
 
 
 
