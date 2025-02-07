@@ -881,13 +881,39 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
 
 class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_type ('xor' or '+') to incorporate the constant with value "constant" to the input variable and result is stored in the output variable 
                                   # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
-    def __init__(self, input_vars, output_vars, constant, add_type, modulo = None, ID = None, code_if_unrolled = None):
+    def __init__(self, input_vars, output_vars, constant, add_type, modulo = None, ID = None, code_if_unrolled = None, constants_if_unrolled=None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.constant = constant
         if add_type!='xor' and add_type!='modadd': raise Exception(str(self.__class__.__name__) + ": unknown add_type value")
         self.add_type = add_type
         self.modulo = modulo
         self.code_if_unrolled = code_if_unrolled
+        self.constants_if_unrolled = constants_if_unrolled
+
+    def generate_header(self, model_type='python'):
+        if model_type == 'python' and self.code_if_unrolled and self.constants_if_unrolled: 
+            if self.model_version == 0: return [f"#Constraints List\n{self.constants_if_unrolled}"]
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'c' and self.code_if_unrolled and self.constants_if_unrolled: 
+            if self.model_version == 0: 
+                headers = ["// Constraints List"]
+                parse_constants = self.constants_if_unrolled.split('\n')
+                for line in parse_constants:
+                    array_name, array_values = line.split('=', 1)
+                    array_name = array_name.strip()
+                    array_values = array_values.strip()
+                    if array_values.startswith('[') and array_values.endswith(']'):
+                        array_values = array_values.replace('[', '{').replace(']', '}')
+                        headers.append(f"int {array_name}[] = {array_values};")
+                    elif array_values.startswith('0b'):
+                        # Handle long binary numbers, assuming they fit within unsigned long long
+                        headers.append(f"unsigned long long {array_name} = {array_values};")
+                    else:
+                        # Assuming it's a single integer or other simple constant
+                        headers.append(f"int {array_name} = {array_values};")
+                return headers
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        else: return None
         
     def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if self.code_if_unrolled==None or unroll==True: my_constant=hex(self.constant)
