@@ -480,15 +480,11 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         elif model_type == 'c': 
             if self.model_version == 0: 
                 if self.input_bitsize <= 8: 
-                    if isinstance(self.input_vars[0], str):
-                        return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-                    elif isinstance(self.input_vars[0], list):
-                        return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
+                    if isinstance(self.input_vars[0], list): return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
+                    else: return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
                 else: 
-                    if isinstance(self.input_vars[0], str):
-                        return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-                    elif isinstance(self.input_vars[0], list):
-                        return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
+                    if isinstance(self.input_vars[0], list): return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
+                    else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: return None
 
@@ -1141,15 +1137,41 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
 class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute the bitwise XOR on the two input variables towards the output variable 
-    def __init__(self, input_vars, output_vars, ID = None):
+    def __init__(self, input_vars, output_vars, ID = None, mat=None):
         super().__init__(input_vars, output_vars, ID = ID)
-        
+        self.mat = mat
+
     def generate_model(self, model_type='python', model_version = "diff_0", unroll=False):
         if model_type == 'python': 
-            if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
+            if self.model_version == 0: 
+                if self.mat:
+                    n = len(self.mat)
+                    s = self.get_var_ID('out', 0, unroll) + ' = ' 
+                    for i in range(n):
+                        s += "(("
+                        if self.mat[i][0] != None:
+                            s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
+                        if self.mat[i][1] != None:
+                            s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
+                        s += f") << {n-i-1}) | "
+                    return [s[:-2]]
+                else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': 
-            if self.model_version == 0: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
+            if self.model_version == 0:
+                if self.mat:
+                    n = len(self.mat)
+                    s = self.get_var_ID('out', 0, unroll) + ' = '
+                    for i in range(n):
+                        s += "("
+                        if self.mat[i][0] != None:
+                            s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
+                        if self.mat[i][1] != None:
+                            s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
+                        s += f") << {n-i-1} | "
+                    s = s.rstrip(' | ') + ';'
+                    return [s]
+                else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
             if model_version == "diff_0": 
@@ -1164,25 +1186,58 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
             model_list = []
             if model_version == "diff_0": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)): 
-                    i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
-                    model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
+                if self.mat:
+                    var_d = []
+                    for i in range(len(self.mat)): 
+                        if self.mat[i][0] and self.mat[i][1]:
+                            d = self.ID + '_d_' + str(i)
+                            var_d += [d]
+                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                            model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
+                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
+                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
+                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
+                else:
+                    var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                    for i in range(len(var_in1)): 
+                        i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
+                        model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
                 return model_list
             elif model_version == "diff_1": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):  
-                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
+                if self.mat:
+                    for i in range(len(self.mat)): 
+                        if self.mat[i][0] and self.mat[i][1]:
+                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                            model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
+                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
+                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
+                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
+                else:
+                    for i in range(len(var_in1)):  
+                        i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                        model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
+                    model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
                 return model_list
             elif model_version == "diff_2": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):  
-                    i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
-                    model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
+                if self.mat:
+                    var_d = []
+                    for i in range(len(var_in1)): 
+                        if self.mat[i][0] and self.mat[i][1]:
+                            d = self.ID + '_d_' + str(i)
+                            var_d += [d]
+                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                            model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
+                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
+                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
+                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
+                else:
+                    var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                    for i in range(len(var_in1)):  
+                        i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
+                        model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
                 return model_list
             elif model_version == "truncated_diff": 
