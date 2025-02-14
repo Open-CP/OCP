@@ -327,12 +327,13 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
                 elif isinstance(self.input_vars[0], list):
                     x_bits = len(self.input_vars[0])
-                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("out", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))
+                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))+ ";"
                     model_list = [x_expr]
-                    model_list.append(f'y = {str(self.__class__.__name__)}[x]')
-                    y_vars = ', '.join(f'{self.get_var_ID("out", 0, unroll=unroll, index2=i)}' for i in range(x_bits))
-                    y_bits = ', '.join(f'(y >> {i}) & 1' for i in range(x_bits))
-                    model_list.append(f'{y_vars} = {y_bits}')
+                    model_list.append(f'y = {str(self.__class__.__name__)}[x];')
+                    for i in range(x_bits):
+                        y_vars = self.get_var_ID("out", 0, unroll=unroll, index2=i)
+                        y_bits = f'(y >> {x_bits - 1 - i}) & 1'
+                        model_list.append(f'{y_vars} = {y_bits};')
                     return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'sat': 
@@ -827,7 +828,13 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             if self.model_version == 0: return ["#Rotation Macros ", "def ROTL(n, d, bitsize): return ((n << d) | (n >> (bitsize - d))) & (2**bitsize - 1)", "def ROTR(n, d, bitsize): return ((n >> d) | (n << (bitsize - d))) & (2**bitsize - 1)"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': 
-            if self.model_version == 0: return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> (bitsize - d))) & ((1<<bitsize) - 1)) ", "#define ROTR(n, d, bitsize) (((n >> d) | (n << (bitsize - d))) & ((1<<bitsize) - 1))"]
+            if self.model_version == 0: 
+                if self.input_vars[0].bitsize < 32:
+                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> (bitsize - d))) & ((1<<bitsize) - 1)) ", "#define ROTR(n, d, bitsize) (((n >> d) | (n << (bitsize - d))) & ((1<<bitsize) - 1))"]
+                elif 32 <= self.input_vars[0].bitsize < 64:
+                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))"]
+                else:
+                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: return None
 
@@ -900,13 +907,9 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                     array_values = array_values.strip()
                     if array_values.startswith('[') and array_values.endswith(']'):
                         array_values = array_values.replace('[', '{').replace(']', '}')
-                        headers.append(f"int {array_name}[] = {array_values};")
-                    elif array_values.startswith('0b'):
-                        # Handle long binary numbers, assuming they fit within unsigned long long
-                        headers.append(f"unsigned long long {array_name} = {array_values};")
+                        headers.append(f"unsigned long long {array_name}[] = {array_values};")
                     else:
-                        # Assuming it's a single integer or other simple constant
-                        headers.append(f"int {array_name} = {array_values};")
+                        headers.append(f"unsigned long long {array_name} = {array_values};")
                 return headers
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: return None
@@ -925,7 +928,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'c': 
             if self.model_version == 0: 
-                if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant + ';']
+                if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
                 elif self.add_type == "+":
                     if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
                     else: 
