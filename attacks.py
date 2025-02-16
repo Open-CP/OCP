@@ -439,6 +439,6 @@ def diff_attacks(r, cipher, model_versions={}, add_constraints="", model_type="m
     if model_type == "milp": 
         result = attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
     elif model_type == "sat": 
-        result = attacks_sat_model(constraints=constraints, obj_var=list(sum(obj_fun, [])), filename=f"files/{r}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf")
+        result = attacks_sat_model(constraints=constraints, obj_var=list(sum(obj_fun, [])), filename=f"files/{r}_round_{cipher.name}_differential_trail_search_sat.cnf")
     
     return result
