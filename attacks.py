@@ -403,3 +403,42 @@ def set_model_noweight(): # TO DO
     """
     noweight = []
     return noweight
+
+
+def diff_attacks(r, cipher, model_versions={}, add_constraints="", model_type="milp"):
+    """
+    Perform differential attacks using either MILP or SAT models.
+    
+    Args:
+        r (int): The number of rounds to analyze.
+        cipher (Cipher): The cipher object.
+        model_versions (dict): A dictionary mapping constraint IDs within the cipher to their specific model_version.
+        add_constraints (str): Additional constraints to be added to the model.
+        model_type (str): The type of model to use for the attack ('milp' or 'sat'). Defaults to 'milp'.
+        
+    Returns:
+        result: The result of the MILP or SAT model.
+    """
+
+    # Validate model_type input
+    if model_type not in ["milp", "sat"]:
+        raise ValueError("Invalid model type specified. Choose 'milp' or 'sat'.")
+
+
+    # Step 1. Generate constraints for the input, each round, and the objective function
+    constraints, obj_fun = gen_round_constraints(cipher=cipher, model_type=model_type, model_versions=model_versions)
+    
+    # Step 2. Generate constraints ensuring that the input difference of the first round is not zero
+    states = {s: cipher.states[s] for s in ["STATE", "KEY_STATE"] if s in cipher.states}
+    constraints += gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, value=1)    
+    
+    # Step 3. Include user-defined additional constraints if provided
+    constraints += add_constraints
+
+    # Step 4. Execute the attack based on the specified model_type
+    if model_type == "milp": 
+        result = attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
+    elif model_type == "sat": 
+        result = attacks_sat_model(constraints=constraints, obj_var=list(sum(obj_fun, [])), filename=f"files/{r}_round_{cipher.name}_singlekey_differential_path_search_sat.cnf")
+    
+    return result
