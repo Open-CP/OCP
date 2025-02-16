@@ -146,44 +146,50 @@ def gen_round_constraints(cipher, model_type = "milp", rounds=None, states=None,
             - **list[str]**: Objective function terms.
     """
 
-    if rounds is None:
-        rounds = ["inputs"] + list(range(1, cipher.nbr_rounds + 1))
-
     if states is None:
-        states = cipher.states
+        states = [s for s in cipher.states]
+    
+    if rounds is None:
+        rounds = {"inputs": "inputs"}
+        rounds.update({s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states})
 
     if layers is None:
         layers = {s: list(range(cipher.states[s].nbr_layers + 1)) for s in states}
 
     if positions is None:
-        for r in rounds:
-            if r == "inputs": 
-                positions = {"inputs": list(range(len(cipher.inputs_constraints)))}
-            if r != "inputs":
-                positions[r] = {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s]} for s in states}
-
+        positions = {}
+    if "inputs" in rounds:
+        positions["inputs"] = list(range(len(cipher.inputs_constraints)))
+    for s in states:
+        if s not in positions:
+            positions[s] = {}
+        for r in rounds[s]:
+            if r not in positions[s]:
+                positions[s][r] = {}
+            for l in layers[s]:
+                positions[s][r][l] = list(range(len(cipher.states[s].constraints[r][l])))
 
     constraint, obj = [], []
-    for r in rounds:
-        if r == "inputs": # constrains for linking the input and the first round 
-            for p in positions["inputs"]:
-                cons = cipher.inputs_constraints[p]
-                model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
-                cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
-                constraint += cons_gen
-        else:  # constrains for each round 
-            for s in states:
-                for l in layers[s]:
-                    for p in positions[r][s][l]:
-                        cons = cipher.states[s].constraints[r][l][p]
-                        model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
-                        cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
-                        constraint += cons_gen
-                        if cons.ID not in no_weights and hasattr(cons, 'weight'): obj += [cons.weight]
+    if r == "inputs": # constrains for linking the input and the first round 
+        for p in positions["inputs"]:
+            cons = cipher.inputs_constraints[p]
+            model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
+            cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
+            constraint += cons_gen
+    for s in states:  
+        for r in rounds[s]:
+            for l in layers[s]:
+                for p in positions[s][r][l]:
+                    cons = cipher.states[s].constraints[r][l][p]
+                    print(cons.ID, model_versions[cons.ID])
+                    model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
+                    cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
+                    constraint += cons_gen
+                    if cons.ID not in no_weights and hasattr(cons, 'weight'): obj += [cons.weight]
     return constraint, obj
 
 
-def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=None, states=None, layers=None, positions=None, bitwise=True, vars=None, value=None): 
+def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=None, states=None, layers=None, positions=None, value=None, vars=None, bitwise=True): 
     """
     Generate additional constraints to the model based on specified parameters.
 
@@ -269,7 +275,7 @@ def set_model_versions(cipher, version, rounds=None, states=None, layers=None, p
                 for s in states: # Set model versions for constraints in a specific state
                     for l in layers[s]: # Set model versions for constraints in a specific layer
                         for p in positions[r][s][l]:
-                            model_versions[f"{ cipher.states[s].constraints[r][l][p].ID}"] = version    
+                            model_versions[f"{cipher.states[s].constraints[r][l][p].ID}"] = version    
     return model_versions
 
 
@@ -405,7 +411,7 @@ def set_model_noweight(): # TO DO
     return noweight
 
 
-def diff_attacks(r, cipher, model_versions={}, add_constraints="", model_type="milp"):
+def diff_attacks(r, cipher, model_versions={}, add_constraints="", model_type="milp", bitwise=True):
     """
     Perform differential attacks using either MILP or SAT models.
     
@@ -424,17 +430,16 @@ def diff_attacks(r, cipher, model_versions={}, add_constraints="", model_type="m
     if model_type not in ["milp", "sat"]:
         raise ValueError("Invalid model type specified. Choose 'milp' or 'sat'.")
 
-
     # Step 1. Generate constraints for the input, each round, and the objective function
     constraints, obj_fun = gen_round_constraints(cipher=cipher, model_type=model_type, model_versions=model_versions)
     
     # Step 2. Generate constraints ensuring that the input difference of the first round is not zero
     states = {s: cipher.states[s] for s in ["STATE", "KEY_STATE"] if s in cipher.states}
-    constraints += gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, value=1)    
+    constraints += gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", rounds=[1], states=states, layers = {s: [0] for s in states}, positions = {1: {s: {0: list(range(states[s].nbr_words))} for s in states}}, value=1, bitwise=bitwise)    
     
     # Step 3. Include user-defined additional constraints if provided
     constraints += add_constraints
-
+    
     # Step 4. Execute the attack based on the specified model_type
     if model_type == "milp": 
         result = attacks_milp_model(constraints=constraints, obj_fun=obj_fun, filename=f"files/{r}_round_{cipher.name}_differential_trail_search_milp.lp")
