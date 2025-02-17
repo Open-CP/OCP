@@ -181,7 +181,6 @@ def gen_round_constraints(cipher, model_type = "milp", rounds=None, states=None,
             for l in layers[s]:
                 for p in positions[s][r][l]:
                     cons = cipher.states[s].constraints[r][l][p]
-                    print(cons.ID, model_versions[cons.ID])
                     model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0"  
                     cons_gen = cons.generate_model(model_type=model_type, model_version = model_v, unroll=True)
                     constraint += cons_gen
