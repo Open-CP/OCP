@@ -170,7 +170,7 @@ def gen_round_constraints(cipher, model_type = "milp", rounds=None, states=None,
                 positions[s][r][l] = list(range(len(cipher.states[s].constraints[r][l])))
 
     constraint, obj = [], []
-    if r == "inputs": # constrains for linking the input and the first round 
+    if "inputs" in rounds: # constrains for linking the input and the first round 
         for p in positions["inputs"]:
             cons = cipher.inputs_constraints[p]
             model_v = model_versions[cons.ID] if cons.ID in model_versions else "diff_0" 
