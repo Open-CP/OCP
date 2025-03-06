@@ -1,7 +1,7 @@
 import primitives as prim
-import variables as var
-import operators as op
-import attacks
+import variables.variables as var
+import operators.operators as op
+import attacks.attacks as attacks
 
 # implement Boura's MILP models for searching related-key differetial charactristics of AES, cited: "Related-Key Differential Analysis of the AES". 
 

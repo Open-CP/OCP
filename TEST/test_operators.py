@@ -2,9 +2,9 @@ import sys
 import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-import operators as op
-import variables as var
-import solving
+import operators.operators as op
+import variables.variables as var
+import solving.solving as solving
 
 
 def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
@@ -30,10 +30,10 @@ def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
             print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
             
             # Define objective function if weight exists
-            obj_fun = [operator.weight] if getattr(operator, "weight", None) else []
+            obj_fun = operator.weight if hasattr(operator, "weight") else []
             
             # Generate MILP model
-            solving.gen_milp_model(constraints=milp_constraints, obj_fun=obj_fun, filename=filename) 
+            model = solving.gen_milp_model(constraints=milp_constraints, obj_fun=obj_fun, filename=filename) 
             
             # Solve MILP model for the optimal solution
             sol_list, obj_list = solving.solve_milp(filename, solving_goal="optimize")  
@@ -52,10 +52,10 @@ def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
             print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
             
             # Define objective function if weight exists
-            obj_var = [operator.weight] if getattr(operator, "weight", None) else []
+            obj_var = operator.weight if hasattr(operator, "weight") else []
             
             # Generate SAT model
-            num_var, variable_map, numerical_cnf = solving.gen_sat_model(constraints=sat_constraints, obj_var=obj_var, filename=filename) 
+            model, variable_map = solving.gen_sat_model(constraints=sat_constraints, obj_var=obj_var, filename=filename) 
             print("variable_map in sat:\n", variable_map)
             
             # Solve SAT model for the optimal solution
