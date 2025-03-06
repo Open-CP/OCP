@@ -1,366 +1,8 @@
 # TODOs:
 # possibility to have several dimensions on the state
-
-import operators as op
-import primitives as prim
-import variables as var
-import attacks 
-
-
-    
-def test_operator_MILP(operator, model_v="diff_0", mode=0):
-    """
-    This function generates MILP constraints for the given operator and writes them to a .lp file.
-    Args:
-    operator (object): The operator object for which the MILP model will be generated.
-    model_v (str): Version of the model to be used (default is 'diff_0').
-    mode (int): Mode for the operator S-box (default is 0).
-    """
-    
-    # generate milp constraints
-    if "Sbox" in str(type(operator).__name__): milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, mode= mode, unroll=True)
-    else: milp_constraints = operator.generate_model(model_type='milp', model_version = model_v, unroll=True)
-    print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
-    
-    # generate and solve the milp model 
-    filename = f'files/milp_{type(operator).__name__}_{model_v}.lp'
-    attacks.attacks_milp_model(constraints=milp_constraints, solving_goal="all_solutions", filename=filename)
-
-
-def test_operator_SAT(operator, model_v="diff_0", mode=0):
-    """
-    This function generates SAT constraints for the given operator and writes them to a .cnf file.
-    Args:
-    operator (object): The operator object for which the SAT model will be generated.
-    model_v (str): Version of the model to be used (default is 'diff_0').
-    mode (int): Mode for the operator S-box (default is 0).
-    """
-
-    # generate sat constraints
-    if "Sbox" in str(type(operator).__name__): sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, mode= mode, unroll=True)    
-    else: sat_constraints = operator.generate_model(model_type='sat', model_version=model_v, unroll=True)        
-    print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
-    
-    # generate and solve the sat model 
-    filename = f'files/sat_{type(operator).__name__}_{model_v}.cnf'
-    attacks.attacks_sat_model(constraints=sat_constraints, solving_goal="all_solutions", filename=filename)
-
-
-# ********************* TEST OF OPERATORS MODELING IN MILP and SAT********************* #   
-def TEST_Equal_MILP_SAT():  
-    print("\n********************* operation: Equal ********************* ")
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    print("Input:")
-    my_input[0].display()
-    print("Output:")
-    my_output[0].display()
-    equal = op.Equal(my_input, my_output, ID='Equal')
-    python_code = equal.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = equal.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(equal)
-    test_operator_MILP(equal, "truncated_diff")
-    test_operator_SAT(equal)
-    test_operator_SAT(equal, "truncated_diff")
-
-
-
-def TEST_Rot_MILP_SAT(): 
-    print("\n********************* operation: Rot ********************* ")
-    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    # rot = op.Rot(my_input, my_output, direction= 'l', amount=2, ID='Rot')
-    rot = op.Rot(my_input, my_output, direction= 'r', amount=2, ID='Rot')
-    python_code = rot.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = rot.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))       
-    test_operator_MILP(rot)
-    test_operator_SAT(rot)
-
-
-
-def TEST_Shift_MILP_SAT(): 
-    print("\n********************* operation: Shift ********************* ")
-    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    shift = op.Shift(my_input, my_output, direction='l', amount=1, ID='Shift')
-    # shift = op.Shift(my_input, my_output, direction='r', amount=1, ID='Shift')
-    python_code = shift.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = shift.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(shift)
-    test_operator_SAT(shift)
-    
-    
-
-def TEST_Modadd_MILP_SAT(): 
-    print("\n********************* operation: ModAdd ********************* ")
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    my_input[1].display()
-    print("output:")
-    my_output[0].display()
-    mod_add = op.ModAdd(my_input, my_output, ID = 'ModAdd')
-    python_code = mod_add.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = mod_add.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))   
-    test_operator_MILP(mod_add)
-    test_operator_SAT(mod_add)
-    
-    
-
-def TEST_bitwiseAND_MILP_SAT(): 
-    print("\n********************* operation: bitwiseAND ********************* ")
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    my_input[1].display()
-    print("output:")
-    my_output[0].display()
-    bit_and = op.bitwiseAND(my_input, my_output, ID = 'AND')
-    python_code = bit_and.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = bit_and.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))       
-    test_operator_MILP(bit_and)
-    test_operator_SAT(bit_and)
-    # regard bit-wise AND as an S-box and compute its ddt 
-    and_sbox = op.Sbox([var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)], input_bitsize=2, output_bitsize=1, ID="and_sbox")
-    and_sbox.table = [0,0,0,1]
-    ddt = and_sbox.computeDDT()
-    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
-    
-    
-
-def TEST_bitwiseOR_MILP_SAT():   
-    print("\n********************* operation: bitwiseOR ********************* ")
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    my_input[1].display()
-    print("output:")
-    my_output[0].display()
-    bit_or = op.bitwiseOR(my_input, my_output, ID = 'OR')
-    python_code = bit_or.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = bit_or.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(bit_or)
-    test_operator_SAT(bit_or)
-    or_sbox = op.Sbox([var.Variable(2,ID="in"+str(i)) for i in range(1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)], input_bitsize=2, output_bitsize=1, ID="or_sbox")
-    or_sbox.table = [0,1,1,1]
-    ddt = or_sbox.computeDDT()    
-    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
-    
-    
-    
-def TEST_bitwiseXOR_MILP_SAT():  
-    print("\n********************* operation: bitwiseXOR ********************* ")
-    my_input, my_output = [var.Variable(2,ID="in"+str(i)) for i in range(2)], [var.Variable(2,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    my_input[1].display()
-    print("output:")
-    my_output[0].display()
-    bit_xor = op.bitwiseXOR(my_input, my_output, ID = 'XOR')
-    python_code = bit_xor.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = bit_xor.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))      
-    for v in range(3): 
-        test_operator_MILP(bit_xor, model_v = "diff_" + str(v))
-    test_operator_MILP(bit_xor, model_v = "truncated_diff")
-    test_operator_MILP(bit_xor, model_v = "truncated_diff_1")
-    test_operator_SAT(bit_xor)
-      
-   
-     
-def TEST_bitwiseNOT_MILP_SAT(): 
-    print("\n********************* operation: bitwiseNOT ********************* ")
-    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    bit_not = op.bitwiseNOT(my_input, my_output, ID = 'NOT')
-    python_code = bit_not.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = bit_not.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(bit_not)
-    test_operator_SAT(bit_not)
-    not_sbox = op.Sbox([var.Variable(1,ID="in"+str(i)) for i in range(1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)], input_bitsize=1, output_bitsize=1, ID="not_sbox")
-    not_sbox.table = [1,0]
-    ddt = not_sbox.computeDDT()   
-    print("ddt and number of non-zeros", ddt, len([ddt[i][j] for i in range(len(ddt)) for j in range(len(ddt[i])) if ddt[i][j] != 0]))
-    
-    
-    
-def TEST_Sbox_MILP_SAT(): 
-    print("\n********************* operation: Sbox ********************* ")
-    ascon_sbox = op.ASCON_Sbox([var.Variable(5,ID="in"+str(i)) for i in range(1)], [var.Variable(5,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of ascon_sbox: ", ascon_sbox.differential_branch_number())
-    python_code = ascon_sbox.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = ascon_sbox.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code)) 
-
-    skinny4_sbox = op.Skinny_4bit_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of skinny4_sbox: ", skinny4_sbox.differential_branch_number())
-
-    skinny8_sbox = op.Skinny_8bit_Sbox([var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of skinny8_sbox: ", skinny8_sbox.differential_branch_number())
-
-    gift_sbox = op.GIFT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of gift_sbox: ", gift_sbox.differential_branch_number())
-
-    aes_sbox = op.AES_Sbox([var.Variable(8,ID="in"+str(i)) for i in range(1)], [var.Variable(8,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of aes_sbox: ", aes_sbox.differential_branch_number())
-
-    twine_sbox = op.TWINE_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of twine_sbox: ", twine_sbox.differential_branch_number())
-
-    present_sbox = op.PRESENT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of present_sbox: ", present_sbox.differential_branch_number())
-
-    knot_sbox = op.KNOT_Sbox([var.Variable(4,ID="in"+str(i)) for i in range(1)], [var.Variable(4,ID="out"+str(i)) for i in range(1)], ID="sbox")
-    print("differential branch number of knot_sbox: ", knot_sbox.differential_branch_number())
-
-
-    for sbox in [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox]:
-        for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
-            test_operator_MILP(sbox, model_v, mode=0)
-            if str(sbox.__class__.__name__) != "GIFT_Sbox": test_operator_SAT(sbox, model_v, mode=0)
-
-
-    for sbox in [skinny8_sbox]:
-        for model_v in ["diff_0", "diff_p", "truncated_diff"]: 
-            test_operator_MILP(sbox, model_v, mode=0)
-        test_operator_SAT(sbox, "diff_0", mode=0)
-
-
-    for sbox in [aes_sbox]:
-        for model_v in ["diff_0", "diff_1", "truncated_diff"]: 
-            test_operator_MILP(sbox, model_v, mode=0)
-        test_operator_MILP(sbox, "diff_p", mode=1)
-        test_operator_SAT(sbox, "diff_0", mode=0)    
-
-
-    for sbox in [ascon_sbox, gift_sbox, skinny4_sbox, twine_sbox, present_sbox, knot_sbox, skinny8_sbox, aes_sbox]:
-        model_v = "truncated_diff_1"
-        test_operator_MILP(sbox, model_v)
-
-
-def TEST_N_XOR_MILP_SAT(): 
-    print("\n********************* operation: N_XOR ********************* ")
-    n = 2
-    my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(n+1)], [var.Variable(1,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    for i in range(n):
-        my_input[i].display()
-    print("output:")
-    my_output[0].display()
-    n_xor = op.N_XOR(my_input, my_output, ID = 'N_XOR')
-    test_operator_MILP(n_xor)
-    test_operator_MILP(n_xor, model_v="diff_1")
-    test_operator_SAT(n_xor)
-    
-   
-
-def TEST_Matrix_MILP_SAT(): 
-    print("\n********************* operation: Matrix ********************* ")
-    # test aes's matrix
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(4)], [var.Variable(8,ID="out"+str(i)) for i in range(4)]
-    print("input:")
-    for i in range(len(my_input)): my_input[i].display()
-    print("output:")
-    for i in range(len(my_output)): my_output[i].display()
-    mat_aes = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
-    matrix = op.Matrix("mat_aes", my_input, my_output, mat = mat_aes, polynomial=0x1b, ID = 'Matrix_AES')
-    python_code = matrix.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = matrix.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(matrix)
-    test_operator_MILP(matrix, model_v="diff_1")
-    test_operator_MILP(matrix, model_v="truncated_diff")
-    test_operator_MILP(matrix, model_v="truncated_diff_1")
-    test_operator_SAT(matrix)
-
-    # test skinny64's matrix
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
-    print("input:")
-    for i in range(len(my_input)): my_input[i].display()
-    print("output:")
-    for i in range(len(my_output)): my_output[i].display()
-    mat_skinny64 = [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]]
-    matrix_skinny64 = op.Matrix("mat_skinny", my_input, my_output, mat = mat_skinny64, ID = 'Matrix_SKINNY64')
-    python_code = matrix_skinny64.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", "\n".join(python_code))    
-    c_code = matrix_skinny64.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(matrix_skinny64)
-    test_operator_MILP(matrix_skinny64, model_v="diff_1")
-    test_operator_SAT(matrix_skinny64)
-    
-    
-    # test future's matrix
-    my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(4)], [var.Variable(4,ID="out"+str(i)) for i in range(4)]
-    print("input:")
-    for i in range(len(my_input)):
-        my_input[i].display()
-    print("output:")
-    my_output[0].display()
-    mat_future = [[8,9,1,8], [3,2,9,9], [2,3,8,9], [9,9,8,1]]
-    matrix = op.Matrix("mat_future", my_input, my_output, mat = mat_future, polynomial=0x3, ID = 'Matrix')
-    test_operator_MILP(matrix)
-    test_operator_MILP(matrix, model_v="diff_1")
-    test_operator_SAT(matrix)
-    
-
-def TEST_ConstantAdd_MILP_SAT(): 
-    print("\n********************* operation: ConstantAdd ********************* ")
-    my_input, my_output = [var.Variable(3,ID="in"+str(i)) for i in range(1)], [var.Variable(3,ID="out"+str(i)) for i in range(1)]
-    print("input:")
-    my_input[0].display()
-    print("output:")
-    my_output[0].display()
-    cons_add = op.ConstantAdd(my_input, my_output, 2, "xor", ID = 'ConstantAddXor')
-    python_code = cons_add.generate_model(model_type='python', unroll=True)
-    print("Python code: \n", python_code)  
-    c_code = cons_add.generate_model(model_type='c', unroll=True)
-    print("C code: \n", "\n".join(c_code))    
-    test_operator_MILP(cons_add)
-    test_operator_MILP(cons_add, model_v="truncated_diff")
-    test_operator_SAT(cons_add)
-    test_operator_SAT(cons_add, model_v="truncated_diff")
-
-
-def TEST_OPERATORS_MILP_SAT():  
-    TEST_Equal_MILP_SAT()
-    TEST_Rot_MILP_SAT()
-    TEST_Shift_MILP_SAT()
-    TEST_Modadd_MILP_SAT()
-    TEST_bitwiseAND_MILP_SAT()
-    TEST_bitwiseOR_MILP_SAT()
-    TEST_bitwiseXOR_MILP_SAT()
-    TEST_bitwiseNOT_MILP_SAT()
-    TEST_Sbox_MILP_SAT()
-    TEST_N_XOR_MILP_SAT()
-    TEST_Matrix_MILP_SAT()
-    TEST_ConstantAdd_MILP_SAT()
-    
+import primitives.primitives as prim
+import variables.variables as var
+import attacks.attacks as attacks 
 
 
 # ********************* TEST OF CIPHERS CODING IN PYTHON AND C********************* #  
@@ -451,117 +93,143 @@ def TEST_GIFT_BLOCKCIPHER(r=None, version = [64, 128]):
     return my_cipher
 
 
-def TEST_DIFF_ATTACK():
-    """
-    Perform differential cryptanalysis on several ciphers using the "attacks.diff_attacks().
-    
-    Procedure:
-    === Step 1: Set the number of rounds and instantiate the Cipher object ===
-    Initialize the cipher with the desired number of rounds. This involves setting up the cipher's structure and defining the number of rounds.
-
-    === Step 2: Configure Model Versions ===
+# ********************* Perform differential cryptanalysis on several ciphers ********************* #  
+"""
+Procedure:
+=== Step 1: Initialization of the cipher for a specified number of rounds ===
+=== Step 2: Configuration of model versions for differential analysis ===
     Configures the differential behavior of the cipher's operations based on the parameter model_version.
-    - model_versions = {} by default, which applies the model_version = "diff_0" to all operations.
-    - For ARX ciphers, the default setting aims to search for the differential trails with the highest probability.
-    - For S-box-based ciphers like ASCON and GIFT, the default setting aims to search for the differential trails with the minimal number of active S-boxes.
-    - For S-box-based ciphers, setting model_version = "diff_1" models difference propagation with probabilities, aimed at searching for the highest probability.
+    - model_versions = {} by default, which applies model_version = "diff_0" to all operations, aiming to search for the differential trails with the highest probability.
+    - model_version = "diff_1" for S-boxes, which models difference propagation without probabilities, aiming to search for the differential trails with the minimal number of active S-boxes.
+=== Step 3: Generate additional constraints ===
+    - add_constraints = [] by default, indicating no additional constraints are added to the model.
+    - users can generate additional constraints using "attacks.gen_add_constraints()".
+=== Step 4: Execute differential attacks ===
+    Execute attacks using the "attacks.diff_attacks()" function to construct a MILP or SAT model.
+    - model_type = "milp" by default, aiming to construct the MILP model.
+    - model_type = "sat",  aiming to construct the SAT model.
+=== Step 5: Solve the Model ===
+    - Call "solving.solve_milp()" for solving MILP models.
+    - Call "solving.solve_sat()" for solving SAT models.
+"""
     
-    === Step 3: Generate Additional Constraints ===
-    Allows additional constraints to the model:
-    - add_constraints = "" by default, indicating no additional constraints are added to the model.
-    - generate additional constraints using "attacks.gen_add_constraints()".
 
-    === Step 4: Execute Differential Attacks ===
-    Calls attacks.diff_attacks() to construct and solve the MILP or SAT model.
-    - model_type = "milp" by default.
-    """
-    
-
-    # TEST 1: Search for the best differential trail of r-round SPECK
-    r = 3
+def TEST_DIFF_ATTACK_SPECK():
+    # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
+    r = 6
     cipher = TEST_SPECK_PERMUTATION(r, version = 32) 
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_type="sat") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
-    # TEST 2: Search for the best differential trail of r-round SIMON
-    r = 3
+    
+    # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    
+
+    # TEST 3: Search for the best related-key differential trail of r-round SPECK by solving MILP models
+    cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+
+
+    # TEST 4: Search for the best related-key differential trail of r-round SPECK by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+
+def TEST_DIFF_ATTACK_SIMON():
+    # TEST 1: Search for the best differential trail of r-round SIMON by solving MILP models
+    r = 6
     cipher = TEST_SIMON_PERMUTATION(r, version = 32)
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_type="sat") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
-    # TEST 3: Search for the minimal number of active differentially S-boxes of r-round ASCON
+
+    # TEST 2: Search for the best differential trail of r-round SIMON by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+
+    # TEST 3: Search for the best related-key differential trail of r-round SIMON by solving MILP models
+    cipher = TEST_SIMON_BLOCKCIPHER(r, version=[32,64]) 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+
+
+    # TEST 4: Search for the best related-key differential trail of r-round SIMON by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+
+def TEST_DIFF_ATTACK_ASCON():
+    # TEST 1: Search for the best differential trail of r-round ASCON by solving MILP models
     r = 2
     cipher = TEST_ASCON_PERMUTATION(r) 
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_type="sat") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
-    # TEST 4:Search for the minimal number of active differentially S-boxes ofr-round GIFT
-    r = 4
-    cipher = TEST_GIFT_PERMUTATION(r, version = 64)
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_type="sat") 
 
-    # TEST 5: Search for the best differential trail of r-round ASCON
+    # TEST 2: Search for the best differential trail of r-round ASCON by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+    
+    # TEST 3: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving MILP models
     # set `model_version = "diff_1"` for each S-box.
-    r = 1
-    cipher = TEST_ASCON_PERMUTATION(r) 
     model_versions = attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[1]}, positions = {r: {"STATE": {1: list(range(64))}} for r in range(1, cipher.nbr_rounds + 1)})
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, model_type="sat") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    
 
-    # TEST 6: Search for the best differential trail of r-round GIFT
-    # set `model_version = "diff_1"` for each S-box.
-    r = 3
+    # TEST 4: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+
+def TEST_DIFF_ATTACK_GIFT():
+    # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP models
+    r = 5
     cipher = TEST_GIFT_PERMUTATION(r, version = 64)
-    model_versions = attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, model_type="milp") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
-    # TEST 7: Search for the best related-key differential trail of r-round SPECK
-    r = 6
-    cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) 
-    result = attacks.diff_attacks(r, cipher,  model_type="milp") 
-    result = attacks.diff_attacks(r, cipher,  model_type="sat") 
 
-    # TEST 8: Search for the best related-key differential trail of r-round SIMON
-    r = 7
-    cipher = TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-    result = attacks.diff_attacks(r, cipher, model_type="sat")
-
-    # TEST 9: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT
-    r = 6
-    cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])
-    result = attacks.diff_attacks(r, cipher, model_type="milp") 
-
-    # TEST 10: Search for the best related-key differential trail of r-round GIFT
+    # TEST 2: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving MILP models
     # set `model_version = "diff_1"` for each S-box.
-    r = 7
+    attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    
+
+    # TEST 3: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving SAT models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+
+    
+    # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP models
     cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])
-    model_versions = attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(16))}} for r in range(1, cipher.nbr_rounds + 1)})
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, model_type="milp") 
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+
+    # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
+    # set model_version = "diff_1" for each S-box.
+    attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+
+    # TEST 6: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
+    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
 
 
-    # TEST 11: Search for the best truncated differential trail of r-round AES
+def TEST_DIFF_ATTACK_AES():
+    # TEST 1: Search for the best truncated differential trail of r-round AES by solving MILP models
     # set model_version = "truncated_diff" for each operation within the cipher
     r = 6
     cipher = TEST_AES_PERMUTATION(r)
     states = cipher.states
     layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
     positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
-    model_versions = attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
-    result = attacks.diff_attacks(r, cipher,  model_versions=model_versions, model_type="milp", bitwise=False) 
+    attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
+    
 
-    # TEST 12: Search for the best truncated related-key differential trail of r-round AES
+    # TEST 2: Search for the best truncated related-key differential trail of r-round AES
     # set model_version = "truncated_diff" for each operation within the cipher
     r = 5
     cipher = TEST_AES_BLOCKCIPHER(r, version = [128, 128])
     states = cipher.states
     layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
     positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
-    model_versions = attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, model_type="milp", bitwise=False) 
+    attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
 
-    # TEST 13: Search for the best truncated differential trail that are used in Forgery attacks of r-round ROCCA_AD
+
+def TEST_DIFF_ATTACK_ROCCA_AD():
+    # TEST 1: Search for the best truncated differential trail that are used in Forgery attacks of r-round ROCCA_AD
     # set model_version = "truncated_diff" for each operation within the cipher
     # generate the following constraints to search for the differential trails that are used in Forgery attacks:
     # (1) input difference of the state is 0;
@@ -572,17 +240,14 @@ def TEST_DIFF_ATTACK():
     states = cipher.states
     layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
     positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
-    model_versions = attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
+    attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
     add_cons = attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128)]}}}, bitwise=False, value=0)
     add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=[cipher.nbr_rounds], states=["STATE"], layers={"STATE":[4]}, positions={cipher.nbr_rounds:{"STATE":{4:[i for i in range(128)]}}}, bitwise=False, value=0)
     add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="SUM_GREATER_EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128, 128+32*r)]}}}, bitwise=False, value=1)
-    result = attacks.diff_attacks(r, cipher, model_versions=model_versions, add_constraints=add_cons, model_type="milp", bitwise=False) 
-    
-    return result    
+    sol_list, obj_list = attacks.diff_attacks(cipher, add_constraints=add_cons, model_type="milp", goal="search_optimal_truncated_trail")
 
 
 if __name__ == '__main__':
-    TEST_OPERATORS_MILP_SAT()
     r = 2
     cipher = TEST_SPECK_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
     cipher = TEST_SIMON_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
@@ -599,7 +264,12 @@ if __name__ == '__main__':
     cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128]) # version = [64, 128],  [128, 128]
     generate_codes(cipher)
 
-    TEST_DIFF_ATTACK()
+    TEST_DIFF_ATTACK_SPECK()
+    TEST_DIFF_ATTACK_SIMON()
+    TEST_DIFF_ATTACK_ASCON()
+    TEST_DIFF_ATTACK_GIFT()
+    TEST_DIFF_ATTACK_AES()
+    TEST_DIFF_ATTACK_ROCCA_AD()
 
 
 
