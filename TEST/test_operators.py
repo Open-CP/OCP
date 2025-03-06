@@ -22,7 +22,10 @@ def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
     elif model_type == "milp":
         for model_v in model_v_list:
             filename = f'files/milp_{operator.ID}_{model_v}.lp' 
+            # Set model_version of the operator
             operator.model_version = model_v
+
+            # Generate milp constraints
             if "sbox" in operator.ID: 
                 milp_constraints = operator.generate_model(model_type='milp', mode= mode, unroll=True)
             else:
@@ -47,8 +50,14 @@ def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
         # Generate and solve SAT models
         for model_v in model_v_list:
             filename = f'files/sat_{operator.ID}_{model_v}.cnf'
+            # Set model_version of the operator
             operator.model_version = model_v
-            sat_constraints = operator.generate_model(model_type='sat', unroll=True)  
+
+            # Generate sat constraints
+            if "sbox" in operator.ID: 
+                sat_constraints = operator.generate_model(model_type='sat', mode= mode, unroll=True)
+            else:
+                sat_constraints = operator.generate_model(model_type='sat', unroll=True)
             print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
             
             # Define objective function if weight exists
