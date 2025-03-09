@@ -1,5 +1,3 @@
-# TODOs:
-# possibility to have several dimensions on the state
 import primitives.primitives as prim
 import variables.variables as var
 import attacks.attacks as attacks 
