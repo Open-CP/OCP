@@ -1,15 +1,20 @@
 import primitives.primitives as prim
 import variables.variables as var
 import attacks.attacks as attacks 
+import implementations.implementations as imp 
+import visualisations.visualisations as vis 
+import os
 
+if not os.path.exists('files'):
+    os.makedirs('files')
 
 # ********************* TEST OF CIPHERS CODING IN PYTHON AND C********************* #  
 def generate_codes(cipher):
-    cipher.generate_code("files/" + cipher.name + ".py", "python")
-    cipher.generate_code("files/" + cipher.name + "_unrolled.py", "python", True)
-    cipher.generate_code("files/" + cipher.name + ".c", "c")
-    cipher.generate_code("files/" + cipher.name + "_unrolled.c", "c", True)
-    cipher.generate_figure("files/" + cipher.name + ".pdf")
+    imp.generate_implementation(cipher,"files/" + cipher.name + ".py", "python")
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
+    imp.generate_implementation(cipher,"files/" + cipher.name + ".c", "c")
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.c", "c", True)
+    vis.generate_figure(cipher,"files/" + cipher.name + ".pdf")
     
 
 # ********************* TEST OF CIPHERS MODELING IN MILP and SAT********************* #   
@@ -53,7 +58,7 @@ def TEST_GIFT_PERMUTATION(r=None, version=64):
 
 def TEST_ROCCA_AD(r=None):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = prim.Rocca_AD_permutation(f"ROCCA_AD", my_input, my_output, nbr_rounds=r)
+    my_cipher = prim.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
@@ -246,28 +251,27 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
 
 
 if __name__ == '__main__':
-    r = 2
-    cipher = TEST_SPECK_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
-    cipher = TEST_SIMON_PERMUTATION(r, version = 32) # version = 32, 48, 64, 96, 128
-    cipher = TEST_AES_PERMUTATION(r)
-    cipher = TEST_ASCON_PERMUTATION(r) 
-    cipher = TEST_SKINNY_PERMUTATION(r, version = 64) # version = 64, 128
-    cipher = TEST_GIFT_PERMUTATION(r, version = 64) # version = 64, 128
-    cipher = TEST_ROCCA_AD(r)
+    r = 5
+    #generate_codes(TEST_SPECK_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
+    #generate_codes(TEST_SIMON_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
+    generate_codes(TEST_AES_PERMUTATION(r))
+    #generate_codes(TEST_ASCON_PERMUTATION(r))
+    #generate_codes(TEST_SKINNY_PERMUTATION(r, version = 64)) # version = 64, 128
+    #generate_codes(TEST_GIFT_PERMUTATION(r, version = 64)) # version = 64, 128
+    #generate_codes(TEST_ROCCA_AD(r))
 
-    cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
-    cipher = TEST_SIMON_BLOCKCIPHER(r, version = [32, 64]) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
-    cipher = TEST_AES_BLOCKCIPHER(r, version = [128, 128]) # version = [128, 128], [128, 192], [128, 256] 
-    cipher = TEST_SKINNY_BLOCKCIPHER(r, version = [64, 64]) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
-    cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128]) # version = [64, 128],  [128, 128]
-    generate_codes(cipher)
+    generate_codes(TEST_SPECK_BLOCKCIPHER(r, version=[32,64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    generate_codes(TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    #generate_codes(TEST_AES_BLOCKCIPHER(r, version = [128, 128])) # version = [128, 128], [128, 192], [128, 256] 
+    #generate_codes(TEST_SKINNY_BLOCKCIPHER(r, version = [64, 64])) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
+    #generate_codes(TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])) # version = [64, 128],  [128, 128]
 
-    TEST_DIFF_ATTACK_SPECK()
-    TEST_DIFF_ATTACK_SIMON()
-    TEST_DIFF_ATTACK_ASCON()
-    TEST_DIFF_ATTACK_GIFT()
-    TEST_DIFF_ATTACK_AES()
-    TEST_DIFF_ATTACK_ROCCA_AD()
+    #TEST_DIFF_ATTACK_SPECK()
+    #TEST_DIFF_ATTACK_SIMON()
+    #TEST_DIFF_ATTACK_ASCON()
+    #TEST_DIFF_ATTACK_GIFT()
+    #TEST_DIFF_ATTACK_AES()
+    #TEST_DIFF_ATTACK_ROCCA_AD()
 
 
 

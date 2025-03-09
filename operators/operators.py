@@ -2,17 +2,11 @@ from abc import ABC, abstractmethod
 import math
 import subprocess
 import time 
-import os
 import copy
 import operators.matrix as matrix
 from itertools import combinations
 
 
-if not os.path.exists('files'):
-    os.makedirs('files')
-
-
-# TODO make modules instead of classes ? 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
     raise Exception(class_name + ": version " + str(model_version) + " not existing for " + model_type)
 
@@ -47,7 +41,7 @@ class Operator(ABC):
             if index2 is not None: return self.input_vars[index][index2].ID if unroll else self.input_vars[index][index2].remove_round_from_ID()
             else: return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
             
-    def generate_header(self, model_type='python'):    # generic method that generates the code for the header of the modeling of that operator
+    def generate_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
     
     def get_vars(self, in_out, index=0, unroll=False):
@@ -95,15 +89,15 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
     
-        
-    def generate_model(self, model_type='python', unroll=False):   
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+    def generate_implementation(self, implementation_type='python', unroll=False):   
+        if implementation_type == 'python': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll)]
+        elif implementation_type == 'c': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            
+    def generate_model(self, model_type='sat', unroll=False):   
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":  
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
@@ -166,7 +160,6 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return ttable
 
 
-
     def ddt_to_truthtable(self, len_diff_spectrum, diff_weights, ddt):
         # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
         ttable = ''
@@ -202,7 +195,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         try:
             from pyeda.inter import espresso_tts
         except ImportError:
-            print("pyeda has not stalled, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/install.html...\n")
+            print("pyeda is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/install.html...\n")
             return ""
         if os.path.exists(filename):
             with open(filename, 'r') as file:
@@ -314,37 +307,50 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
         return len(set(self.table)) == len(self.table) and all(i in self.table for i in range(len(self.table)))
 
+    def generate_implementation(self, implementation_type='python', mode = 0, unroll=False, weight=True):
+        if implementation_type == 'python': 
+            if not isinstance(self.input_vars[0], list):
+                return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
+            elif isinstance(self.input_vars[0], list):
+                x_bits = len(self.input_vars[0])
+                x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))
+                model_list = [x_expr]
+                model_list.append(f'y = {self.__class__.__name__}[x]')
+                y_vars = ', '.join(f'{self.get_var_ID("out", 0, unroll=unroll, index2=i)}' for i in range(x_bits))
+                y_bits = ', '.join(f'(y >> {x_bits - 1 - i}) & 1' for i in range(x_bits))
+                model_list.append(f'{y_vars} = {y_bits}')
+                return model_list
+        elif implementation_type == 'c': 
+            if not isinstance(self.input_vars[0], list):
+                return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
+            elif isinstance(self.input_vars[0], list):
+                x_bits = len(self.input_vars[0])
+                x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))+ ";"
+                model_list = [x_expr]
+                model_list.append(f'y = {str(self.__class__.__name__)}[x];')
+                for i in range(x_bits):
+                    y_vars = self.get_var_ID("out", 0, unroll=unroll, index2=i)
+                    y_bits = f'(y >> {x_bits - 1 - i}) & 1'
+                    model_list.append(f'{y_vars} = {y_bits};')
+                return model_list
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
+        
+    def generate_header(self, implementation_type='python'):
+        if implementation_type == 'python': 
+            return [str(self.__class__.__name__) + ' = ' + str(self.table)]
+        elif implementation_type == 'c': 
+            if self.input_bitsize <= 8: 
+                if isinstance(self.input_vars[0], list): return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
+                else: return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+            else: 
+                if isinstance(self.input_vars[0], list): return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
+                else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+        else: return None
+            
+            
     def generate_model(self, model_type='python', mode = 0, unroll=False, weight=True):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                if not isinstance(self.input_vars[0], list):
-                    return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
-                elif isinstance(self.input_vars[0], list):
-                    x_bits = len(self.input_vars[0])
-                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))
-                    model_list = [x_expr]
-                    model_list.append(f'y = {self.__class__.__name__}[x]')
-                    y_vars = ', '.join(f'{self.get_var_ID("out", 0, unroll=unroll, index2=i)}' for i in range(x_bits))
-                    y_bits = ', '.join(f'(y >> {x_bits - 1 - i}) & 1' for i in range(x_bits))
-                    model_list.append(f'{y_vars} = {y_bits}')
-                    return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT":
-                if not isinstance(self.input_vars[0], list):
-                    return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + '];']
-                elif isinstance(self.input_vars[0], list):
-                    x_bits = len(self.input_vars[0])
-                    x_expr = 'x = ' + ' | '.join(f'({self.get_var_ID("in", 0, unroll=unroll, index2=i)} << {x_bits - 1 - i})'for i in range(x_bits))+ ";"
-                    model_list = [x_expr]
-                    model_list.append(f'y = {str(self.__class__.__name__)}[x];')
-                    for i in range(x_bits):
-                        y_vars = self.get_var_ID("out", 0, unroll=unroll, index2=i)
-                        y_bits = f'(y >> {x_bits - 1 - i}) & 1'
-                        model_list.append(f'{y_vars} = {y_bits};')
-                    return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
@@ -483,21 +489,6 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
 
-    def generate_header(self, model_type='python'):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return [str(self.__class__.__name__) + ' = ' + str(self.table)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                if self.input_bitsize <= 8: 
-                    if isinstance(self.input_vars[0], list): return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
-                    else: return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-                else: 
-                    if isinstance(self.input_vars[0], list): return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
-                    else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: return None
-
 
 class Skinny_4bit_Sbox(Sbox):         # Operator of the Skinny 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
@@ -615,21 +606,21 @@ class KNOT_Sbox(Sbox):             # Operator of the KNOT 4-bit Sbox
 class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
+        
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            expression = ' ^ '.join(self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars)))
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + expression]
+        elif implementation_type == 'c': 
+            expression_parts = []
+            for i in range(len(self.input_vars)):
+                expression_parts.append(self.get_var_ID('in', i, unroll))
+            expression = ' ^ '.join(expression_parts)
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+    
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT":
-                expression = ' ^ '.join(self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars)))
-                return [self.get_var_ID('out', 0, unroll) + ' = ' + expression]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT":
-                expression_parts = []
-                for i in range(len(self.input_vars)):
-                    expression_parts.append(self.get_var_ID('in', i, unroll))
-                expression = ' ^ '.join(expression_parts)
-                return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             var_in, var_out = [[f"{self.get_var_ID('in', i, unroll)}_{j}" for i in range(len(self.input_vars))] for j in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             model_list = []
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
@@ -693,69 +684,64 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         self.name = name
         self.mat = mat
         self.polynomial = polynomial
-        
-    def generate_header(self, model_type='python'):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
-                model_list.append("#Matrix Macro ")
-                model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")      
-                for i, out_v in enumerate(self.output_vars):
-                    model = '\t' + 'y' + str(i) + ' = ' 
-                    first = True
-                    for j, in_v in enumerate(self.input_vars):
-                        if self.mat[i][j] == 1: 
-                            if first: 
-                                model = model + "x" + str(j)
-                                first = False
-                            else: model = model + " ^ " + "x" + str(j)
-                        elif self.mat[i][j] != 0:
-                            if first: 
-                                model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
-                                first = False
-                            else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
-                    model_list.append(model)
-                model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
-                model_list.append("//Matrix Macro ")
-                model_list.append("#define " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2] + ", "  + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2] + ")  { \\")      
-                for i, out_v in enumerate(self.output_vars):
-                    model = '\t' + 'y' + str(i) + ' = ' 
-                    first = True
-                    for j, in_v in enumerate(self.input_vars):
-                        if self.mat[i][j] == 1: 
-                            if first: 
-                                model = model + "x" + str(j)
-                                first = False
-                            else: model = model + " ^ " + "x" + str(j)
-                        elif self.mat[i][j] != 0:
-                            if first: 
-                                model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
-                                first = False
-                            else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
-                    model_list.append(model + "; \\")
-                model_list.append("} ")
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        
+    
     def differential_branch_number(self):
         # Return differential branch number of the Matrix. TO DO
         return 5 # the branch number of matrix for aes is 5, to do for other ciphers
-    
+        
+    def generate_implementation(self, implementation_type='python', unroll=False, branch_num=None):
+        if implementation_type == 'python': 
+            return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
+        elif implementation_type == 'c': 
+            return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
+    def generate_header(self, implementation_type='python'):
+        if implementation_type == 'python': 
+            model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
+            model_list.append("#Matrix Macro ")
+            model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")      
+            for i, out_v in enumerate(self.output_vars):
+                model = '\t' + 'y' + str(i) + ' = ' 
+                first = True
+                for j, in_v in enumerate(self.input_vars):
+                    if self.mat[i][j] == 1: 
+                        if first: 
+                            model = model + "x" + str(j)
+                            first = False
+                        else: model = model + " ^ " + "x" + str(j)
+                    elif self.mat[i][j] != 0:
+                        if first: 
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                            first = False
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                model_list.append(model)
+            model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
+            return model_list
+        elif implementation_type == 'c': 
+            model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
+            model_list.append("//Matrix Macro ")
+            model_list.append("#define " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2] + ", "  + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2] + ")  { \\")      
+            for i, out_v in enumerate(self.output_vars):
+                model = '\t' + 'y' + str(i) + ' = ' 
+                first = True
+                for j, in_v in enumerate(self.input_vars):
+                    if self.mat[i][j] == 1: 
+                        if first: 
+                            model = model + "x" + str(j)
+                            first = False
+                        else: model = model + " ^ " + "x" + str(j)
+                    elif self.mat[i][j] != 0:
+                        if first: 
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                            first = False
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                model_list.append(model + "; \\")
+            model_list.append("} ")
+            return model_list
+            
     def generate_model(self, model_type='python', unroll=False, branch_num=None):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT":  
-                return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT":  
-                return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp' or model_type == 'sat': 
+        if model_type == 'milp' or model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "diff_1" or self.model_version == "DEFAULT":
                 model_list = []
                 if self.polynomial: bin_matrix = matrix.generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
@@ -812,18 +798,29 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
         if amount<=0 or amount>= input_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": wrong amount value")
         self.amount = amount
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ')']
+            else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ')']
+        elif implementation_type == 'c': 
+            if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
+            else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
+    def generate_header(self, implementation_type='python'):
+        if implementation_type == 'python': 
+            return ["#Rotation Macros ", "def ROTL(n, d, bitsize): return ((n << d) | (n >> (bitsize - d))) & (2**bitsize - 1)", "def ROTR(n, d, bitsize): return ((n >> d) | (n << (bitsize - d))) & (2**bitsize - 1)"]
+        elif implementation_type == 'c': 
+            if self.input_vars[0].bitsize < 32:
+                return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> (bitsize - d))) & ((1<<bitsize) - 1)) ", "#define ROTR(n, d, bitsize) (((n >> d) | (n << (bitsize - d))) & ((1<<bitsize) - 1))"]
+            elif 32 <= self.input_vars[0].bitsize < 64:
+                return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))"]
+            else:
+                return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
+        else: return None
+        
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ')']
-                else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ')']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                if self.direction == 'r': return [self.get_var_ID('out', 0, unroll) + ' = ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
-                else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
@@ -843,21 +840,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
-
-    def generate_header(self, model_type='python'):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return ["#Rotation Macros ", "def ROTL(n, d, bitsize): return ((n << d) | (n >> (bitsize - d))) & (2**bitsize - 1)", "def ROTR(n, d, bitsize): return ((n >> d) | (n << (bitsize - d))) & (2**bitsize - 1)"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                if self.input_vars[0].bitsize < 32:
-                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> (bitsize - d))) & ((1<<bitsize) - 1)) ", "#define ROTR(n, d, bitsize) (((n >> d) | (n << (bitsize - d))) & ((1<<bitsize) - 1))"]
-                elif 32 <= self.input_vars[0].bitsize < 64:
-                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((unsigned long long)(bitsize) - d))) & ((1ULL << (bitsize)) - 1))"]
-                else:
-                    return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: return None
+    
 
 class Shift(UnaryOperator):    # Operator for the shift function: shift of the input variable to the output variable with "direction" ('l' or 'r') and "amount" of bits
     def __init__(self, input_vars, output_vars, direction, amount, ID = None):
@@ -867,14 +850,15 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
         if amount<=0 or amount>= input_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": wrong amount value")
         self.amount = amount
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ") & (2**" + str(self.input_vars[0].bitsize) + " - 1)"]
+        elif implementation_type == 'c': 
+            return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ") & (2**" + str(self.input_vars[0].bitsize) + " - 1)"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
@@ -914,49 +898,45 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
         self.code_if_unrolled = code_if_unrolled
         self.constants_if_unrolled = constants_if_unrolled
 
-    def generate_header(self, model_type='python'):
-        if model_type == 'python' and self.code_if_unrolled and self.constants_if_unrolled: 
-            if self.model_version == "DEFAULT": return [f"#Constraints List\n{self.constants_if_unrolled}"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c' and self.code_if_unrolled and self.constants_if_unrolled: 
-            if self.model_version == "DEFAULT": 
-                headers = ["// Constraints List"]
-                parse_constants = self.constants_if_unrolled.split('\n')
-                for line in parse_constants:
-                    array_name, array_values = line.split('=', 1)
-                    array_name = array_name.strip()
-                    array_values = array_values.strip()
-                    if array_values.startswith('[') and array_values.endswith(']'):
-                        array_values = array_values.replace('[', '{').replace(']', '}')
-                        headers.append(f"unsigned long long {array_name}[] = {array_values};")
-                    else:
-                        headers.append(f"unsigned long long {array_name} = {array_values};")
-                return headers
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if self.code_if_unrolled==None or unroll==True: my_constant=hex(self.constant)
+        else: my_constant=self.code_if_unrolled
+        if implementation_type == 'python': 
+            if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
+            elif self.add_type == "+":
+                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + " + " + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+                else: 
+                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo)]
+        elif implementation_type == 'c': 
+            if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
+            elif self.add_type == "+":
+                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
+                else: 
+                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
+                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")  
+            
+    def generate_header(self, implementation_type='python'):
+        if implementation_type == 'python' and self.code_if_unrolled and self.constants_if_unrolled: 
+            return [f"#Constraints List\n{self.constants_if_unrolled}"]
+        elif implementation_type == 'c' and self.code_if_unrolled and self.constants_if_unrolled: 
+            headers = ["// Constraints List"]
+            parse_constants = self.constants_if_unrolled.split('\n')
+            for line in parse_constants:
+                array_name, array_values = line.split('=', 1)
+                array_name = array_name.strip()
+                array_values = array_values.strip()
+                if array_values.startswith('[') and array_values.endswith(']'):
+                    array_values = array_values.replace('[', '{').replace(']', '}')
+                    headers.append(f"unsigned long long {array_name}[] = {array_values};")
+                else:
+                    headers.append(f"unsigned long long {array_name} = {array_values};")
+            return headers
         else: return None
         
     def generate_model(self, model_type='python', unroll=False):
-        if self.code_if_unrolled==None or unroll==True: my_constant=hex(self.constant)
-        else: my_constant=self.code_if_unrolled
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
-                elif self.add_type == "+":
-                    if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + " + " + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                    else: 
-                        if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                        else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
-                elif self.add_type == "+":
-                    if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
-                    else: 
-                        if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                        else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if (self.model_version == "diff_0" or self.model_version == "DEFAULT") and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
@@ -979,29 +959,29 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
+
 class ModAdd(BinaryOperator): # Operator for the modular addition: add the two input variables together towards the output variable 
                               # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.modulo = modulo
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            if self.modulo == None: 
+                return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+            else: 
+                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
+        elif implementation_type == 'c': 
+            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ") & " + hex(2**self.input_vars[0].bitsize - 1) + ';']
+            else: 
+                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
+                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+    
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                if self.modulo == None: 
-                    return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else: 
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ") & " + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                else: 
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # cite: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
                 model_list = []
@@ -1060,28 +1040,28 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
         
+        
 class ModMul(BinaryOperator):  # Operator for the modular multiplication: multiply the two input variables together towards the output variable 
                                # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID )
         self.modulo = None
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+            else: 
+                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
+                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
+        elif implementation_type == 'c': 
+            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ';']
+            else: 
+                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
+                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+    
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT":
-                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else: 
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT":
-                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ';']
-                else: 
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
@@ -1090,14 +1070,15 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll)]
+        elif implementation_type == 'c': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1127,14 +1108,15 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll)]
+        elif implementation_type == 'c': 
+           return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+            
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1165,39 +1147,38 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
         super().__init__(input_vars, output_vars, ID = ID)
         self.mat = mat
 
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            if self.mat:
+                n = len(self.mat)
+                s = self.get_var_ID('out', 0, unroll) + ' = ' 
+                for i in range(n):
+                    s += "(("
+                    if self.mat[i][0] != None:
+                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
+                    if self.mat[i][1] != None:
+                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
+                    s += f") << {n-i-1}) | "
+                return [s[:-2]]
+            else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
+        elif implementation_type == 'c': 
+            if self.mat:
+                n = len(self.mat)
+                s = self.get_var_ID('out', 0, unroll) + ' = '
+                for i in range(n):
+                    s += "("
+                    if self.mat[i][0] != None:
+                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
+                    if self.mat[i][1] != None:
+                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
+                    s += f") << {n-i-1} | "
+                s = s.rstrip(' | ') + ';'
+                return [s]
+            else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+            
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                if self.mat:
-                    n = len(self.mat)
-                    s = self.get_var_ID('out', 0, unroll) + ' = ' 
-                    for i in range(n):
-                        s += "(("
-                        if self.mat[i][0] != None:
-                            s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
-                        if self.mat[i][1] != None:
-                            s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
-                        s += f") << {n-i-1}) | "
-                    return [s[:-2]]
-                else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT":
-                if self.mat:
-                    n = len(self.mat)
-                    s = self.get_var_ID('out', 0, unroll) + ' = '
-                    for i in range(n):
-                        s += "("
-                        if self.mat[i][0] != None:
-                            s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
-                        if self.mat[i][1] != None:
-                            s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
-                        s += f") << {n-i-1} | "
-                    s = s.rstrip(' | ') + ';'
-                    return [s]
-                else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = []
@@ -1285,16 +1266,15 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1)] 
+        elif implementation_type == 'c': 
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+            
     def generate_model(self, model_type='python', unroll=False):
-        if model_type == 'python': 
-            if self.model_version == "DEFAULT": 
-                return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1)]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type) 
-        elif model_type == 'c': 
-            if self.model_version == "DEFAULT": 
-                return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type) 
-        elif model_type == 'sat': 
+        if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version =="DEFAULT": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
@@ -1309,6 +1289,26 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
+
+class AESround(Operator): # Operator for the AES round
+    def __init__(self, input_vars, output_vars, ID = None, subkey=None):
+        super().__init__(input_vars, output_vars, ID = ID)
+        self.subkey = subkey
+        
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if implementation_type == 'python': 
+            pass
+        elif implementation_type == 'c': 
+            pass
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        
+    def generate_model(self, model_type='python', unroll=False):
+        if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+
+        
 class CustomOP(Operator):   # generic custom operator (to be defined by the user)
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID)
