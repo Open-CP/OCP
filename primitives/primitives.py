@@ -696,16 +696,11 @@ class AES_permutation(Permutation):
                 if i < full_rounds:
                     self.states["STATE"].SboxLayer("SB", i, 0, op.AES_Sbox) # Sbox layer   
                     self.states["STATE"].PermutationLayer("SR", i, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
-                    self.states["STATE"].MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]], "0x1B")  #Mixcolumns layer
+                    if i != full_rounds: self.states["STATE"].MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]], "0x1B")  #Mixcolumns layer
+                    else: self.states["STATE"].AddIndentityLayer("ID", i, 2)     # Identity layer 
                     self.states["STATE"].AddConstantLayer("AC", i, 3, "xor", [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14], ["0x0","0x1","0x2","0x3","0x5","0x6","0x7","0x4","0xa","0xb","0x8","0x9","0xf","0xc","0xd","0xe"])  # Constant layer            
-                elif i == full_rounds:
-                    self.states["STATE"].SboxLayer("SB", nbr_rounds, 0, op.AES_Sbox) # Sbox layer   
-                    self.states["STATE"].PermutationLayer("SR", nbr_rounds, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
-                    self.states["STATE"].AddConstantLayer("AC", nbr_rounds, 2, "xor", [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14], ["0x0","0x1","0x2","0x3","0x5","0x6","0x7","0x4","0xa","0xb","0x8","0x9","0xf","0xc","0xd","0xe"])  # Constant layer            
-                    self.states["STATE"].AddIndentityLayer("ID", nbr_rounds, 3)     # Identity layer 
-
-
-
+                    
+                    
 class Rocca_AD_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, model_type=0):
         
