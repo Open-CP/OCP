@@ -921,7 +921,6 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             return [f"#Constraints List\nRC={self.table}"]
         elif implementation_type == 'c': 
             bit_size = max(max(row) for row in self.table).bit_length()
-            print(bit_size)
             var_def_c = 'uint8_t' if bit_size <= 8 else "uint32_t" if bit_size <= 32 else "uint64_t" if bit_size <= 64 else "uint128_t"
             return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         else: return None
