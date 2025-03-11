@@ -93,15 +93,13 @@ class State:
             self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
         
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant". 
-    def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, code_if_unrolled=None, constants_if_unrolled=None):
+    def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table):
         if len(constant)<(self.nbr_words + self.nbr_temp_words): constant = constant + [None]*(self.nbr_words + self.nbr_temp_words - len(constant))
-        if not code_if_unrolled: code_if_unrolled = [None]*(self.nbr_words + self.nbr_temp_words)
-        elif code_if_unrolled and len(code_if_unrolled)<len(constant): code_if_unrolled += code_if_unrolled[0] * (len(constant)-len(code_if_unrolled))
         i = 0
         for j in range(self.nbr_words + self.nbr_temp_words):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
             if constant[j]!=None: 
-                self.constraints[crt_round][crt_layer].append(op.ConstantAdd([in_var], [out_var], constant[j], add_type, code_if_unrolled=code_if_unrolled[i], ID=generateID(name,crt_round,crt_layer,j), constants_if_unrolled=constants_if_unrolled))  
+                self.constraints[crt_round][crt_layer].append(op.ConstantAdd([in_var], [out_var], add_type, constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer,j)))  
                 i += 1
             else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
     
