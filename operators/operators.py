@@ -889,18 +889,17 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
 
 class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_type ('xor' or '+') to incorporate the constant with value "constant" to the input variable and result is stored in the output variable 
                                   # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
-    def __init__(self, input_vars, output_vars, constant, add_type, modulo = None, ID = None, code_if_unrolled = None, constants_if_unrolled=None):
+    def __init__(self, input_vars, output_vars, add_type, constant_table, round, index, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
-        self.constant = constant
         if add_type!='xor' and add_type!='modadd': raise Exception(str(self.__class__.__name__) + ": unknown add_type value")
         self.add_type = add_type
         self.modulo = modulo
-        self.code_if_unrolled = code_if_unrolled
-        self.constants_if_unrolled = constants_if_unrolled
+        self.table = constant_table
+        self.table_r, self.table_i = round, index
 
     def generate_implementation(self, implementation_type='python', unroll=False):
-        if self.code_if_unrolled==None or unroll==True: my_constant=hex(self.constant)
-        else: my_constant=self.code_if_unrolled
+        if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
+        else: my_constant=f"RC[i][{self.table_i}]"
         if implementation_type == 'python': 
             if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
             elif self.add_type == "+":
@@ -918,21 +917,13 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")  
             
     def generate_header(self, implementation_type='python'):
-        if implementation_type == 'python' and self.code_if_unrolled and self.constants_if_unrolled: 
-            return [f"#Constraints List\n{self.constants_if_unrolled}"]
-        elif implementation_type == 'c' and self.code_if_unrolled and self.constants_if_unrolled: 
-            headers = ["// Constraints List"]
-            parse_constants = self.constants_if_unrolled.split('\n')
-            for line in parse_constants:
-                array_name, array_values = line.split('=', 1)
-                array_name = array_name.strip()
-                array_values = array_values.strip()
-                if array_values.startswith('[') and array_values.endswith(']'):
-                    array_values = array_values.replace('[', '{').replace(']', '}')
-                    headers.append(f"unsigned long long {array_name}[] = {array_values};")
-                else:
-                    headers.append(f"unsigned long long {array_name} = {array_values};")
-            return headers
+        if implementation_type == 'python': 
+            return [f"#Constraints List\nRC={self.table}"]
+        elif implementation_type == 'c': 
+            bit_size = max(max(row) for row in self.table).bit_length()
+            print(bit_size)
+            var_def_c = 'uint8_t' if bit_size <= 8 else "uint32_t" if bit_size <= 32 else "uint64_t" if bit_size <= 64 else "uint128_t"
+            return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         else: return None
         
     def generate_model(self, model_type='python', unroll=False):
