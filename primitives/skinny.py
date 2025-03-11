@@ -108,7 +108,7 @@ class Skinny_block_cipher(Block_cipher):
             self.states["STATE"].PermutationLayer("SR", i, 3, [0,1,2,3, 7,4,5,6, 10,11,8,9, 13,14,15,12]) # Shiftrows layer
             self.states["STATE"].MatrixLayer("MC", i, 4, [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]])  #Mixcolumns layer
 
-        # Generate python and c code if unrolled
+        # Generate python and c code for round function if unrolled
         self.rounds_code_if_unrolled()
 
 
