@@ -1,4 +1,11 @@
 import primitives.primitives as prim
+import primitives.skinny as skinny
+import primitives.simon as simon
+import primitives.speck as speck
+import primitives.rocca as rocca
+import primitives.ascon as ascon
+import primitives.gift as gift
+import primitives.aes as aes
 import variables.variables as var
 import attacks.attacks as attacks 
 import implementations.implementations as imp 
@@ -21,78 +28,78 @@ def generate_codes(cipher):
 def TEST_SPECK_PERMUTATION(r=None, version=32):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
+    my_cipher = speck.Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
    
 
 def TEST_SIMON_PERMUTATION(r=None, version=32):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
+    my_cipher = simon.Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_ASCON_PERMUTATION(r=None):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
-    my_cipher = prim.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
+    my_cipher = ascon.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_SKINNY_PERMUTATION(r=None, version=64):
     my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.Skinny_permutation("SKINNY_PERM", version, my_input, my_output, nbr_rounds=r)
+    my_cipher = skinny.Skinny_permutation("SKINNY_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_AES_PERMUTATION(r=None):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
+    my_cipher = aes.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_GIFT_PERMUTATION(r=None, version=64): 
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
-    my_cipher = prim.GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r)
+    my_cipher = gift.GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_ROCCA_AD(r=None):
+def TEST_ROCCA_AD(r=5):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = prim.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r)
+    my_cipher = rocca.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_SPECK_BLOCKCIPHER(r=None, version = [32, 64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = speck.Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = skinny.Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_AES_BLOCKCIPHER(r=None, version = [128, 128]): 
     my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = prim.AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = aes.AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_SIMON_BLOCKCIPHER(r=None, version=[32,64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = prim.Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = simon.Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
 def TEST_GIFT_BLOCKCIPHER(r=None, version = [64, 128]): 
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
-    my_cipher = prim.GIFT_block_cipher(f"GIFT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = gift.GIFT_block_cipher(f"GIFT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
