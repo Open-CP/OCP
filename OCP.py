@@ -6,6 +6,7 @@ import primitives.rocca as rocca
 import primitives.ascon as ascon
 import primitives.gift as gift
 import primitives.aes as aes
+import primitives.siphash as siphash
 import variables.variables as var
 import attacks.attacks as attacks 
 import implementations.implementations as imp 
@@ -60,6 +61,12 @@ def TEST_AES_PERMUTATION(r=None):
 def TEST_GIFT_PERMUTATION(r=None, version=64): 
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
     my_cipher = gift.GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
+def TEST_SIPHASH_PERMUTATION(r=None): 
+    my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
+    my_cipher = siphash.SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
@@ -258,17 +265,18 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
 
 
 if __name__ == '__main__':
-    r = 5
+    r = 2
     #generate_codes(TEST_SPECK_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
     #generate_codes(TEST_SIMON_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
-    generate_codes(TEST_AES_PERMUTATION(r))
+    #generate_codes(TEST_AES_PERMUTATION(r))
     #generate_codes(TEST_ASCON_PERMUTATION(r))
     #generate_codes(TEST_SKINNY_PERMUTATION(r, version = 64)) # version = 64, 128
     #generate_codes(TEST_GIFT_PERMUTATION(r, version = 64)) # version = 64, 128
+    generate_codes(TEST_SIPHASH_PERMUTATION(r))
     #generate_codes(TEST_ROCCA_AD(r))
-
-    generate_codes(TEST_SPECK_BLOCKCIPHER(r, version=[32,64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
-    generate_codes(TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    
+    #generate_codes(TEST_SPECK_BLOCKCIPHER(r, version=[32,64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    #generate_codes(TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
     #generate_codes(TEST_AES_BLOCKCIPHER(r, version = [128, 128])) # version = [128, 128], [128, 192], [128, 256] 
     #generate_codes(TEST_SKINNY_BLOCKCIPHER(r, version = [64, 64])) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
     #generate_codes(TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])) # version = [64, 128],  [128, 128]
@@ -278,7 +286,9 @@ if __name__ == '__main__':
     #TEST_DIFF_ATTACK_ASCON()
     #TEST_DIFF_ATTACK_GIFT()
     #TEST_DIFF_ATTACK_AES()
+    #TEST_DIFF_ATTACK_SIPHASH()
     #TEST_DIFF_ATTACK_ROCCA_AD()
+    
 
 
 

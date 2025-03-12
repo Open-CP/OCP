@@ -20,15 +20,16 @@ class Speck_permutation(Permutation):
         if nbr_rounds==None: nbr_rounds=22 if version==32 else 22 if version==48 else 26 if version==64 else 28 if version==96 else 32 if version==128 else None
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 2, 0, p_bitsize>>1
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
+        S = self.states["STATE"]
         rotr, rotl = (7, 2) if version == 32 else (8, 3)
         
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):
-                self.states["STATE"].RotationLayer("ROT1", i, 0, ['r', rotr], [0]) # Rotation layer
-                self.states["STATE"].SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer   
-                self.states["STATE"].RotationLayer("ROT2", i, 2, ['l', rotl], [1]) # Rotation layer 
-                self.states["STATE"].SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[0,1]], [1]) # XOR layer 
+                S.RotationLayer("ROT1", i, 0, ['r', rotr, 0]) # Rotation layer
+                S.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer   
+                S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer 
+                S.SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[0,1]], [1]) # XOR layer 
   
 
 # The Speck block cipher        
@@ -55,28 +56,32 @@ class Speck_block_cipher(Block_cipher):
         if k_bitsize==p_bitsize: perm, left_k_index, right_k_index = [0,1], 0, 1
         elif k_bitsize==1.5*p_bitsize: perm, left_k_index, right_k_index = [1,0,2], 1, 2
         elif k_bitsize==2*p_bitsize: perm, left_k_index, right_k_index = [2,0,1,3], 2, 3
-                
+
+        S = self.states["STATE"]
+        KS = self.states["KEY_STATE"]
+        SK = self.states["SUBKEYS"] 
+
         # create constraints
         if represent_mode==0:         
 
             for i in range(1,nbr_rounds+1):
                 # subkeys extraction
-                self.states["SUBKEYS"].ExtractionLayer("SK_EX", i, 0, [right_k_index], self.states["KEY_STATE"].vars[i][0])
+                SK.ExtractionLayer("SK_EX", i, 0, [right_k_index], KS.vars[i][0])
   
                 # key schedule
-                self.states["KEY_STATE"].RotationLayer("ROT1", i, 0, ['r', rotr], [left_k_index]) # Rotation layer
-                self.states["KEY_STATE"].SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[left_k_index, right_k_index]], [left_k_index]) # Modular addition layer   
-                self.states["KEY_STATE"].RotationLayer("ROT2", i, 2, ['l', rotl], [right_k_index]) # Rotation layer 
-                self.states["KEY_STATE"].AddConstantLayer("C", i, 3, "xor", [True if e==left_k_index else None for e in range(self.states["KEY_STATE"].nbr_words)], round_constants)  # Constant layer
-                self.states["KEY_STATE"].SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[left_k_index, right_k_index]], [right_k_index]) # XOR layer 
-                self.states["KEY_STATE"].PermutationLayer("SHIFT", i, 5, perm) # key schedule word shift
+                KS.RotationLayer("ROT1", i, 0, ['r', rotr, left_k_index]) # Rotation layer
+                KS.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[left_k_index, right_k_index]], [left_k_index]) # Modular addition layer   
+                KS.RotationLayer("ROT2", i, 2, ['l', rotl, right_k_index]) # Rotation layer 
+                KS.AddConstantLayer("C", i, 3, "xor", [True if e==left_k_index else None for e in range(KS.nbr_words)], round_constants)  # Constant layer
+                KS.SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[left_k_index, right_k_index]], [right_k_index]) # XOR layer 
+                KS.PermutationLayer("SHIFT", i, 5, perm) # key schedule word shift
             
                 # Internal permutation
-                self.states["STATE"].RotationLayer("ROT1", i, 0, ['r', rotr], [0]) # Rotation layer
-                self.states["STATE"].SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer  
-                self.states["STATE"].RotationLayer("ROT2", i, 2, ['l', rotl], [1]) # Rotation layer 
-                self.states["STATE"].AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, self.states["SUBKEYS"], [1,0]) # Addroundkey layer 
-                self.states["STATE"].SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[0,1]], [1]) # XOR layer
+                S.RotationLayer("ROT1", i, 0, ['r', rotr, 0]) # Rotation layer
+                S.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer  
+                S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer 
+                S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [1,0]) # Addroundkey layer 
+                S.SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[0,1]], [1]) # XOR layer
          
     def gen_rounds_constant_table(self):
         constant_table = []

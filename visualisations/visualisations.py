@@ -126,6 +126,7 @@ def generate_figure(my_prim, filename):
                    if constraints_table[i][r][l][w].__class__.__name__ != "Equal":
                        ax.add_patch(Rectangle((x_coord,-y_coord-elements_height/2), op_length, elements_height, facecolor=op_colors[(i)%len(op_colors)], label='Label'))
                        ax.annotate(constraints_table[i][r][l][w].ID, xy=(x_coord+op_length/2,-y_coord), fontsize=op_font_size, ha="center")
+                       if constraints_table[i][r][l][w].__class__.__name__ == "Rot": ax.annotate(str(constraints_table[i][r][l][w].direction) + " - " + str(constraints_table[i][r][l][w].amount), xy=(x_coord+op_length/2,-y_coord-elements_height/4), fontsize=op_font_size, ha="center")
                        
                        # display the links with the variables
                        my_inputs = constraints_table[i][r][l][w].input_vars

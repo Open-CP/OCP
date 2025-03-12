@@ -18,15 +18,17 @@ class ASCON_permutation(Permutation):
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 320, 320, 1
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
+        S = self.states["STATE"]
+        
         constant_table = self.gen_rounds_constant_table()
         
         # create constraints
         if represent_mode==0: 
             for i in range(1,nbr_rounds+1):
-                self.states["STATE"].AddConstantLayer("C", i, 0, "xor", [None]*184+[True]*8, constant_table)  # Constant layer      
-                self.states["STATE"].SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
-                self.states["STATE"].SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
-                self.states["STATE"].SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
+                S.AddConstantLayer("C", i, 0, "xor", [None]*184+[True]*8, constant_table)  # Constant layer      
+                S.SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
+                S.SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
+                S.SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
     
     def gen_rounds_constant_table(self):
         constant_table = []

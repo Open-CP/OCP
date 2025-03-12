@@ -73,19 +73,18 @@ class State:
             in_var, out_var = self.vars[crt_round][crt_layer][permutation[j]], self.vars[crt_round][crt_layer+1][j]
             self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
 
-    # apply a layer "name" of a Rotation, at the round "crt_round", at the layer "crt_layer" on the word of the state located at position "index". The rotation direction is "direction" and the rotation amount is "amount". If "index_out" is specified, then the output is placed in index_out
-    def RotationLayer(self, name, crt_round, crt_layer, rot, index_in, index_out=None):
-        for j in range(self.nbr_words + self.nbr_temp_words):
-            in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-            if index_out==None:
-                if j in index_in: self.constraints[crt_round][crt_layer].append(op.Rot([in_var], [out_var], rot[0], rot[1], ID=generateID(name,crt_round,crt_layer,j)))
-                else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
-            else:
-                if j in index_out: 
-                    in_var = self.vars[crt_round][crt_layer][index_in[index_out.index(j)]]
-                    self.constraints[crt_round][crt_layer].append(op.Rot([in_var], [out_var], rot[0], rot[1], ID=generateID(name,crt_round,crt_layer,j)))
-                else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
-            
+    # apply a layer "name" of Rotation, at the round "crt_round", at the layer "crt_layer". Each rot is a list of rotation executions, each execution is composed of three elements plus an optional fourth: [direction, amount, index_in, (index_out)]. A rotation execution will take the word of the state located at position "index_in", apply the rotation direction "direction" and amount "amount" and place it in state located at position "index_out" (if defined, "index_in" otherwise). The state words receiving no rotation are applied identity.
+    def RotationLayer(self, name, crt_round, crt_layer, rot):
+        if type(rot[0]) is not list: rot = [rot]
+        identity_indexes = list(range(self.nbr_words + self.nbr_temp_words))
+        for r in rot:
+            in_index, out_index = r[2], r[2] if len(r)==3 else r[3]
+            self.constraints[crt_round][crt_layer].append(op.Rot([self.vars[crt_round][crt_layer][in_index]], [self.vars[crt_round][crt_layer+1][out_index]], r[0], r[1], ID=generateID(name,crt_round,crt_layer,in_index)))
+            if out_index in identity_indexes: identity_indexes.remove(out_index)
+
+        for j in identity_indexes:
+            self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name,crt_round,crt_layer,j)))
+
     # apply a layer "name" of a simple identity at the round "crt_round", at the layer "crt_layer". 
     def AddIdentityLayer(self, name, crt_round, crt_layer):
         for j in range(self.nbr_words + self.nbr_temp_words):
