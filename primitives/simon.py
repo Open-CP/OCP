@@ -5,6 +5,15 @@ import operators.operators as op
 # The Simon internal permutation  
 class Simon_permutation(Permutation):
     def __init__(self, name, version, s_input, s_output, nbr_rounds=None, represent_mode=0):
+        """
+        Initialize the Simon internal permutation
+        :param name: Name of the permutation
+        :param version: Bit size of the permutation
+        :param s_input: Input state
+        :param s_output: Output state
+        :param nbr_rounds: Number of rounds
+        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        """
                 
         p_bitsize = version
         if nbr_rounds==None: nbr_rounds=32 if version==32 else 36 if version==48 else 42 if version==64 else 52 if version==96 else 68 if version==128 else None
@@ -26,7 +35,16 @@ class Simon_permutation(Permutation):
 # The Simon block cipher 
 class Simon_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
-                
+        """
+        Initializes the Simon block cipher.
+        :param name: Cipher name
+        :param version: (p_bitsize, k_bitsize)
+        :param p_input: Plaintext input
+        :param k_input: Key input
+        :param c_output: Ciphertext output
+        :param nbr_rounds: Number of rounds
+        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        """
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds==None: nbr_rounds=32 if (version[0],version[1])==(32,64) else 36 if (version[0],version[1])==(48,72) else 36 if (version[0],version[1])==(48,96)  else 42 if (version[0],version[1])==(64,96)  else 44 if (version[0],version[1])==(64,128)  else 52 if (version[0],version[1])==(96,96) else 54 if (version[0],version[1])==(96,144) else 68 if (version[0],version[1])==(128,128) else 69 if (version[0],version[1])==(128,192) else 72 if (version[0],version[1])==(128,256) else None
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (8, 2, 2, p_bitsize>>1),  (6, int(2*k_bitsize/p_bitsize), 2, p_bitsize>>1),  (1, 1, 0, p_bitsize>>1)
