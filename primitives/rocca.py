@@ -1,4 +1,4 @@
-from primitives.primitives import Permutation, Block_cipher
+from primitives.primitives import Permutation
 import operators.operators as op
 
 #  The Rocca_AD internal permutation  
