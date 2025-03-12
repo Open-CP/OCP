@@ -27,7 +27,7 @@ class AES_permutation(Permutation):
                 self.states["STATE"].PermutationLayer("SR", i, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
                 if i != full_rounds: self.states["STATE"].MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]], "0x1B")  #Mixcolumns layer
                 else: self.states["STATE"].AddIdentityLayer("ID", i, 2)     # Identity layer 
-                self.states["STATE"].AddConstantLayer("AC", i, 3, "xor", [True]*16, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14])  # Constant layer            
+                self.states["STATE"].AddConstantLayer("AC", i, 3, "xor", [True]*16, [[0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]]*nbr_rounds)  # Constant layer            
      
 
 # The AES block cipher
@@ -64,7 +64,7 @@ class AES_block_cipher(Block_cipher):
         nk = int(k_bitsize/32)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         
-        constant_table =self.gen_rounds_constant_table(k_bitsize)
+        constant_table =self.gen_rounds_constant_table()
 
         # create constraints
         if represent_mode==0:
@@ -135,7 +135,7 @@ class AES_block_cipher(Block_cipher):
             self.rounds_c_code_if_unrolled["KEY_STATE"] = [[1, f"if (i < {self.states['KEY_STATE'].nbr_rounds-1})"+"{"]]
         elif k_bitsize==256:
             if nbr_rounds >= 2: 
-                self.rounds_python_code_if_unrolled["KEY_STATE"] = [[1, "if i % 2 == 1:"]]
+                self.rounds_python_code_if_unrolled["KEY_STATE"] = [[1, "if i % 2 == 1:\ni=(i/2)"]]
                 self.rounds_c_code_if_unrolled["KEY_STATE"] = [[1, "if (i % 2 == 1)"+"{"]]
         
 
