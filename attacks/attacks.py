@@ -194,9 +194,9 @@ def attacks(cipher, add_constraints=[], model_type="milp", obj_sat=0, filename="
 
     # Step 3. Generate a MILP/SAT/CP model in standard format
     if model_type == "milp":
-        model, variable_map = solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun), {}
+        model, variable_map = solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun, filename=filename), {}
     elif model_type == "sat":
-        model, variable_map = solving.gen_sat_model(constraints=constraints, obj_var=obj_fun, obj=obj_sat)
+        model, variable_map = solving.gen_sat_model(constraints=constraints, obj_var=obj_fun, obj=obj_sat, filename=filename)
 
     return model, variable_map
 
