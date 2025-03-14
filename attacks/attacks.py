@@ -1,5 +1,6 @@
 import os, os.path
 import solving.solving as solving
+import visualisations.visualisations as vis 
 
 
 """
@@ -194,14 +195,12 @@ def attacks(cipher, add_constraints=[], model_type="milp", obj_sat=0, filename="
 
     # Step 3. Generate a MILP/SAT/CP model in standard format
     if model_type == "milp":
-        model, variable_map = solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun, filename=filename), {}
+        return solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun, filename=filename), {}
     elif model_type == "sat":
-        model, variable_map = solving.gen_sat_model(constraints=constraints, obj_var=obj_fun, obj=obj_sat, filename=filename)
-
-    return model, variable_map
+        return solving.gen_sat_model(constraints=constraints, obj_var=obj_fun, obj=obj_sat, filename=filename)
 
 
-def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_optimal_trail", obj_sat=0):
+def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_optimal_trail", obj_sat=0, show_mode=0):
     """
     goal:
         - "search_optimal_trail"
@@ -221,15 +220,18 @@ def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_opt
         add_constraints += ["truncated_input_not_zero"]
 
     if model_type == "milp":
-        model, variable_map = attacks(cipher, add_constraints=add_constraints, model_type=model_type, filename=filename)
-        sol_list, obj_list = solving.solve_milp(filename)
-        return sol_list, obj_list
-    
+        model = attacks(cipher, add_constraints=add_constraints, model_type=model_type, filename=filename)
+        sol, obj = solving.solve_milp(filename)
+        solving.formulate_solutions(cipher, sol)  
+
     elif model_type == "sat":
-        sol_list = []
-        while not sol_list:
-            print("obj_sat", obj_sat)
+        sol = {}
+        while not sol:
             model, variable_map = attacks(cipher, add_constraints=add_constraints, model_type=model_type, obj_sat=obj_sat, filename=filename)
-            sol_list = solving.solve_sat(filename)
+            sol = solving.solve_sat(filename, variable_map)
             obj_sat += 1
-        return sol_list, [obj_sat-1], variable_map
+        solving.formulate_solutions(cipher, variable_map)
+        obj = obj_sat-1 
+    print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
+    vis.print_trails(cipher, mode=show_mode)
+    return sol, obj
