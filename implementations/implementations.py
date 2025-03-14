@@ -27,8 +27,8 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                    for cons in constraints_table[i][r][l]:
                        if [cons.__class__.__name__, cons.model_version] not in header_set:
                            header_set.append([cons.__class__.__name__, cons.model_version]) 
-                           if cons.generate_header(language) != None: 
-                               for line in cons.generate_header(language): myfile.write(line + '\n')
+                           if cons.generate_implementation_header(language) != None: 
+                               for line in cons.generate_implementation_header(language): myfile.write(line + '\n')
                                myfile.write('\n')
                         
         if language == 'python':

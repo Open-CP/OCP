@@ -41,7 +41,7 @@ class Operator(ABC):
             if index2 is not None: return self.input_vars[index][index2].ID if unroll else self.input_vars[index][index2].remove_round_from_ID()
             else: return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
             
-    def generate_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
+    def generate_implementation_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
     
     def get_vars(self, in_out, index=0, unroll=False):
@@ -55,6 +55,14 @@ class Operator(ABC):
                 return [self.get_var_ID('in', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.input_vars[index])) for j in range(self.input_vars[index][i].bitsize)]
             elif in_out == 'out':
                 return [self.get_var_ID('out', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.output_vars[index])) for j in range(self.output_vars[index][i].bitsize)]
+    
+    @abstractmethod
+    def generate_implementation_header(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation header of that operator
+        pass
+
+    @abstractmethod
+    def generate_implementation(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation of that operator
+        pass
     
     @abstractmethod
     def generate_model(self, model_type='python'):  # generic method (abstract) that generates the code for the modeling of that operator
@@ -138,8 +146,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return DDT
     
 
-    def star_ddt_to_truthtable(self, ddt):
-        # Convert star-DDT into a truthtable, which encode the differential propagations without probalities
+    def star_ddt_to_truthtable(self, ddt): # Convert star-DDT into a truthtable, which encode the differential propagations without probalities
         ttable = ''
         for n in range(2**(self.input_bitsize+self.output_bitsize)):
             dx = n >> self.output_bitsize
@@ -149,8 +156,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return ttable
 
 
-    def pddt_to_truthtable(self, ddt, p):
-        # Convert p-DDT into a truthtable, which encode the differential propagations with the item in ddt equal to p.  
+    def pddt_to_truthtable(self, ddt, p): # Convert p-DDT into a truthtable, which encode the differential propagations with the item in ddt equal to p.  
         ttable = ''    
         for n in range(2**(self.input_bitsize+self.output_bitsize)):
             dx = n >> self.output_bitsize
@@ -160,8 +166,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return ttable
 
 
-    def ddt_to_truthtable(self, len_diff_spectrum, diff_weights, ddt):
-        # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
+    def ddt_to_truthtable(self, len_diff_spectrum, diff_weights, ddt): # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
         ttable = ''
         for n in range(2**(self.input_bitsize+self.output_bitsize+len_diff_spectrum)):
             dx = n >> (self.output_bitsize + len_diff_spectrum)
@@ -174,8 +179,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return ttable
 
 
-    def ddt_to_truthtable_sat(self, diff_weights, max_diff_weights, ddt):
-        # Convert the DDT, which encode the differential propagations with probalities into a truthtable in sat. All weights should be integers in this case.  
+    def ddt_to_truthtable_sat(self, diff_weights, max_diff_weights, ddt): # Convert the DDT, which encode the differential propagations with probalities into a truthtable in sat. All weights should be integers in this case.  
         if any([i != int(i) for i in diff_weights]):
             raise ValueError("All transition's weights should be integers")
         ttable = ''
@@ -291,8 +295,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return constraints, objective_fun
     
     
-    def differential_branch_number(self):
-        # Return differential branch number of the S-Box.
+    def differential_branch_number(self): # Return differential branch number of the S-Box.
         ret = (1 << self.input_bitsize) + (1 << self.output_bitsize)
         for a in range(1 << self.input_bitsize):
             for b in range(1 << self.output_bitsize):
@@ -303,8 +306,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     if w < ret: ret = w
         return ret
     
-    def is_bijective(self):
-        # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
+    def is_bijective(self): # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
         return len(set(self.table)) == len(self.table) and all(i in self.table for i in range(len(self.table)))
 
     def generate_implementation(self, implementation_type='python', mode = 0, unroll=False, weight=True):
@@ -336,7 +338,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
         
-    def generate_header(self, implementation_type='python'):
+    def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 
             return [str(self.__class__.__name__) + ' = ' + str(self.table)]
         elif implementation_type == 'c': 
@@ -591,7 +593,7 @@ class TWINE_Sbox(Sbox):             # Operator of the TWINE 4-bit Sbox
         self.table = [12, 0, 15, 10, 2, 11, 9, 5, 8, 3, 13, 7, 1, 14, 6, 4]
 
 
-class PRESENT_Sbox(Sbox):             # Operator of the PRESENT 4-bit Sbox
+class PRESENT_Sbox(Sbox):           # Operator of the PRESENT 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)
         self.table = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2]
@@ -696,7 +698,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_header(self, implementation_type='python'):
+    def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 
             model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
             model_list.append("#Matrix Macro ")
@@ -807,7 +809,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_header(self, implementation_type='python'):
+    def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 
             return ["#Rotation Macros ", "def ROTL(n, d, bitsize): return ((n << d) | (n >> (bitsize - d))) & (2**bitsize - 1)", "def ROTR(n, d, bitsize): return ((n >> d) | (n << (bitsize - d))) & (2**bitsize - 1)"]
         elif implementation_type == 'c': 
@@ -916,7 +918,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                     else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")  
             
-    def generate_header(self, implementation_type='python'):
+    def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 
             return [f"#Constraints List\nRC={self.table}"]
         elif implementation_type == 'c': 
@@ -1036,6 +1038,7 @@ class ModMul(BinaryOperator):  # Operator for the modular multiplication: multip
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID )
         self.modulo = None
+        pass # TODO
         
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
@@ -1284,6 +1287,7 @@ class AESround(Operator): # Operator for the AES round
     def __init__(self, input_vars, output_vars, ID = None, subkey=None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.subkey = subkey
+        pass # TODO
         
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
@@ -1302,4 +1306,5 @@ class AESround(Operator): # Operator for the AES round
 class CustomOP(Operator):   # generic custom operator (to be defined by the user)
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID)
+        pass # TODO
         

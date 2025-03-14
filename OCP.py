@@ -135,7 +135,7 @@ def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
     r = 6
     cipher = TEST_SPECK_PERMUTATION(r, version = 32) 
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    #sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
     
     # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
@@ -281,7 +281,7 @@ if __name__ == '__main__':
     #generate_codes(TEST_SKINNY_BLOCKCIPHER(r, version = [64, 64])) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
     #generate_codes(TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])) # version = [64, 128],  [128, 128]
 
-    #TEST_DIFF_ATTACK_SPECK()
+    TEST_DIFF_ATTACK_SPECK()
     #TEST_DIFF_ATTACK_SIMON()
     #TEST_DIFF_ATTACK_ASCON()
     #TEST_DIFF_ATTACK_GIFT()
