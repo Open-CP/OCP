@@ -222,6 +222,7 @@ def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_opt
     if model_type == "milp":
         model = attacks(cipher, add_constraints=add_constraints, model_type=model_type, filename=filename)
         sol, obj = solving.solve_milp(filename)
+        if sol==None: return None, None
         solving.formulate_solutions(cipher, sol)  
 
     elif model_type == "sat":
@@ -230,6 +231,7 @@ def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_opt
             model, variable_map = attacks(cipher, add_constraints=add_constraints, model_type=model_type, obj_sat=obj_sat, filename=filename)
             sol = solving.solve_sat(filename, variable_map)
             obj_sat += 1
+        if sol==None: return None, None
         solving.formulate_solutions(cipher, sol)
         obj = obj_sat-1 
     print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
