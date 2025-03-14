@@ -2,7 +2,11 @@ from primitives.primitives import Permutation
 import operators.operators as op
 
 
-# The SipHash internal permutation  
+# The SipHash internal permutation 
+# Test vector
+# the input 7469686173716475 6b617f6d656e6665 6b7f62616d677361 7c6d6c6a717c6d7b
+# should return 4d07749cdd0858e0 0d52f6f62a4f59a4 634cb3577b01fd3d a5224d6f55c7d9c8 
+# https://www.aumasson.jp/siphash/siphash.pdf
 class SipHash_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
