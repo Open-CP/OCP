@@ -90,8 +90,8 @@ class GIFT_block_cipher(Block_cipher):
                 S.SboxLayer("SB", i, 0, op.GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
                 S.PermutationLayer("P", i, 1, perm) # Permutation layer
                 S.AddConstantLayer("C", i, 2, "xor", [True]+[None]*(p_bitsize-25)+[True]+[None, None, None, True]*5, constant_table)# Constant layer                      
-                if p_bitsize == 64: s.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,0,1,1]*16) # Addroundkey layer 
-                elif p_bitsize == 128: s.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,1,1,0]*32) # Addroundkey layer 
+                if p_bitsize == 64: S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,0,1,1]*16) # Addroundkey layer 
+                elif p_bitsize == 128: S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,1,1,0]*32) # Addroundkey layer 
 
     def gen_rounds_constant_table(self):
         constant_table = []
