@@ -348,7 +348,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         else: return None
             
             
-    def generate_model(self, model_type='python', mode = 0, unroll=False, weight=True):
+    def generate_model(self, model_type='sat', mode = 0, unroll=False, weight=True):
         if model_type == 'sat': 
             filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
@@ -618,7 +618,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
             return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             var_in, var_out = [[f"{self.get_var_ID('in', i, unroll)}_{j}" for i in range(len(self.input_vars))] for j in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             model_list = []
@@ -739,7 +739,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             model_list.append("} ")
             return model_list
             
-    def generate_model(self, model_type='python', unroll=False, branch_num=None):
+    def generate_model(self, model_type='sat', unroll=False, branch_num=None):
         if model_type == 'milp' or model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "diff_1" or self.model_version == "DEFAULT":
                 model_list = []
@@ -818,7 +818,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
                 return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
         else: return None
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
@@ -856,7 +856,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
@@ -924,7 +924,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         else: return None
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if (self.model_version == "diff_0" or self.model_version == "DEFAULT") and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -969,7 +969,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # cite: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
@@ -1050,7 +1050,7 @@ class ModMul(BinaryOperator):  # Operator for the modular multiplication: multip
                 else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -1067,7 +1067,7 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1105,7 +1105,7 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1167,7 +1167,7 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
             else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1263,7 +1263,7 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version =="DEFAULT": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1293,7 +1293,7 @@ class AESround(Operator): # Operator for the AES round
             pass
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='python', unroll=False):
+    def generate_model(self, model_type='sat', unroll=False):
         if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
