@@ -57,10 +57,6 @@ class Operator(ABC):
                 return [self.get_var_ID('out', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.output_vars[index])) for j in range(self.output_vars[index][i].bitsize)]
     
     @abstractmethod
-    def generate_implementation_header(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation header of that operator
-        pass
-
-    @abstractmethod
     def generate_implementation(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation of that operator
         pass
     

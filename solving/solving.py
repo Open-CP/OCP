@@ -16,7 +16,6 @@ except ImportError:
     pass
 
 
-
 """
 This module provides functions for building and solving MILP, SAT and CP models.
 
@@ -53,7 +52,12 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
         return None, None
     model = gp.read(filename)
     if solving_goal == "optimize":
-        model.optimize()
+        try:
+            model.optimize()
+        except gp._exception.GurobiError:
+            print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
+            return None, None
+
         if model.status == gp.GRB.Status.OPTIMAL:
             sol_dic = {}
             for v in model.getVars():
@@ -65,7 +69,11 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
     elif solving_goal == "all_solutions":
         model.Params.PoolSearchMode = 2   # Enable searching for multiple solutions
         model.Params.PoolSolutions = 1000000  # Set the maximum limit for the number of solutions
-        model.optimize()
+        try:
+            model.optimize()
+        except gp._exception.GurobiError:
+            print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
+            return None, None
         print("Number of solutions by solving the MILP model: ", model.SolCount)
         sol_list, obj_list = [], []
         for i in range(model.SolCount):

@@ -135,7 +135,7 @@ def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
     r = 6
     cipher = TEST_SPECK_PERMUTATION(r, version = 32) 
-    #sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
 
     
     # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
