@@ -180,3 +180,44 @@ def generate_figure(my_prim, filename):
     my_fig.set_size_inches(0.02*(x_shift_state+max(op_length,op_length)),0.02*(2*elements_height+y_space_in_out+y_out_coord))
     my_fig.savefig(filename, bbox_inches='tight')
     plt.show()
+
+
+def print_trails(cipher, mode=0):
+    """
+    Print the trail by displaying variable values at different levels of detail.
+
+    Supported modes:
+    - mode = 0: Print only input and output values (minimal detail).
+    - mode = 1: Print values at the start of each round (moderate detail).
+    - mode = 2: Print values at every layer in each round (full detail).
+    """
+    nbr_rounds_table = [cipher.states[s].nbr_rounds for s in cipher.states_display_order]
+    nbr_layers_table = [cipher.states[s].nbr_layers for s in cipher.states_display_order]
+    vars_table = [cipher.states[s].vars for s in cipher.states_display_order]
+    if mode == 0:
+        for i in range(len(cipher.states)):
+            print(f"=========State {cipher.states_display_order[i]}: =========")
+            for r in [1, nbr_rounds_table[i]]:
+                l = 0
+                print(f"Rounds {r}: ")
+                print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
+                
+
+    elif mode == 1:
+        for i in range(len(cipher.states)):
+            print(f"=========State {cipher.states_display_order[i]}: =========")
+            for r in range(1,nbr_rounds_table[i]+1):
+                l = 0
+                print(f"Rounds {r}:")
+                print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
+                
+
+    elif mode == 2:
+        for i in range(len(cipher.states)):
+            print(f"=========State {cipher.states_display_order[i]}: =========")
+            for r in range(1,nbr_rounds_table[i]+1):
+                print(f"Rounds {r}:")
+                for l in range(nbr_layers_table[i]+1):
+                    # print(f"Layers {l}:")                    
+                    print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
+                

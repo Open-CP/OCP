@@ -133,93 +133,93 @@ Procedure:
 
 def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
-    r = 6
+    r = 2
     cipher = TEST_SPECK_PERMUTATION(r, version = 32) 
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp", show_mode=0)
 
     
     # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat", show_mode=1)
     
 
     # TEST 3: Search for the best related-key differential trail of r-round SPECK by solving MILP models
     cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) 
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp", show_mode=1)
 
 
     # TEST 4: Search for the best related-key differential trail of r-round SPECK by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat", show_mode=2)
 
 
 def TEST_DIFF_ATTACK_SIMON():
     # TEST 1: Search for the best differential trail of r-round SIMON by solving MILP models
     r = 6
     cipher = TEST_SIMON_PERMUTATION(r, version = 32)
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
     # TEST 2: Search for the best differential trail of r-round SIMON by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
 
     # TEST 3: Search for the best related-key differential trail of r-round SIMON by solving MILP models
     cipher = TEST_SIMON_BLOCKCIPHER(r, version=[32,64]) 
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
     # TEST 4: Search for the best related-key differential trail of r-round SIMON by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
 
 def TEST_DIFF_ATTACK_ASCON():
     # TEST 1: Search for the best differential trail of r-round ASCON by solving MILP models
     r = 2
     cipher = TEST_ASCON_PERMUTATION(r) 
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
     # TEST 2: Search for the best differential trail of r-round ASCON by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
     
     # TEST 3: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving MILP models
     # set `model_version = "diff_1"` for each S-box.
     model_versions = attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[1]}, positions = {r: {"STATE": {1: list(range(64))}} for r in range(1, cipher.nbr_rounds + 1)})
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
     
 
     # TEST 4: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
 
 def TEST_DIFF_ATTACK_GIFT():
     # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP models
     r = 5
     cipher = TEST_GIFT_PERMUTATION(r, version = 64)
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
     # TEST 2: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving MILP models
     # set `model_version = "diff_1"` for each S-box.
     attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
     
 
     # TEST 3: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving SAT models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
     
     # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP models
     cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
     # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
     # set model_version = "diff_1" for each S-box.
     attacks.set_model_versions(cipher, "diff_1", rounds = [i for i in range(1, cipher.nbr_rounds + 1)], states=["STATE"], layers={"STATE":[0]}, positions = {r: {"STATE": {0: list(range(len(cipher.states["STATE"].constraints[r][0])))}} for r in range(1, cipher.nbr_rounds + 1)})
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
     # TEST 6: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
-    sol_list, obj_list, variable_map = attacks.diff_attacks(cipher, model_type="sat")
+    sol, obj = attacks.diff_attacks(cipher, model_type="sat")
 
 
 def TEST_DIFF_ATTACK_AES():
@@ -231,7 +231,7 @@ def TEST_DIFF_ATTACK_AES():
     layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
     positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
     attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
     
 
     # TEST 2: Search for the best truncated related-key differential trail of r-round AES
@@ -242,7 +242,7 @@ def TEST_DIFF_ATTACK_AES():
     layers = {s: [i for i in range(cipher.states[s].nbr_layers+1)] for s in states}
     positions = {"inputs": list(range(len(cipher.inputs_constraints))), **{r: {s: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in range(states[s].nbr_layers+1)} for s in states} for r in range(1, cipher.nbr_rounds + 1)}}
     attacks.set_model_versions(cipher, "truncated_diff", rounds = ["inputs"] + [i for i in range(1, cipher.nbr_rounds + 1)], states=states, layers=layers, positions=positions)
-    sol_list, obj_list = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
+    sol, obj = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
 
 
 def TEST_DIFF_ATTACK_ROCCA_AD():
@@ -261,7 +261,7 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
     add_cons = attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128)]}}}, bitwise=False, value=0)
     add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=[cipher.nbr_rounds], states=["STATE"], layers={"STATE":[4]}, positions={cipher.nbr_rounds:{"STATE":{4:[i for i in range(128)]}}}, bitwise=False, value=0)
     add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="SUM_GREATER_EQUAL", rounds=[1], states=["STATE"], layers={"STATE":[0]}, positions={1:{"STATE":{0:[i for i in range(128, 128+32*r)]}}}, bitwise=False, value=1)
-    sol_list, obj_list = attacks.diff_attacks(cipher, add_constraints=add_cons, model_type="milp", goal="search_optimal_truncated_trail")
+    sol, obj = attacks.diff_attacks(cipher, add_constraints=add_cons, model_type="milp", goal="search_optimal_truncated_trail")
 
 
 if __name__ == '__main__':

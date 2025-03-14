@@ -31,6 +31,21 @@ This module provides functions for building and solving MILP, SAT and CP models.
    - Supports both optimizing for the best solution and exhaustive search for all possible solutions.
 """
 
+def formulate_solutions(cipher, solitions):
+    nbr_rounds_table = [cipher.states[s].nbr_rounds for s in cipher.states_display_order]
+    nbr_layers_table = [cipher.states[s].nbr_layers for s in cipher.states_display_order]
+    vars_table = [cipher.states[s].vars for s in cipher.states_display_order]
+    for i in range(len(cipher.states)):
+       for r in range(1,nbr_rounds_table[i]+1):
+           for l in range(nbr_layers_table[i]+1):
+               for w in range(len(vars_table[i][r][l])): 
+                    if vars_table[i][r][l][w].ID in solitions:
+                       vars_table[i][r][l][w].value = solitions[vars_table[i][r][l][w].ID]
+                    elif vars_table[i][r][l][w].ID + "_0" in solitions:
+                        vars_value = [solitions[var] for var in [vars_table[i][r][l][w].ID + "_" + str(n) for n in range(vars_table[i][r][l][w].bitsize)]]
+                        vars_table[i][r][l][w].value = int(str(vars_value).replace("[","").replace("]","").replace(", ",""), 2) 
+                    else:
+                        vars_table[i][r][l][w].value = 0
 
 def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
     """
@@ -47,43 +62,35 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
     Returns: 
         a tuple (sol_list, obj_list) containing solutions and objective value.
     """
-    if gurobipy_import == False: 
-        print("gurobipy module can't be loaded ... skipping test\n")
-        return None, None
-    model = gp.read(filename)
-    if solving_goal == "optimize":
-        try:
+    if solver == "Gurobi":
+        if gurobipy_import == False: 
+            print("gurobipy module can't be loaded ... skipping test\n")
+            return None, None
+        model = gp.read(filename)
+        if solving_goal == "optimize":
             model.optimize()
-        except gp._exception.GurobiError:
-            print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
-            return None, None
-
-        if model.status == gp.GRB.Status.OPTIMAL:
-            sol_dic = {}
-            for v in model.getVars():
-                sol_dic[str(v.VarName)] = v.Xn            
-            return [sol_dic], [model.ObjVal]
-        else:
-            return None, None
-        
-    elif solving_goal == "all_solutions":
-        model.Params.PoolSearchMode = 2   # Enable searching for multiple solutions
-        model.Params.PoolSolutions = 1000000  # Set the maximum limit for the number of solutions
-        try:
+            if model.status == gp.GRB.Status.OPTIMAL:
+                sol_dic = {}
+                for v in model.getVars():
+                    sol_dic[str(v.VarName)] = int(round(v.Xn))          
+                return sol_dic, model.ObjVal
+            else:
+                return None, None
+            
+        elif solving_goal == "all_solutions":
+            model.Params.PoolSearchMode = 2   # Enable searching for multiple solutions
+            model.Params.PoolSolutions = 1000000  # Set the maximum limit for the number of solutions
             model.optimize()
-        except gp._exception.GurobiError:
-            print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
-            return None, None
-        print("Number of solutions by solving the MILP model: ", model.SolCount)
-        sol_list, obj_list = [], []
-        for i in range(model.SolCount):
-            sol_dic = {}
-            model.Params.SolutionNumber = i  
-            for v in model.getVars():
-                sol_dic[str(v.VarName)] = v.Xn   
-            sol_list.append(sol_dic)
-            obj_list.append(model.ObjVal)
-        return sol_list, obj_list
+            print("Number of solutions by solving the MILP model: ", model.SolCount)
+            sol_list, obj_list = [], []
+            for i in range(model.SolCount):
+                sol_dic = {}
+                model.Params.SolutionNumber = i  
+                for v in model.getVars():
+                    sol_dic[str(v.VarName)] = v.Xn   
+                sol_list.append(sol_dic)
+                obj_list.append(model.ObjVal)
+            return sol_list, obj_list
 
     else:
         return None, None
@@ -136,7 +143,7 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     return content
 
 
-def solve_sat(filename, solving_goal="optimize", solver="CryptoMiniSat"):
+def solve_sat(filename, variable_map, solving_goal="optimize", solver="CryptoMiniSat"):
     """
     Solve a SAT problem using CryptoMiniSat.
     
@@ -153,34 +160,40 @@ def solve_sat(filename, solving_goal="optimize", solver="CryptoMiniSat"):
         print("pysat module can't be loaded ... skipping test\n")
         return None
     
-    cnf = CNF(filename)
-    solver = CryptoMinisat()
-    solver.append_formula(cnf.clauses)
-    
-    if solving_goal == "optimize":
-        if solver.solve():
-            model = solver.get_model()
-            sol_dic = {}
-            for v in model:
-                sol_dic[abs(v)] = v          
-            return [sol_dic]
-        else:
-            print("No solution exists.")
-            return None
+    if solver == "CryptoMiniSat":
+        cnf = CNF(filename)
+        solver = CryptoMinisat()
+        solver.append_formula(cnf.clauses)
         
-    elif solving_goal == "all_solutions":
-        sol_list = []
-        while solver.solve():
-            model = solver.get_model()
-            sol_dic = {}
-            for v in model:
-                sol_dic[abs(v)] = v          
-            sol_list.append(sol_dic)
-            block_clause = [-l for l in model]
-            solver.add_clause(block_clause)
-        solver.delete()
-        print("Number of solutions by solving the SAT model: ", len(sol_list))
-        return sol_list
+        if solving_goal == "optimize":
+            if solver.solve():
+                model = solver.get_model()
+                sol_dic = {}
+                for v in model:
+                    sol_dic[abs(v)] = v  
+                for var in variable_map:
+                    if sol_dic[variable_map[var]] > 0:
+                        variable_map[var] = 1
+                    else:
+                        variable_map[var] = 0
+                return variable_map
+            else:
+                # print("No solution exists.")
+                return None
+            
+        elif solving_goal == "all_solutions":
+            sol_list = []
+            while solver.solve():
+                model = solver.get_model()
+                sol_dic = {}
+                for v in model:
+                    sol_dic[abs(v)] = v          
+                sol_list.append(sol_dic)
+                block_clause = [-l for l in model]
+                solver.add_clause(block_clause)
+            solver.delete()
+            print("Number of solutions by solving the SAT model: ", len(sol_list))
+            return sol_list
     
     else:
         return None

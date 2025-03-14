@@ -5,6 +5,7 @@ import time
 import copy
 import operators.matrix as matrix
 from itertools import combinations
+import os
 
 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
