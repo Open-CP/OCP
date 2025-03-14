@@ -229,8 +229,10 @@ def diff_attacks(cipher, add_constraints=[], model_type="milp", goal="search_opt
         while not sol:
             model, variable_map = attacks(cipher, add_constraints=add_constraints, model_type=model_type, obj_sat=obj_sat, filename=filename)
             sol = solving.solve_sat(filename, variable_map)
+            print(variable_map)
+            print(sol)
             obj_sat += 1
-        solving.formulate_solutions(cipher, variable_map)
+        solving.formulate_solutions(cipher, sol)
         obj = obj_sat-1 
     print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
     vis.print_trails(cipher, mode=show_mode)
