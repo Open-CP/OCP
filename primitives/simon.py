@@ -43,6 +43,7 @@ class Simon_permutation(Permutation):
 # Test vectors for simon128_128: plaintext = [0x6373656420737265, 0x6c6c657661727420], key = [0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0x49681b1e1e54fe3f', '0x65aa832af84e0bbc']
 # Test vectors for simon128_192: plaintext = [0x206572656874206e, 0x6568772065626972], key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0xc4ac61effcdc0d4f', '0x6c9c8d6e2597b85b']
 # Test vectors for simon128_256: plaintext = [0x74206e69206d6f6f, 0x6d69732061207369], key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0x8d2b5579afc8a3a0', '0x3bf72a87efe7b868']
+# https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
 
 class Simon_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
