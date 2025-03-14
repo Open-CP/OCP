@@ -8,15 +8,10 @@ import solving.solving as solving
 
 
 def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
-    if model_type == "python": 
-        # Generate and print Python model code
-        python_code = operator.generate_model(model_type='python', unroll=True)
-        print("Python code: \n", "\n".join(python_code))    
-        
-    elif model_type == "c":
-        # Generate and print C model code
-        c_code = operator.generate_model(model_type='c', unroll=True)
-        print("C code: \n", "\n".join(c_code))  
+    if model_type == "python" or model_type == "c": 
+        # Generate and print Python/C code
+        code = operator.generate_implementation(implementation_type=model_type, unroll=True)
+        print(f"{model_type} code: \n", "\n".join(code))    
     
     # Generate and solve MILP models
     elif model_type == "milp":
@@ -68,11 +63,11 @@ def test_operator_model(model_type, operator, model_v_list=["diff_0"], mode=0):
             print("variable_map in sat:\n", variable_map)
             
             # Solve SAT model for the optimal solution
-            sol_list = solving.solve_sat(filename, solving_goal="optimize")  
+            sol_list = solving.solve_sat(filename, variable_map, solving_goal="optimize")  
             print(f"Optimal solutions:\n{sol_list}")
             
             # Solve SAT model for all solutions
-            sol_list = solving.solve_sat(filename, solving_goal="all_solutions")
+            sol_list = solving.solve_sat(filename, variable_map, solving_goal="all_solutions")
             print(f"All solutions:\n{sol_list}")
         
 

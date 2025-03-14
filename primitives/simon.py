@@ -33,6 +33,18 @@ class Simon_permutation(Permutation):
        
 
 # The Simon block cipher 
+# Test vector for simon32_64: plaintext = [0x6565, 0x6877], key = [0x1918, 0x1110, 0x0908, 0x0100], ciphertext = ['0xc69b', '0xe9bb']
+# Test vector for simon48_72: plaintext = [0x612067, 0x6e696c], key = [0x121110, 0x0a0908, 0x020100], ciphertext = ['0xdae5ac', '0x292cac']
+# Test vector for simon48_96:# plaintext = [0x726963, 0x20646e], key = [0x1a1918, 0x121110, 0x0a0908, 0x020100], ciphertext = ['0x6e06a5', '0xacf156']
+# Test vector for simon64_96: plaintext = [0x6f722067, 0x6e696c63], key = [0x13121110, 0x0b0a0908, 0x03020100], ciphertext = ['0x5ca2e27f', '0x111a8fc8']
+# Test vector for simon64_128: plaintext = [0x656b696c, 0x20646e75], key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100], ciphertext = ['0x44c8fc20', '0xb9dfa07a']
+# Test vectors for simon96_96: plaintext = [0x2072616c6c69, 0x702065687420], key = [0x0d0c0b0a0908, 0x050403020100], ciphertext = ['0x602807a462b4', '0x69063d8ff082']
+# Test vectors for simon96_144: plaintext = [0x746168742074, 0x73756420666f], key = [0x151413121110, 0x0d0c0b0a0908, 0x050403020100], ciphertext =  ['0xecad1c6c451e', '0x3f59c5db1ae9']
+# Test vectors for simon128_128: plaintext = [0x6373656420737265, 0x6c6c657661727420], key = [0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0x49681b1e1e54fe3f', '0x65aa832af84e0bbc']
+# Test vectors for simon128_192: plaintext = [0x206572656874206e, 0x6568772065626972], key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0xc4ac61effcdc0d4f', '0x6c9c8d6e2597b85b']
+# Test vectors for simon128_256: plaintext = [0x74206e69206d6f6f, 0x6d69732061207369], key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = ['0x8d2b5579afc8a3a0', '0x3bf72a87efe7b868']
+# https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
+
 class Simon_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
