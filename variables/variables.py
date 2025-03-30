@@ -23,5 +23,5 @@ class Variable:
         print(self.display_value(representation)) 
             
     def remove_round_from_ID(self):   # method that removes the round number from the ID of that variable (used when unroll mode if off)
-        return '_'.join([self.ID.split("_")[i] for i in (0,2,3)])
+        return '_'.join(part for i, part in enumerate(self.ID.split("_")) if i != 1)
         
