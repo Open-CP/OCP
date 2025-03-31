@@ -120,7 +120,7 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
             if model.getStatus() == "optimal":
                 sol_dic = {}
                 for v in model.getVars():
-                    sol_dic[str(v.name)] = int(round(v.x))
+                    sol_dic[str(v.name)] = int(round(model.getVal(v)))
                 return sol_dic, model.getObjVal()
             else:
                 return None, None
@@ -132,7 +132,7 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
                 if model.getStatus() == "optimal":
                     sol_dic = {}
                     for v in model.getVars():
-                        sol_dic[str(v.name)] = int(round(v.x))
+                        sol_dic[str(v.name)] = int(round(model.getVal(v)))
                     sol_list.append(sol_dic)
                     obj_list.append(model.getObjVal())
                     # Extend the time limit to find next solution
