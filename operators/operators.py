@@ -815,11 +815,9 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
                 model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
-                model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]    
                 return model_list        
             elif self.direction =='l' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
-                model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]    
-                model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
+                model_list = [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
                 model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]              
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -828,12 +826,12 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
                 model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
                 model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]                    
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))        
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in[:len(var_in)-self.amount] + var_out))        
                 return model_list  
             elif self.direction =='l' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
                 model_list = [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
                 model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in[len(var_in)-self.amount-1: len(var_in)] + var_out))
                 return model_list         
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
