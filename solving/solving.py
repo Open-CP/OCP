@@ -15,7 +15,7 @@ except ImportError:
     pass
 
 try:
-    from pysat.solvers import CryptoMinisat
+    from pysat.solvers import Solver, Cadical103, Glucose3, Minisat22
     from pysat.formula import CNF
     pysat_import = True
 except ImportError:
@@ -192,7 +192,7 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     return content
 
 
-def solve_sat(filename, variable_map, solving_goal="optimize", solver="CryptoMiniSat"):
+def solve_sat(filename, variable_map, solving_goal="optimize", solver="Default"):
     """
     Solve a SAT problem using CryptoMiniSat.
     
@@ -209,40 +209,44 @@ def solve_sat(filename, variable_map, solving_goal="optimize", solver="CryptoMin
         print("pysat module can't be loaded ... skipping test\n")
         return None
     
-    if solver == "CryptoMiniSat":
-        cnf = CNF(filename)
-        solver = CryptoMinisat()
-        solver.append_formula(cnf.clauses)
+    cnf = CNF(filename)
+    if solver in ["Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
+        if solver == "Default":
+            solver = Solver()
+        else:
+            solver = Solver(name=solver)
+    else: print("No SAT Solver Support!")
+    solver.append_formula(cnf.clauses)
+    
+    if solving_goal == "optimize":
+        if solver.solve():
+            model = solver.get_model()
+            sol_dic = {}
+            for v in model:
+                sol_dic[abs(v)] = v  
+            for var in variable_map:
+                if sol_dic[variable_map[var]] > 0:
+                    variable_map[var] = 1
+                else:
+                    variable_map[var] = 0
+            return variable_map
+        else:
+            print("No solution exists.")
+            return None
         
-        if solving_goal == "optimize":
-            if solver.solve():
-                model = solver.get_model()
-                sol_dic = {}
-                for v in model:
-                    sol_dic[abs(v)] = v  
-                for var in variable_map:
-                    if sol_dic[variable_map[var]] > 0:
-                        variable_map[var] = 1
-                    else:
-                        variable_map[var] = 0
-                return variable_map
-            else:
-                # print("No solution exists.")
-                return None
-            
-        elif solving_goal == "all_solutions":
-            sol_list = []
-            while solver.solve():
-                model = solver.get_model()
-                sol_dic = {}
-                for v in model:
-                    sol_dic[abs(v)] = v          
-                sol_list.append(sol_dic)
-                block_clause = [-l for l in model]
-                solver.add_clause(block_clause)
-            solver.delete()
-            print("Number of solutions by solving the SAT model: ", len(sol_list))
-            return sol_list
+    elif solving_goal == "all_solutions":
+        sol_list = []
+        while solver.solve():
+            model = solver.get_model()
+            sol_dic = {}
+            for v in model:
+                sol_dic[abs(v)] = v          
+            sol_list.append(sol_dic)
+            block_clause = [-l for l in model]
+            solver.add_clause(block_clause)
+        solver.delete()
+        print("Number of solutions by solving the SAT model: ", len(sol_list))
+        return sol_list
     
     else:
         return None
