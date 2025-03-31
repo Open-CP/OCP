@@ -7,6 +7,14 @@ except ImportError:
     pass
 
 try:
+    from pyscipopt import Model
+    scip_import = True
+except ImportError:
+    print("PySCIPOpt module can't be loaded \n")
+    scip_import = False
+    pass
+
+try:
     from pysat.solvers import CryptoMinisat
     from pysat.formula import CNF
     pysat_import = True
@@ -99,7 +107,40 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
                 sol_list.append(sol_dic)
                 obj_list.append(model.ObjVal)
             return sol_list, obj_list
-
+    
+    elif solver == "SCIP":
+        if not scip_import:
+            print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
+            return None, None
+        
+        model = Model("MILPModel")
+        model.readProblem(filename)        
+        if solving_goal == "optimize":
+            model.optimize()
+            if model.getStatus() == "optimal":
+                sol_dic = {}
+                for v in model.getVars():
+                    sol_dic[str(v.name)] = int(round(v.x))
+                return sol_dic, model.getObjVal()
+            else:
+                return None, None
+            
+        elif solving_goal == "all_solutions":
+            sol_list, obj_list = [], []
+            while model.getStatus() != "infeasible":
+                model.optimize()
+                if model.getStatus() == "optimal":
+                    sol_dic = {}
+                    for v in model.getVars():
+                        sol_dic[str(v.name)] = int(round(v.x))
+                    sol_list.append(sol_dic)
+                    obj_list.append(model.getObjVal())
+                    # Extend the time limit to find next solution
+                    model.setSolvingLimit(model.getSolvingTimeLimit() + 1)  # Increasing the time limit for the next solution
+                else:
+                    break
+            return sol_list, obj_list
+        
     else:
         return None, None
 
@@ -146,7 +187,7 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     # === Step 5: Write the model into a file === #
     if filename:
         with open(filename, "w") as myfile:
-            myfile.write(content)    
+            myfile.write(content + "\nEnd\n")    
     
     return content
 
