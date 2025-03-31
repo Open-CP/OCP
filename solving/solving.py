@@ -15,7 +15,7 @@ except ImportError:
     pass
 
 try:
-    from pysat.solvers import Solver, Cadical103, Glucose3, Minisat22
+    from pysat.solvers import Solver
     from pysat.formula import CNF
     pysat_import = True
 except ImportError:
@@ -113,7 +113,7 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
             print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
             return None, None
         
-        model = Model("MILPModel")
+        model = Model()
         model.readProblem(filename)        
         if solving_goal == "optimize":
             model.optimize()
@@ -217,7 +217,7 @@ def solve_sat(filename, variable_map, solving_goal="optimize", solver="Default")
             solver = Solver(name=solver)
     else: print("No SAT Solver Support!")
     solver.append_formula(cnf.clauses)
-    
+
     if solving_goal == "optimize":
         if solver.solve():
             model = solver.get_model()
