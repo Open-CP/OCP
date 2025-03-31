@@ -1135,6 +1135,7 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
                     elif self.mat[i][1] != None: model_list += [f'{var_in2[self.mat[i][1]]} -{var_out[i]}', f'-{var_in2[self.mat[i][1]]} {var_out[i]}']                        
                 return model_list
             elif self.model_version == "diff_0" or self.model_version == "DEFAULT":
+                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(len(var_in1)):
                     i1, i2, o = var_in1[i],var_in2[i],var_out[i]
                     model_list += [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}', f'-{i1} -{i2} -{o}']
