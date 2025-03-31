@@ -5,6 +5,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import operators.operators as op
 import variables.variables as var
 import solving.solving as solving
+script_dir = os.path.dirname(os.path.abspath(__file__)) 
+
 
 
 def test_operator_implementation(operator, implementation_type):
@@ -15,9 +17,11 @@ def test_operator_implementation(operator, implementation_type):
 
 def test_operator_model(operator, model_type, model_v_list=["diff_0"], mode=0):
     # Generate and solve MILP models
+    base_path = os.path.join(script_dir, '..', 'files')
+    base_path = os.path.abspath(base_path)
     if model_type == "milp":
         for model_v in model_v_list:
-            filename = f'files/milp_{operator.ID}_{model_v}.lp' 
+            filename = os.path.join(base_path, f'milp_{operator.ID}_{model_v}.lp')
             # Set model_version of the operator
             operator.model_version = model_v
 
@@ -39,13 +43,13 @@ def test_operator_model(operator, model_type, model_v_list=["diff_0"], mode=0):
             print(f"Optimal solutions:\n{sol_list}\nObjective function:\n{obj_list}\n")
             
             # Solve MILP model for all solutions
-            # sol_list, obj_list = solving.solve_milp(filename, solving_goal="all_solutions")
-            # print(f"All solutions:\n{sol_list}\nObjective function:\n{obj_list}\nnumber of solutions: {len(sol_list)}")
+            sol_list, obj_list = solving.solve_milp(filename, solving_goal="all_solutions")
+            print(f"All solutions:\n{sol_list}\nObjective function:\n{obj_list}\nnumber of solutions: {len(sol_list)}")
 
     elif model_type == "sat":
         # Generate and solve SAT models
         for model_v in model_v_list:
-            filename = f'files/sat_{operator.ID}_{model_v}.cnf'
+            filename = os.path.join(base_path, f'sat_{operator.ID}_{model_v}.cnf')
             # Set model_version of the operator
             operator.model_version = model_v
 
