@@ -6,6 +6,9 @@ import copy
 import operators.matrix as matrix
 from itertools import combinations
 import os
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+from tools.minimize_logic import ttb_to_cnf_espresso
 
 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
@@ -101,7 +104,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='sat', unroll=False):   
+    def generate_model(self, model_type='sat', unroll=True):   
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":  
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -192,12 +195,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return ttable
     
 
-    def gen_constraints_espresso(self, filename, model_type='milp', mode=0):
-        try:
-            from pyeda.inter import espresso_tts
-        except ImportError:
-            print("pyeda is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/install.html...\n")
-            return ""
+    def gen_model_constraints(self, filename, model_type='milp', mode=0, tool_type="espresso"):
         if os.path.exists(filename):
             with open(filename, 'r') as file:
                 for line in file:
@@ -210,83 +208,40 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         output_variables = [f'b{i}' for i in range(self.output_bitsize)]
         if "diff" in self.model_version or self.model_version == "DEFAULT": ddt = self.computeDDT()
         objective_fun = ''
-        cont_ttable = ''
-        if self.model_version == "diff_0" or self.model_version == "DEFAULT":
+        if "diff_0" in self.model_version or self.model_version == "DEFAULT":
             diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
             diff_weights = [abs(float(math.log(d/(2**self.input_bitsize), 2))) for d in diff_spectrum]  
             len_diff_spectrum = len(diff_spectrum)   
             if model_type == 'milp':
                 pr_variables = [f'p{i}' for i in range(len_diff_spectrum)]  
-                complexity = self.input_bitsize + self.output_bitsize + len_diff_spectrum
+                num_vars = self.input_bitsize + self.output_bitsize + len_diff_spectrum
                 ttable = self.ddt_to_truthtable(len_diff_spectrum, diff_weights, ddt)
                 objective_fun = "{}".format(" + ".join(["{:0.04f} p{:d}".format(diff_weights[i], i) for i in range(len_diff_spectrum)]))
             elif model_type == 'sat':
                 max_diff_weights = int(max(diff_weights))
                 pr_variables = [f'p{i}' for i in range(max_diff_weights)] 
-                complexity = self.input_bitsize + self.output_bitsize + max_diff_weights
+                num_vars = self.input_bitsize + self.output_bitsize + max_diff_weights
                 ttable = self.ddt_to_truthtable_sat(diff_weights, max_diff_weights, ddt)
                 objective_fun = "{}".format(" + ".join(["p{:d}".format(i) for i in range(max_diff_weights)])) 
             variables = input_variables + output_variables + pr_variables
-            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n'  
-        elif self.model_version == "diff_1":
-            complexity = self.input_bitsize + self.output_bitsize
+        elif "diff_1" in self.model_version:
+            num_vars = self.input_bitsize + self.output_bitsize
             variables = input_variables + output_variables
             ttable = self.star_ddt_to_truthtable(ddt)
-            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n' 
         elif "diff_p" in self.model_version:
-            complexity = self.input_bitsize + self.output_bitsize
+            num_vars = self.input_bitsize + self.output_bitsize
             variables = input_variables + output_variables
             ttable = self.pddt_to_truthtable(ddt, int(self.model_version.replace("diff_p", "")))
-            for n in range(2**(complexity)): cont_ttable += f'{bin(n)[2:].zfill(complexity)} {ttable[n]}\n' 
-        file_contents = f".i {complexity}\n"
-        file_contents += ".o 1\n"
-        file_contents += f".p {2**(complexity)}\n"
-        file_contents += ".ilb " + " ".join(variables) + "\n"     
-        file_contents += ".ob F\n"
-        file_contents += ".type fr\n" 
-        file_contents += cont_ttable
-        with open('files/ttable.txt', "w") as fw:
-            fw.write(file_contents)
-            fw.write(".e\n")
-        espresso_options =  [['-estrong', '-eonset'], [], ['-eonset']]
-        espresso_command = ['espresso', *espresso_options[mode], 'files/ttable.txt'] # Espresso Script of Pyeda provides the parameters: "-e {fast,ness,nirr,nunwrap,onset,strong}"
         time_start = time.time()
-        result = subprocess.run(espresso_command, capture_output=True, text=True)
+        if tool_type=="espresso":
+            constraints = ttb_to_cnf_espresso(model_type, ttable, num_vars, variables, mode=mode)
         time_end = time.time()
-        espresso_output = result.stdout
-        with open('files/sttable.txt', 'w') as fw: fw.write(espresso_output)
-        with open('files/sttable.txt', 'r') as fr: espresso_output = fr.readlines()   
-        constraints = []
-        starting_point = 0
-        end_point = 0
-        for i in range(len(espresso_output)):
-            if ".p" in espresso_output[i]: starting_point = i + 1
-            if ".e" in espresso_output[i]: end_point = i
-        for l in espresso_output[starting_point:end_point]:
-            line = l[0:len(variables)]
-            constraint = ''
-            lp_rhs = 0
-            for i in range(len(variables)):
-                if model_type == 'milp':
-                    if line[i] == '0': constraint += " + " + variables[i]
-                    elif line[i] == '1': 
-                        constraint += " - "+ variables[i]
-                        lp_rhs += 1
-                elif model_type == 'sat':
-                    if line[i] == '0': constraint += ' ' + variables[i]
-                    elif line[i] == '1': constraint += ' -' + variables[i]
-            if model_type == 'milp':
-                constraint = constraint.strip(" + ")
-                constraint += ' >= ' + str(-(lp_rhs - 1))
-            elif model_type == 'sat': constraint = constraint.strip(" ")
-            constraints.append(constraint)
-        len_constraints = len(constraints)
         variables_mapping = "Input: {0}; msb: {1}".format("||".join(input_variables), input_variables[0])
         variables_mapping += "\nOutput: {0}; msb: {1}".format("||".join(output_variables), output_variables[0])
         with open(filename, 'w') as file:
             file.write(f"{variables_mapping}\n")
             file.write("Time used to simplify the constraints: {:0.04f} s\n".format(time_end - time_start))
-            file.write(f"Number of constraints: {len_constraints}\n") 
+            file.write(f"Number of constraints: {len(constraints)}\n") 
             file.write(f"Constraints: {constraints}\n") 
             file.write(f"Weight: {objective_fun}\n") 
         return constraints, objective_fun
@@ -306,7 +261,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     def is_bijective(self): # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
         return len(set(self.table)) == len(self.table) and all(i in self.table for i in range(len(self.table)))
 
-    def generate_implementation(self, implementation_type='python', mode = 0, unroll=False, weight=True):
+    def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
             if not isinstance(self.input_vars[0], list):
                 return [self.get_var_ID('out', 0, unroll) + ' = ' + str(self.__class__.__name__) + '[' + self.get_var_ID('in', 0, unroll) + ']']
@@ -348,12 +303,12 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         else: return None
             
             
-    def generate_model(self, model_type='sat', mode = 0, unroll=False, weight=True):
+    def generate_model(self, model_type='sat', mode = 0, unroll=True, weight=True):
         if model_type == 'sat': 
             filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
-                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, mode)
+                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 var_p = []
@@ -368,7 +323,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 return model_list
             elif self.model_version == "diff_1":
                 # modeling all possible (input difference, output difference)
-                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, mode)
+                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 model_list = []
                 for ineq in sbox_inequalities:
@@ -390,13 +345,13 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
+            model_list = []
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # modeling all possible (input difference, output difference, probablity)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                model_list = []
                 var_p = []    
                 filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
-                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, mode)
+                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 for i in range(sbox_weight.count('+') + 1):
                     var_p.append(f"{self.ID}_p{i}")
                     sbox_weight = sbox_weight.replace(f"p{i}", f"{self.ID}_p{i}")
@@ -412,10 +367,9 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             elif self.model_version == "diff_1":
                 # modeling all possible (input difference, output difference)
                 filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
-                sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, mode)
+                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 vars = var_in + var_out
-                model_list = []
                 for ineq in sbox_inequalities:
                     temp = ineq
                     for i in range(self.input_bitsize): 
@@ -434,7 +388,6 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             elif self.model_version == "diff_p":
                 # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                model_list = []
                 var_p = []    
                 ddt = self.computeDDT()
                 diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
@@ -442,7 +395,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 for w in range(len(diff_spectrum)):
                     var_p.append(f"{self.ID}_p{w}")
                     filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_diff_1_p{diff_spectrum[w]}.txt'
-                    sbox_inequalities, sbox_weight = self.gen_constraints_espresso(filename, model_type, f"diff_p{diff_spectrum[w]}", mode)
+                    sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, f"diff_p{diff_spectrum[w]}", mode)
                     for ineq in sbox_inequalities:
                         temp = ineq
                         for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
@@ -458,7 +411,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             elif self.model_version == "truncated_diff" and (not isinstance(self.input_vars[0], list)):
                 # word-wise difference propagations, the input difference equals the ouput difference
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
-                model_list = [f'{var_in[0]} - {var_out[0]} = 0']
+                model_list += [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 if weight: self.weight = var_in           
                 return model_list
@@ -469,12 +422,12 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 vars = var_in + var_out
                 if branch_num >= 3: # modeling the differential branch number of sbox 
                     var_d = [self.ID + '_d'] 
-                    model_list = [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
+                    model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                     model_list += [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d[0] + ' >= 0']
                     vars += var_d
                 if self.is_bijective(): # For bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
-                    model_list += [" {len(var_in)} + ".join(var_out) +  " - ".join(var_in) + ' >= 0']
-                    model_list += [" {len(var_out)} + ".join(var_in) +  " - ".join(var_out) + ' >= 0']                    
+                    model_list += [f"{len(var_in)} " + f" + {len(var_in)} " .join(var_out) +  " - " + " - ".join(var_in) + ' >= 0']
+                    model_list += [f"{len(var_out)} " + f" + {len(var_out)} ".join(var_in) +  " - " +  " - ".join(var_out) + ' >= 0']                    
                 if weight:
                     var_At = [self.ID + '_At'] 
                     model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
@@ -618,7 +571,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
             return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             var_in, var_out = [[f"{self.get_var_ID('in', i, unroll)}_{j}" for i in range(len(self.input_vars))] for j in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             model_list = []
@@ -688,7 +641,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         # Return differential branch number of the Matrix. TO DO
         return 5 # the branch number of matrix for aes is 5, to do for other ciphers
         
-    def generate_implementation(self, implementation_type='python', unroll=False, branch_num=None):
+    def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
             return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
         elif implementation_type == 'c': 
@@ -739,7 +692,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             model_list.append("} ")
             return model_list
             
-    def generate_model(self, model_type='sat', unroll=False, branch_num=None):
+    def generate_model(self, model_type='sat', unroll=True, branch_num=None):
         if model_type == 'milp' or model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "diff_1" or self.model_version == "DEFAULT":
                 model_list = []
@@ -818,7 +771,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
                 return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
         else: return None
         
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
@@ -856,7 +809,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
             if self.direction =='r' and (self.model_version == "diff_0" or self.model_version == "DEFAULT"): 
@@ -888,7 +841,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
 
 class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_type ('xor' or '+') to incorporate the constant with value "constant" to the input variable and result is stored in the output variable 
                                   # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
-    def __init__(self, input_vars, output_vars, add_type, constant_table, round, index, modulo = None, ID = None):
+    def __init__(self, input_vars, output_vars, add_type, constant_table, round = 0, index = 0, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         if add_type!='xor' and add_type!='modadd': raise Exception(str(self.__class__.__name__) + ": unknown add_type value")
         self.add_type = add_type
@@ -924,7 +877,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         else: return None
         
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             if (self.model_version == "diff_0" or self.model_version == "DEFAULT") and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -969,7 +922,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # cite: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
@@ -1050,7 +1003,7 @@ class ModMul(BinaryOperator):  # Operator for the modular multiplication: multip
                 else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -1067,7 +1020,7 @@ class bitwiseAND(BinaryOperator):  # Operator for the bitwise AND operation: com
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1105,7 +1058,7 @@ class bitwiseOR(BinaryOperator):  # Operator for the bitwise OR operation: compu
            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1166,87 +1119,90 @@ class bitwiseXOR(BinaryOperator):  # Operator for the bitwise XOR operation: com
                 return [s]
             else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
-            
-    def generate_model(self, model_type='sat', unroll=False):
+    
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
-            if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
+            model_list = []
+            if self.mat and (self.model_version == "diff_0" or self.model_version == "DEFAULT"):
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                model_list = []
+                for i in range(len(self.mat)): 
+                    if self.mat[i][0] != None and self.mat[i][1] != None:
+                        i1, i2, o = var_in1[self.mat[i][0]], var_in2[self.mat[i][1]], var_out[i]
+                        if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
+                            model_list += [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}', f'-{i1} -{i2} -{o}']
+                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")  
+                    elif self.mat[i][0] != None: model_list += [f'{var_in1[self.mat[i][0]]} -{var_out[i]}', f'-{var_in1[self.mat[i][0]]} {var_out[i]}']
+                    elif self.mat[i][1] != None: model_list += [f'{var_in2[self.mat[i][1]]} -{var_out[i]}', f'-{var_in2[self.mat[i][1]]} {var_out[i]}']                        
+                return model_list
+            elif self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 for i in range(len(var_in1)):
                     i1, i2, o = var_in1[i],var_in2[i],var_out[i]
                     model_list += [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}', f'-{i1} -{i2} -{o}']
-                return model_list        
+                return model_list      
+            elif self.model_version == "truncated_diff": 
+                i1, i2, o = self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll), self.get_var_ID('out', 0, unroll)
+                model_list = [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}']
+                return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             model_list = []
-            if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
+            if self.mat and (self.model_version == "diff_0" or self.model_version == "DEFAULT" or self.model_version == "diff_1" or self.model_version == "diff_2"):
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                if self.mat:
-                    var_d = []
-                    for i in range(len(self.mat)): 
-                        if self.mat[i][0] and self.mat[i][1]:
+                bin_vars = []
+                for i in range(len(self.mat)): 
+                    if self.mat[i][0] != None and self.mat[i][1] != None:
+                        i1, i2, o = var_in1[self.mat[i][0]], var_in2[self.mat[i][1]], var_out[i]
+                        bin_vars += [i1, i2, o]
+                        if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
                             d = self.ID + '_d_' + str(i)
-                            var_d += [d]
-                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
                             model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
-                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
-                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
-                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
-                else:
-                    var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                            bin_vars.append(d)
+                        elif self.model_version == "diff_1":                             
+                            model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
+                        elif self.model_version == "diff_2": 
+                            d = self.ID + '_d_' + str(i)
+                            model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
+                            bin_vars.append(d)
+                    elif self.mat[i][0] != None : 
+                        model_list += [f'{var_in1[self.mat[i][0]]} - {var_out[i]} = 0']
+                        bin_vars += [var_in1[self.mat[i][0]], var_out[i]]
+                    elif self.mat[i][1] != None : 
+                        model_list += [f'{var_in2[self.mat[i][1]]} - {var_out[i]} = 0']  
+                        bin_vars += [var_in2[self.mat[i][1]], var_out[i]]     
+                    else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)             
+                model_list.append('Binary\n' +  ' '.join(v for v in bin_vars))
+                return model_list
+            elif self.model_version == "diff_0" or self.model_version == "DEFAULT" or self.model_version == "diff_1" or self.model_version == "diff_2":
+                if self.model_version == "diff_0" or self.model_version == "DEFAULT": 
+                    var_in1, var_in2, var_out, var_d = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                     for i in range(len(var_in1)): 
                         i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
                         model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
-                return model_list
-            elif self.model_version == "diff_1": 
-                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                if self.mat:
-                    for i in range(len(self.mat)): 
-                        if self.mat[i][0] and self.mat[i][1]:
-                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                            model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
-                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
-                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
-                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
-                else:
+                    model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
+                    return model_list
+                elif self.model_version == "diff_1": 
+                    var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                     for i in range(len(var_in1)):  
                         i1, i2, o = var_in1[i], var_in2[i], var_out[i]
                         model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
                     model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
-                return model_list
-            elif self.model_version == "diff_2": 
-                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                if self.mat:
-                    var_d = []
-                    for i in range(len(var_in1)): 
-                        if self.mat[i][0] and self.mat[i][1]:
-                            d = self.ID + '_d_' + str(i)
-                            var_d += [d]
-                            i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                            model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
-                        elif self.mat[i][0]: model_list += [f'{var_in1[i]} - {var_out[i]} = 0']
-                        elif self.mat[i][1]: model_list += [f'{var_in2[i]} - {var_out[i]} = 0']   
-                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")                         
-                else:
-                    var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                    return model_list
+                elif self.model_version == "diff_2": 
+                    var_in1, var_in2, var_out, var_d = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                     for i in range(len(var_in1)):  
                         i1, i2, o, d = var_in1[i], var_in2[i], var_out[i], var_d[i]
                         model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
-                return model_list
+                    model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
+                    return model_list
             elif self.model_version == "truncated_diff": 
-                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('out', 0, unroll)]
-                var_d = [self.ID + '_d']
-                i1, i2, o, d = var_in1[0], var_in2[0], var_out[0], var_d[0]
+                i1, i2, o, d = self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll), self.get_var_ID('out', 0, unroll), self.ID + '_d'
                 model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
+                model_list.append('Binary\n' +  ' '.join(v for v in [i1, i2, o, d]))
                 return model_list
             elif self.model_version == "truncated_diff_1": 
-                var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('in', 1, unroll)], [self.get_var_ID('out', 0, unroll)]
-                i1, i2, o = var_in1[0], var_in2[0], var_out[0]
+                i1, i2, o = self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll), self.get_var_ID('out', 0, unroll)
                 model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
+                model_list.append('Binary\n' +  ' '.join(v for v in [i1, i2, o]))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -1263,7 +1219,7 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='sat', unroll=False):
+    def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             if self.model_version == "diff_0" or self.model_version =="DEFAULT": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -1281,21 +1237,67 @@ class bitwiseNOT(UnaryOperator): # Operator for the bitwise NOT operation: compu
 
 
 class AESround(Operator): # Operator for the AES round
-    def __init__(self, input_vars, output_vars, ID = None, subkey=None):
+    def __init__(self, input_vars, output_vars, subkey=None, ID = None):
+        if len(input_vars) != 16: raise Exception(str(self.__class__.__name__) + ": your input does not contain exactly 16 element")
         super().__init__(input_vars, output_vars, ID = ID)
         self.subkey = subkey
-        pass # TODO
+        self.layers = []
+        self.vars = []
+
+        # create intermediate variables
+        self.vars.append(input_vars)
+        suffixes = ["_SB", "_SR"] + (["_MC"] if subkey else [])
+        for suffix in suffixes:
+            temp_vars = copy.deepcopy(input_vars)
+            for var in temp_vars:
+                var.ID += suffix
+            self.vars.append(temp_vars)
+        self.vars.append(output_vars)
+
+        # create intermediate layers
+        self.layers.append([AES_Sbox([self.vars[0][i]], [self.vars[1][i]], ID + "_SB") for i in range(16)]) # S-box Layer
+
+        perm_s = [0, 5, 10, 15, 4, 9, 14, 3, 8, 13, 2, 7, 12, 1, 6, 11] # ShiftRows Layer
+        self.layers.append([Equal([self.vars[1][perm_s[i]]], [self.vars[2][i]], ID + "_SR") for i in range(16)])
+
+        mat = [[2, 3, 1, 1], [1, 2, 3, 1], [1, 1, 2, 3], [3, 1, 1, 2]] # MixColumns Layer
+        for indexes in [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]:
+            self.layers.append([Matrix("MC", [self.vars[2][x] for x in indexes], [self.vars[3][x] for x in indexes], mat=mat, polynomial="0x1B", ID=ID + "_MC")])
+
+        if subkey: # AddRoundKey Layer (only if subkey is provided)
+            self.layers.append([bitwiseXOR([self.vars[3][i], subkey[i]], [self.vars[4][i]], ID + "_AK") for i in range(16)])        
         
+
+    def generate_implementation_header(self, implementation_type='python'):
+        header_set = []
+        code_list = []
+        for i in range(len(self.layers)):
+            for j in range(len(self.layers[i])):
+                cons = self.layers[i][j]
+                if [cons.__class__.__name__] not in header_set:
+                    header_set.append([cons.__class__.__name__]) 
+                    if cons.generate_implementation_header(implementation_type) != None: 
+                        code_list += cons.generate_implementation_header(implementation_type)
+        return code_list 
+    
     def generate_implementation(self, implementation_type='python', unroll=False):
-        if implementation_type == 'python': 
-            pass
-        elif implementation_type == 'c': 
-            pass
+        if implementation_type == 'python' or implementation_type == 'c': 
+            code_list = []
+            for i in range(len(self.layers)):
+                for j in range(len(self.layers[i])):
+                    code_list += self.layers[i][j].generate_implementation(implementation_type, unroll=unroll)
+            return code_list
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='sat', unroll=False):
-        if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+    def generate_model(self, model_type='sat', unroll=True):
+        if model_type == 'sat' or model_type == 'milp': 
+            model_list = []
+            for i in range(len(self.layers)):
+                for j in range(len(self.layers[i])):
+                    cons = self.layers[i][j]
+                    cons.model_version = self.model_version
+                    model_list += cons.generate_model(model_type, unroll=unroll)
+            return model_list
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 
