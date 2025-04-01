@@ -68,12 +68,13 @@ def test_operator_model(operator, model_type, model_v_list=["diff_0"], mode=0):
             print("variable_map in sat:\n", variable_map)
             
             # Solve SAT model for the optimal solution
-            sol_list = solving.solve_sat(filename, variable_map, solving_goal="optimize")  
-            # print(f"Optimal solutions:\n{sol_list}")
+            # support solvers: "Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22"
+            sol_list = solving.solve_sat(filename, variable_map, solving_goal="optimize", solver="Default")  
+            print(f"Optimal solutions:\n{sol_list}")
             
             # Solve SAT model for all solutions
-            # sol_list = solving.solve_sat(filename, variable_map, solving_goal="all_solutions")
-            # print(f"All solutions:\n{sol_list}")
+            sol_list = solving.solve_sat(filename, variable_map, solving_goal="all_solutions")
+            print(f"All solutions:\n{sol_list}")
         
 
 
