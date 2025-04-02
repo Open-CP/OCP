@@ -11,14 +11,12 @@ def gen_cutoff_constraints_upper(cipher, r, best_obj=[]):
     add_cons = []
     for i in range(1, len(best_obj)+1):
         if best_obj[i-1] > 0:
-            print("gen_cutoff_constraints_upper", r, best_obj, i)
             vars = []
             for j in range(i+1, r+1):
                 for cons in cipher.states["STATE"].constraints[j][1]:
                     cons.generate_model(model_type='milp')
                     if hasattr(cons, 'weight'):
                         vars += cons.weight
-            # print("vars", " + ".join(vars))
             vars = [" + ".join(vars) + " - obj"]
             add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="SUM_LESS_EQUAL", vars=vars, value=-best_obj[i-1])
     return add_cons
