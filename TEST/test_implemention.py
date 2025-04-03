@@ -11,66 +11,76 @@ import implementations.implementations as imp
 
 def test_python(cipher, cipher_name, plaintext, key, test_ciphertext):
     print(f"****************TEST PYTHON IMPLEMENTATION of {cipher_name}****************")
-    if "unrolled" in cipher_name:
-        imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python", True)
-    else:
-        imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python")
+    imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python", "unrolled" in cipher_name)
     try:
         imp_cipher = importlib.import_module(f"files.{cipher_name}")
+        func = getattr(imp_cipher, f"{cipher.name}")   
+        ciphertext = [0 for _ in range(len(plaintext))]
+        if key is not None:
+            func(plaintext, key, ciphertext)
+        else:
+            func(plaintext, ciphertext)
+        if ciphertext == test_ciphertext:
+            return True
+        else:
+            print(f'Wrong!\nciphertext = {[hex(i) for i in ciphertext]}\ntest_ciphertext={test_ciphertext}') 
+            return False
     except ImportError:
         print(f"Implementation module files.{cipher_name} version cannot be loaded.\n")
-    func = getattr(imp_cipher, f"{cipher.name}")   
-    ciphertext = [0 for _ in range(len(plaintext))]
-    func(plaintext, key, ciphertext)
-    if ciphertext == test_ciphertext:
-        return True
-    else:
-        print(f'Wrong!\nciphertext = {[hex(i) for i in ciphertext]}\ntest_ciphertext={test_ciphertext}') 
-        return False
+    except AttributeError as e:
+        print(f"Function {cipher.name} not found in module files.{cipher_name}: {e}\n")
     
-
+    
 def test_c(cipher, cipher_name, plaintext, key, test_ciphertext):
     print(f"****************TEST C IMPLEMENTATION of {cipher_name}****************")
-    if "unrolled" in cipher_name:
-        imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c", True)
-    else:
-        imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c")
-    if cipher.inputs["plaintext"][0].bitsize <= 8:
+    imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c", "unrolled" in cipher_name)
+    first_var = next(iter(cipher.inputs.values()))[0]
+    if first_var.bitsize <= 8:
         dtype_np = np.uint8
         dtype_ct = ctypes.c_uint8
-    elif cipher.inputs["plaintext"][0].bitsize <= 32:
+    elif first_var.bitsize <= 32:
         dtype_np = np.uint32
         dtype_ct = ctypes.c_uint32
-    elif cipher.inputs["plaintext"][0].bitsize <= 64:
+    elif first_var.bitsize <= 64:
         dtype_np = np.uint64
         dtype_ct = ctypes.c_uint64
     else:
         dtype_np = np.uint128
         dtype_ct = ctypes.c_uint128
     plaintext = np.array(plaintext, dtype=dtype_np)
-    key = np.array(key, dtype=dtype_np)
     ciphertext = np.zeros(len(plaintext), dtype=dtype_np)
     test_ciphertext = np.array(test_ciphertext, dtype=dtype_np)
-
+    if key is not None:
+        key = np.array(key, dtype=dtype_np)
     compile_command = f"gcc files/{cipher_name}.c -o files/{cipher_name}.out"
     compile_process = subprocess.run(compile_command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     if compile_process.returncode != 0:
         print(f"[ERROR] Compilation failed for {cipher.name}.c")
         return False
-    
-    func = getattr(ctypes.CDLL(f"files/{cipher_name}.out"), cipher.name)
-    func.argtypes = [ctypes.POINTER(dtype_ct)] * 3
-    func(
-        plaintext.ctypes.data_as(ctypes.POINTER(dtype_ct)),
-        key.ctypes.data_as(ctypes.POINTER(dtype_ct)),
-        ciphertext.ctypes.data_as(ctypes.POINTER(dtype_ct))
-    )
-
-    if np.array_equal(ciphertext, test_ciphertext):
-        return True
-    else:
-        print(f'Wrong!\nciphertext = {[hex(i) for i in ciphertext]}\ntest_ciphertext={test_ciphertext}') 
+    try:
+        func = getattr(ctypes.CDLL(f"files/{cipher_name}.out"), cipher.name)
+        if key is not None:
+            func.argtypes = [ctypes.POINTER(dtype_ct)] * 3
+            func(
+                plaintext.ctypes.data_as(ctypes.POINTER(dtype_ct)),
+                key.ctypes.data_as(ctypes.POINTER(dtype_ct)),
+                ciphertext.ctypes.data_as(ctypes.POINTER(dtype_ct))
+            )
+        else:
+            func.argtypes = [ctypes.POINTER(dtype_ct)] * 2
+            func(
+                plaintext.ctypes.data_as(ctypes.POINTER(dtype_ct)),
+                ciphertext.ctypes.data_as(ctypes.POINTER(dtype_ct))
+            )
+        if np.array_equal(ciphertext, test_ciphertext):
+            return True
+        else:
+            print(f'Wrong! ciphertext = {[hex(i) for i in ciphertext]}, expected = {[hex(i) for i in test_ciphertext]}')
+            return False
+    except Exception as e:
+        print(f"Failed to load or execute the C function: {e}")
         return False
+    
     
 def test_speck():
     for version in [[32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]]:
@@ -288,12 +298,29 @@ def test_gift():
         print(test_c(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
 
 
+def test_SipHash():
+    cipher = OCP.TEST_SIPHASH_PERMUTATION(r=2)
+    
+    # Test vector from  https://www.aumasson.jp/siphash/siphash.pdf
+    plaintext =[0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
+    ciphertext = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8] 
+    
+    # test of python implementation
+    print(test_python(cipher, cipher.name, plaintext, None, ciphertext))
+    print(test_python(cipher, cipher.name + "_unrolled", plaintext, None, ciphertext))
+
+    # test of C implementation
+    print(test_c(cipher, cipher.name, plaintext, None, ciphertext))
+    print(test_c(cipher, cipher.name + "_unrolled", plaintext, None, ciphertext))
+
+
 if __name__ == '__main__':
     test_speck()
     test_simon()
     test_skinny()
     test_aes()
     test_gift()
+    test_SipHash()
     
     
 
