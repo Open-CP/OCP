@@ -126,28 +126,28 @@ def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", rounds=Non
     return add_cons
 
 
-def set_model_versions(cipher, version, rounds=None, states=None, layers=None, positions=None, consIDs=None):
+def set_model_versions(cipher, version, states=None, rounds=None, layers=None, positions=None):
     """
     Assigns a specified model_version to constraints in the cipher based on specified parameters.
 
     Args:
-        cipher (object): The cipher instance.
+        cipher (object): The cipher object.
         version (str): The model_version to apply.
-        rounds (list[int, str] | None, optional): List of rounds to consider. Options: "inputs" and int (e.g., 1, 2, 3).  Defaults to None.
-        states (list[str] | None, optional): List of states to consider. Options: "STATE", "KEY_STATE", "SUBKEYS".  Defaults to None.
-        layers (dict | None, optional): Dictionary specifying the layers of each state. Options: int (e.g., 0, 1, 2). Defaults to None.
-        positions (dict | None, optional): Dictionary mapping positions for constraints. Options: int (e.g., 0, 1, 2). Defaults to None.
+        states (list[str] | None, optional): List of states. Options: "inputs", "STATE", "KEY_STATE", "SUBKEYS".
+        rounds (dict | None, optional): Dictionary specifying the rounds of each state. 
+        layers (dict | None, optional): Dictionary specifying the layers of each round of each state. 
+        positions (dict | None, optional): Dictionary specifying positions of each layer of each round of each state.
     """
     
-    if rounds: # Handle input constraints when "inputs" or a number is specified for rounds.
-        for r in rounds:
-            if r == "inputs":
+    if states is not None: 
+        for s in states:
+            if s == "inputs": # in the input
                 for p in positions["inputs"]:
                     cipher.inputs_constraints[p].model_version = version
-            elif isinstance(r, int): # Set model versions for constraints in a specific round
-                for s in states: # Set model versions for constraints in a specific state
-                    for l in layers[s]: # Set model versions for constraints in a specific layer
-                        for p in positions[r][s][l]:
+            else: # in a specific state
+                for r in rounds[s]: # in a specific round
+                    for l in layers[s][r]: # in a specific layer
+                        for p in positions[s][r][l]: # in a specific position
                             cipher.states[s].constraints[r][l][p].model_version = version    
 
 
