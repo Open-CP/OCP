@@ -11,7 +11,10 @@ import implementations.implementations as imp
 
 def test_python(cipher, cipher_name, plaintext, key, test_ciphertext):
     print(f"****************TEST PYTHON IMPLEMENTATION of {cipher_name}****************")
-    imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python")
+    if "unrolled" in cipher_name:
+        imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python", True)
+    else:
+        imp.generate_implementation(cipher,"files/" + cipher_name + ".py", "python")
     try:
         imp_cipher = importlib.import_module(f"files.{cipher_name}")
     except ImportError:
@@ -28,7 +31,10 @@ def test_python(cipher, cipher_name, plaintext, key, test_ciphertext):
 
 def test_c(cipher, cipher_name, plaintext, key, test_ciphertext):
     print(f"****************TEST C IMPLEMENTATION of {cipher_name}****************")
-    imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c")
+    if "unrolled" in cipher_name:
+        imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c", True)
+    else:
+        imp.generate_implementation(cipher,"files/" + cipher_name + ".c", "c")
     if cipher.inputs["plaintext"][0].bitsize <= 8:
         dtype_np = np.uint8
         dtype_ct = ctypes.c_uint8
