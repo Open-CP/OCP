@@ -1,6 +1,5 @@
 from abc import ABC, abstractmethod
 import math
-import subprocess
 import time 
 import copy
 import operators.matrix as matrix
@@ -304,8 +303,11 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             
             
     def generate_model(self, model_type='sat', mode = 0, unroll=True, weight=True):
+        script_dir = os.path.dirname(os.path.abspath(__file__)) 
+        base_path = os.path.join(script_dir, '..', 'files')
+        base_path = os.path.abspath(base_path)
         if model_type == 'sat': 
-            filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
+            filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
             if self.model_version == "diff_0" or self.model_version == "DEFAULT":
                 # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
                 sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
@@ -350,7 +352,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 # modeling all possible (input difference, output difference, probablity)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 var_p = []    
-                filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
+                filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
                 sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 for i in range(sbox_weight.count('+') + 1):
                     var_p.append(f"{self.ID}_p{i}")
@@ -366,7 +368,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 return model_list
             elif self.model_version == "diff_1":
                 # modeling all possible (input difference, output difference)
-                filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt'
+                filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
                 sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
                 var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
                 vars = var_in + var_out
@@ -394,7 +396,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 weight = ''
                 for w in range(len(diff_spectrum)):
                     var_p.append(f"{self.ID}_p{w}")
-                    filename = f'files/constraints_sbox_{str(self.__class__.__name__)}_{model_type}_diff_1_p{diff_spectrum[w]}.txt'
+                    filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_diff_1_p{diff_spectrum[w]}.txt')
                     sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, f"diff_p{diff_spectrum[w]}", mode)
                     for ineq in sbox_inequalities:
                         temp = ineq
