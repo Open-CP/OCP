@@ -77,11 +77,12 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
         model = gp.read(filename)
         if solving_goal == "optimize":
             try:
+                model.Params.timeLimit = 100
                 model.optimize()
             except gp._exception.GurobiError:
                 print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
                 return None, None
-            if model.status == gp.GRB.Status.OPTIMAL:
+            if model.status == gp.GRB.Status.OPTIMAL or model.status == gp.GRB.TIME_LIMIT:
                 sol_dic = {}
                 for v in model.getVars():
                     sol_dic[str(v.VarName)] = int(round(v.Xn))          
@@ -182,7 +183,7 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     if bin_vars: 
         content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
     if in_vars: 
-        content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+        content += "Integer\n" + " ".join(set(in_vars)) + "\n"
 
     # === Step 5: Write the model into a file === #
     if filename:
