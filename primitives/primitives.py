@@ -104,22 +104,24 @@ class State:
     
     # apply a layer "name" of a single operator "my_operator" with input indexes "index_in" and output indexes "index_out", at the round "crt_round", at the layer "crt_layer". The other output indexes are just being applied identity
     def SingleOperatorLayer(self, name, crt_round, crt_layer, my_operator, index_in, index_out, mat=None):
-        i = 0
-        for idx in index_out:
-            in_vars_index = index_out.index(idx)
-            in_vars = [self.vars[crt_round][crt_layer][k] for k in index_in[in_vars_index]]    
-            if isinstance(idx, list):
-                out_vars = [self.vars[crt_round][crt_layer + 1][id] for id in idx]
-            elif isinstance(idx, int):
-                out_vars = [self.vars[crt_round][crt_layer + 1][idx]]
-            if mat: self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,i), mat=mat))
-            else: self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,i)))
-            i += 1
+        flat_index_out = [idx for sub in index_out for idx in (sub if isinstance(sub, list) else [sub])]
         for j in range(self.nbr_words + self.nbr_temp_words):
-            if j not in [idx for sub in index_out for idx in (sub if isinstance(sub, list) else [sub])]:
+            if j not in flat_index_out:
                 in_var, out_var = [self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]]
                 self.constraints[crt_round][crt_layer].append(op.Equal(in_var, out_var, ID=generateID(name,crt_round,crt_layer,j)))
-       
+            else:
+                if isinstance(index_out[0], int):
+                    in_vars = [self.vars[crt_round][crt_layer][k] for k in index_in[index_out.index(j)]]
+                    out_vars = [self.vars[crt_round][crt_layer+1][j]]
+                    if mat: self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,j), mat=mat))
+                    else: self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,j)))       
+                elif isinstance(index_out[0], list):
+                    for id, sub_index in enumerate(index_out):
+                        if j == sub_index[0]:
+                            in_vars = [self.vars[crt_round][crt_layer][k] for k in index_in[id]]    
+                            out_vars = [self.vars[crt_round][crt_layer + 1][i] for i in sub_index]
+                            self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,j)))
+        
     # apply a layer "name" of a Matrix "mat" (only square matrix), at the round "crt_round", at the layer "crt_layer", operating in the field GF(2^"bitsize") with polynomial "polynomial"
     def MatrixLayer(self, name, crt_round, crt_layer, mat, indexes_list, polynomial = None):
         m = len(mat)
