@@ -1284,6 +1284,10 @@ class AESround(Operator): # Operator for the AES round
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python' or implementation_type == 'c': 
             code_list = []
+            if implementation_type == 'c':
+                var_ids = [var.ID if unroll else var.remove_round_from_ID() for i in range(1, len(self.vars)-1) for var in self.vars[i]]
+                claim_var_c = "uint8_t " + ", ".join(var_ids) + ";"
+                code_list += [claim_var_c]
             for i in range(len(self.layers)):
                 for j in range(len(self.layers[i])):
                     code_list += self.layers[i][j].generate_implementation(implementation_type, unroll=unroll)
