@@ -66,20 +66,21 @@ class AES_block_cipher(Block_cipher):
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds==None: nbr_rounds=10 if version[1]==128 else 12 if version[1]==192 else 14 if version[1]==256  else None
         nbr_rounds += 1
-        full_rounds=11 if version[1]==128 else 13 if version[1]==192 else 15 if version[1]==256  else None
         if represent_mode==0: 
+            perm_s = [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]
             if k_bitsize==128:
                 (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, 8),  (7, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8) 
+                k_nbr_rounds, k_perm = nbr_rounds, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,13,14,15,12]
+                full_rounds=11
             if k_bitsize==192: 
                 (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, 8),  (9, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8) 
+                k_nbr_rounds, k_perm = int((nbr_rounds+1)/1.5),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,21,22,23,20]
+                full_rounds=13
             if k_bitsize==256: 
                 (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, 8),  (13, int(16*k_bitsize / p_bitsize), 8, 8),  (1, 16, 0, 8) 
-        
-        perm_s = [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]
-        if k_bitsize==128: k_nbr_rounds, k_perm = nbr_rounds, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,13,14,15,12]
-        elif k_bitsize==192: k_nbr_rounds, k_perm = int((nbr_rounds+1)/1.5),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,21,22,23,20]
-        elif k_bitsize==256: k_nbr_rounds, k_perm = int((nbr_rounds+1)/2),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,29,30,31,28]
-        nk = int(k_bitsize/32)
+                k_nbr_rounds, k_perm = int((nbr_rounds+1)/2),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,29,30,31,28]
+                full_rounds=15
+            nk = int(k_bitsize/32)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         
         S = self.states["STATE"]
@@ -109,14 +110,23 @@ class AES_block_cipher(Block_cipher):
                 if k_bitsize==192: 
                     KS.SingleOperatorLayer("K_XOR", i, 7, op.bitwiseXOR, [[j, j+4] for j in range(12,16)],  [j for j in range(16,20)]) # XOR layer 
                     KS.SingleOperatorLayer("K_XOR", i, 8, op.bitwiseXOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
+                    if i == k_nbr_rounds-1:
+                        for j in range(2*(nbr_rounds % 3)):
+                            KS.constraints[i][8-j] = []
+                            KS.AddIdentityLayer("ID", i, 8-j)     # Identity layer
+
                 elif k_bitsize==256:
                     KS.PermutationLayer("K_P", i, 7, [i for i in range(36)]+[12,13,14,15]) # Permutation layer
-                    KS.SboxLayer("K_SB", i, 8, op.AES_Sbox, mask=([0 for i in range(36)] + [1, 1, 1, 1])) # Sbox layer   
+                    KS.SboxLayer("K_SB", i, 8, op.AES_Sbox, mask=([0 for _ in range(36)] + [1, 1, 1, 1])) # Sbox layer   
                     KS.SingleOperatorLayer("K_XOR", i, 9, op.bitwiseXOR, [[j, j+20] for j in range(16, 20)],  [j for j in range(16, 20)]) # XOR layer 
                     KS.SingleOperatorLayer("K_XOR", i, 10, op.bitwiseXOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
                     KS.SingleOperatorLayer("K_XOR", i, 11, op.bitwiseXOR, [[j, j+4] for j in range(20,24)],  [j for j in range(24,28)]) # XOR layer 
                     KS.SingleOperatorLayer("K_XOR", i, 12, op.bitwiseXOR, [[j, j+4] for j in range(24,28)],  [j for j in range(28,32)]) # XOR layer 
-                   
+                    if i == k_nbr_rounds-1 and nbr_rounds % 2 == 1:
+                        for j in range(7, 13):
+                            KS.constraints[i][j] = []
+                            KS.AddIdentityLayer("ID", i, j)     # Identity layer
+                            
             # Internal permutation
             S.AddRoundKeyLayer("ARK", 1, 0, op.bitwiseXOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
             S.AddIdentityLayer("ID", 1, 1)     # Identity layer 
