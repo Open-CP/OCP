@@ -171,7 +171,7 @@ def gen_attacks_model(cipher, model_type="milp", add_constraints=[], obj_sat=0, 
         return solving.gen_sat_model(constraints=constraints, obj_var=obj_fun, obj=obj_sat, filename=filename)
 
 
-def diff_attacks(cipher, model_type="milp", goal="search_optimal_trail", add_constraints=[], obj_sat=0, show_mode=0):
+def diff_attacks(cipher, model_type="milp", goal="search_optimal_trail", add_constraints=None, obj_sat=0, show_mode=0):
     """
     Perform differential attacks on a given cipher using specified model_type.
 
@@ -186,6 +186,8 @@ def diff_attacks(cipher, model_type="milp", goal="search_optimal_trail", add_con
     Returns:
         tuple: Solution and its objective value, or (None, None) if no solution found.
     """
+    if add_constraints is None:
+        add_constraints = []
 
     # Define filename and ensure the directory exists, create if not
     filename = f"files/{cipher.name}_{goal}_{model_type}_model.{'lp' if model_type == 'milp' else 'cnf'}"
