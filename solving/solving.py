@@ -1,3 +1,4 @@
+# Solve MILP model using Gurobi solver
 try:
     import gurobipy as gp
     gurobipy_import = True
@@ -6,6 +7,7 @@ except ImportError:
     gurobipy_import = False
     pass
 
+# Solve MILP model using SCIP solver
 try:
     from pyscipopt import Model
     scip_import = True
@@ -14,6 +16,17 @@ except ImportError:
     scip_import = False
     pass
 
+# Solve MILP model using Or-tools solver
+try: # TO DO
+    from ortools.linear_solver import pywraplp
+    import ortoolslpparser
+    ortools_import = True
+except ImportError:
+    print("ortools module can't be loaded \n")
+    ortools_import = False
+    pass
+
+# Solve SAT model using a solver from python-sat
 try:
     from pysat.solvers import Solver
     from pysat.formula import CNF
@@ -55,7 +68,7 @@ def formulate_solutions(cipher, solitions):
                     else:
                         vars_table[i][r][l][w].value = 0
 
-def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
+def solve_milp(filename, solving_goal="optimize", solver="Gurobi", solver_params={}):
     """
     Solve a MILP model.
     
@@ -77,10 +90,11 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
         model = gp.read(filename)
         if solving_goal == "optimize":
             try:
-                model.Params.timeLimit = 100
+                if "timeLimit" in solver_params:
+                    model.Params.timeLimit = solver_params["timeLimit"]
                 model.optimize()
-            except gp._exception.GurobiError:
-                print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
+            except gp.GurobiError:
+                print("Error: check your gurobi license, visit https://gurobi.com/unrestricted for more information\n")
                 return None, None
             if model.status == gp.GRB.Status.OPTIMAL or model.status == gp.GRB.TIME_LIMIT:
                 sol_dic = {}
@@ -188,7 +202,7 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     # === Step 5: Write the model into a file === #
     if filename:
         with open(filename, "w") as myfile:
-            myfile.write(content + "\nEnd\n")    
+            myfile.write(content + "End\n")    
     
     return content
 
