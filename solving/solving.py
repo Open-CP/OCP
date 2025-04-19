@@ -1,3 +1,4 @@
+# Solve MILP model using Gurobi solver
 try:
     import gurobipy as gp
     gurobipy_import = True
@@ -6,8 +7,28 @@ except ImportError:
     gurobipy_import = False
     pass
 
+# Solve MILP model using SCIP solver
 try:
-    from pysat.solvers import CryptoMinisat
+    from pyscipopt import Model
+    scip_import = True
+except ImportError:
+    print("PySCIPOpt module can't be loaded \n")
+    scip_import = False
+    pass
+
+# Solve MILP model using Or-tools solver
+try: # TO DO
+    from ortools.linear_solver import pywraplp
+    import ortoolslpparser
+    ortools_import = True
+except ImportError:
+    print("ortools module can't be loaded \n")
+    ortools_import = False
+    pass
+
+# Solve SAT model using a solver from python-sat
+try:
+    from pysat.solvers import Solver
     from pysat.formula import CNF
     pysat_import = True
 except ImportError:
@@ -47,7 +68,7 @@ def formulate_solutions(cipher, solitions):
                     else:
                         vars_table[i][r][l][w].value = 0
 
-def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
+def solve_milp(filename, solving_goal="optimize", solver="Gurobi", solver_params={}):
     """
     Solve a MILP model.
     
@@ -69,11 +90,13 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
         model = gp.read(filename)
         if solving_goal == "optimize":
             try:
+                if "timeLimit" in solver_params:
+                    model.Params.timeLimit = solver_params["timeLimit"]
                 model.optimize()
-            except gp._exception.GurobiError:
-                print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
+            except gp.GurobiError:
+                print("Error: check your gurobi license, visit https://gurobi.com/unrestricted for more information\n")
                 return None, None
-            if model.status == gp.GRB.Status.OPTIMAL:
+            if model.status == gp.GRB.Status.OPTIMAL or model.status == gp.GRB.TIME_LIMIT:
                 sol_dic = {}
                 for v in model.getVars():
                     sol_dic[str(v.VarName)] = int(round(v.Xn))          
@@ -99,7 +122,40 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi"):
                 sol_list.append(sol_dic)
                 obj_list.append(model.ObjVal)
             return sol_list, obj_list
-
+    
+    elif solver == "SCIP":
+        if not scip_import:
+            print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
+            return None, None
+        
+        model = Model()
+        model.readProblem(filename)        
+        if solving_goal == "optimize":
+            model.optimize()
+            if model.getStatus() == "optimal":
+                sol_dic = {}
+                for v in model.getVars():
+                    sol_dic[str(v.name)] = int(round(model.getVal(v)))
+                return sol_dic, model.getObjVal()
+            else:
+                return None, None
+            
+        elif solving_goal == "all_solutions":
+            sol_list, obj_list = [], []
+            while model.getStatus() != "infeasible":
+                model.optimize()
+                if model.getStatus() == "optimal":
+                    sol_dic = {}
+                    for v in model.getVars():
+                        sol_dic[str(v.name)] = int(round(model.getVal(v)))
+                    sol_list.append(sol_dic)
+                    obj_list.append(model.getObjVal())
+                    # Extend the time limit to find next solution
+                    model.setSolvingLimit(model.getSolvingTimeLimit() + 1)  # Increasing the time limit for the next solution
+                else:
+                    break
+            return sol_list, obj_list
+        
     else:
         return None, None
 
@@ -141,17 +197,17 @@ def gen_milp_model(constraints=[], obj_fun=[], filename=""):
     if bin_vars: 
         content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
     if in_vars: 
-        content += "Integer\n" + " ".join(set(in_vars)) + "\nEnd\n"
+        content += "Integer\n" + " ".join(set(in_vars)) + "\n"
 
     # === Step 5: Write the model into a file === #
     if filename:
         with open(filename, "w") as myfile:
-            myfile.write(content)    
+            myfile.write(content + "End\n")    
     
     return content
 
 
-def solve_sat(filename, variable_map, solving_goal="optimize", solver="CryptoMiniSat"):
+def solve_sat(filename, variable_map, solving_goal="optimize", solver="Default"):
     """
     Solve a SAT problem using CryptoMiniSat.
     
@@ -168,40 +224,44 @@ def solve_sat(filename, variable_map, solving_goal="optimize", solver="CryptoMin
         print("pysat module can't be loaded ... skipping test\n")
         return None
     
-    if solver == "CryptoMiniSat":
-        cnf = CNF(filename)
-        solver = CryptoMinisat()
-        solver.append_formula(cnf.clauses)
+    cnf = CNF(filename)
+    if solver in ["Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
+        if solver == "Default":
+            solver = Solver()
+        else:
+            solver = Solver(name=solver)
+    else: print("No SAT Solver Support!")
+    solver.append_formula(cnf.clauses)
+
+    if solving_goal == "optimize":
+        if solver.solve():
+            model = solver.get_model()
+            sol_dic = {}
+            for v in model:
+                sol_dic[abs(v)] = v  
+            for var in variable_map:
+                if sol_dic[variable_map[var]] > 0:
+                    variable_map[var] = 1
+                else:
+                    variable_map[var] = 0
+            return variable_map
+        else:
+            print("No solution exists.")
+            return None
         
-        if solving_goal == "optimize":
-            if solver.solve():
-                model = solver.get_model()
-                sol_dic = {}
-                for v in model:
-                    sol_dic[abs(v)] = v  
-                for var in variable_map:
-                    if sol_dic[variable_map[var]] > 0:
-                        variable_map[var] = 1
-                    else:
-                        variable_map[var] = 0
-                return variable_map
-            else:
-                # print("No solution exists.")
-                return None
-            
-        elif solving_goal == "all_solutions":
-            sol_list = []
-            while solver.solve():
-                model = solver.get_model()
-                sol_dic = {}
-                for v in model:
-                    sol_dic[abs(v)] = v          
-                sol_list.append(sol_dic)
-                block_clause = [-l for l in model]
-                solver.add_clause(block_clause)
-            solver.delete()
-            print("Number of solutions by solving the SAT model: ", len(sol_list))
-            return sol_list
+    elif solving_goal == "all_solutions":
+        sol_list = []
+        while solver.solve():
+            model = solver.get_model()
+            sol_dic = {}
+            for v in model:
+                sol_dic[abs(v)] = v          
+            sol_list.append(sol_dic)
+            block_clause = [-l for l in model]
+            solver.add_clause(block_clause)
+        solver.delete()
+        print("Number of solutions by solving the SAT model: ", len(sol_list))
+        return sol_list
     
     else:
         return None
