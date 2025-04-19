@@ -1,4 +1,6 @@
 import os, os.path
+import attacks.linear_cryptanalysis as lin
+import attacks.differential_cryptanalysis as dif
 import solving.solving as solving
 import visualisations.visualisations as vis 
 
