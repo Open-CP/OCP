@@ -18,6 +18,7 @@ class Simon_permutation(Permutation):
         p_bitsize = version
         if nbr_rounds==None: nbr_rounds=32 if version==32 else 36 if version==48 else 42 if version==64 else 52 if version==96 else 68 if version==128 else None
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 5, 2, 3, p_bitsize>>1
+        elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 2, 3, p_bitsize>>1
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
         S = self.states["STATE"]
@@ -32,6 +33,14 @@ class Simon_permutation(Permutation):
                 S.PermutationLayer("PERM", i, 4, [1,0]) # Permutation layer
        
 
+        elif represent_mode==1:
+            for i in range(1,nbr_rounds+1):         
+                S.RotationLayer("ROT", i, 0, [['l', 1, 0, 2], ['l', 8, 0, 3], ['l', 2, 0, 4]]) # Rotation layer 
+                S.SingleOperatorLayer("ANDXOR", i, 1, op.bitwiseANDXOR, [[2, 3, 1]], [1]) # bitwise AND-XOR layer
+                S.SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[1, 4]], [1]) # XOR layer 
+                S.PermutationLayer("PERM", i, 3, [1,0]) # Permutation layer
+
+                
 # The Simon block cipher 
 # Test vector for simon32_64: plaintext = [0x6565, 0x6877], key = [0x1918, 0x1110, 0x0908, 0x0100], ciphertext = ['0xc69b', '0xe9bb']
 # Test vector for simon48_72: plaintext = [0x612067, 0x6e696c], key = [0x121110, 0x0a0908, 0x020100], ciphertext = ['0xdae5ac', '0x292cac']
