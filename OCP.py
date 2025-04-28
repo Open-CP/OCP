@@ -7,6 +7,7 @@ import primitives.ascon as ascon
 import primitives.gift as gift
 import primitives.aes as aes
 import primitives.siphash as siphash
+import primitives.present as present
 import variables.variables as var
 import attacks.attacks as attacks 
 import implementations.implementations as imp 
@@ -16,7 +17,7 @@ import os
 if not os.path.exists('files'):
     os.makedirs('files')
 
-# ********************* TEST OF CIPHERS CODING IN PYTHON AND C********************* #  
+# ********************* PYTHON, C IMPLEMENTATIONS AND FIGURES ********************* #  
 def generate_codes(cipher):
     imp.generate_implementation(cipher,"files/" + cipher.name + ".py", "python")
     imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
@@ -25,94 +26,107 @@ def generate_codes(cipher):
     vis.generate_figure(cipher,"files/" + cipher.name + ".pdf")
     
 
-# ********************* TEST OF CIPHERS MODELING IN MILP and SAT********************* #   
-def TEST_SPECK_PERMUTATION(r=None, version=32):
+# ********************* CIPHERS ********************* #   
+def SPECK_PERMUTATION(r=None, version=32):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = speck.Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
    
 
-def TEST_SIMON_PERMUTATION(r=None, version=32):
+def SIMON_PERMUTATION(r=None, version=32):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = simon.Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_ASCON_PERMUTATION(r=None):
+def ASCON_PERMUTATION(r=None):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
     my_cipher = ascon.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SKINNY_PERMUTATION(r=None, version=64):
+def SKINNY_PERMUTATION(r=None, version=64):
     my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
     my_cipher = skinny.Skinny_permutation("SKINNY_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_AES_PERMUTATION(r=None):
+def AES_PERMUTATION(r=None):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = aes.AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_GIFT_PERMUTATION(r=None, version=64): 
+def GIFT_PERMUTATION(r=None, version=64): 
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
     my_cipher = gift.GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SIPHASH_PERMUTATION(r=None): 
+def SIPHASH_PERMUTATION(r=None): 
     my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
     my_cipher = siphash.SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_ROCCA_AD(r=5):
+def PRESENT_PERMUTATION(r=None): 
+    my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(64)], [var.Variable(1,ID="out"+str(i)) for i in range(64)]
+    my_cipher = present.PRESENT_permutation(f"PRESENT_PERM", 64, my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
+def ROCCA_AD(r=5):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
     my_cipher = rocca.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_ROCCA_AD2(r=5):
+def ROCCA_AD2(r=5):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
     my_cipher = rocca.Rocca_AD_permutation2("ROCCA_AD2", my_input, my_output, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SPECK_BLOCKCIPHER(r=None, version = [32, 64]):
+def SPECK_BLOCKCIPHER(r=None, version = [32, 64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = speck.Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
+def SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
     my_cipher = skinny.Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_AES_BLOCKCIPHER(r=None, version = [128, 128]): 
+def AES_BLOCKCIPHER(r=None, version = [128, 128]): 
     my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = aes.AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_SIMON_BLOCKCIPHER(r=None, version=[32,64]):
+def SIMON_BLOCKCIPHER(r=None, version=[32,64]):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = simon.Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
-def TEST_GIFT_BLOCKCIPHER(r=None, version = [64, 128]): 
+def GIFT_BLOCKCIPHER(r=None, version = [64, 128]): 
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = gift.GIFT_block_cipher(f"GIFT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher
+
+
+def PRESENT_BLOCKCIPHER(r=None, version = [64, 80]): 
+    p_bitsize, k_bitsize = version[0], version[1]
+    my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
+    my_cipher = present.PRESENT_block_cipher(f"PRESENT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
     return my_cipher
 
 
@@ -140,7 +154,7 @@ Procedure:
 def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
     r = 2
-    cipher = TEST_SPECK_PERMUTATION(r, version = 32) 
+    cipher = SPECK_PERMUTATION(r, version = 32) 
     sol, obj = attacks.diff_attacks(cipher, model_type="milp", show_mode=0)
 
     
@@ -149,7 +163,7 @@ def TEST_DIFF_ATTACK_SPECK():
     
 
     # TEST 3: Search for the best related-key differential trail of r-round SPECK by solving MILP models
-    cipher = TEST_SPECK_BLOCKCIPHER(r, version=[32,64]) 
+    cipher = SPECK_BLOCKCIPHER(r, version=[32,64]) 
     sol, obj = attacks.diff_attacks(cipher, model_type="milp", show_mode=1)
 
 
@@ -160,7 +174,7 @@ def TEST_DIFF_ATTACK_SPECK():
 def TEST_DIFF_ATTACK_SIMON():
     # TEST 1: Search for the best differential trail of r-round SIMON by solving MILP models
     r = 6
-    cipher = TEST_SIMON_PERMUTATION(r, version = 32)
+    cipher = SIMON_PERMUTATION(r, version = 32)
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
@@ -169,7 +183,7 @@ def TEST_DIFF_ATTACK_SIMON():
 
 
     # TEST 3: Search for the best related-key differential trail of r-round SIMON by solving MILP models
-    cipher = TEST_SIMON_BLOCKCIPHER(r, version=[32,64]) 
+    cipher = SIMON_BLOCKCIPHER(r, version=[32,64]) 
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
@@ -180,7 +194,7 @@ def TEST_DIFF_ATTACK_SIMON():
 def TEST_DIFF_ATTACK_ASCON():
     # TEST 1: Search for the best differential trail of r-round ASCON by solving MILP models
     r = 2
-    cipher = TEST_ASCON_PERMUTATION(r) 
+    cipher = ASCON_PERMUTATION(r) 
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
@@ -205,7 +219,7 @@ def TEST_DIFF_ATTACK_ASCON():
 def TEST_DIFF_ATTACK_GIFT():
     # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP models
     r = 5
-    cipher = TEST_GIFT_PERMUTATION(r, version = 64)
+    cipher = GIFT_PERMUTATION(r, version = 64)
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
 
@@ -224,7 +238,7 @@ def TEST_DIFF_ATTACK_GIFT():
 
     
     # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP models
-    cipher = TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])
+    cipher = GIFT_BLOCKCIPHER(r, version = [64, 128])
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
     # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
@@ -244,7 +258,7 @@ def TEST_DIFF_ATTACK_AES():
     # TEST 1: Search for the best truncated differential trail of r-round AES by solving MILP models
     # set model_version = "truncated_diff" for each operation within the cipher
     r = 6
-    cipher = TEST_AES_PERMUTATION(r)
+    cipher = AES_PERMUTATION(r)
     states = [s for s in cipher.states]
     rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
     layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
@@ -256,7 +270,7 @@ def TEST_DIFF_ATTACK_AES():
     # TEST 2: Search for the best truncated related-key differential trail of r-round AES
     # set model_version = "truncated_diff" for each operation within the cipher
     r = 5
-    cipher = TEST_AES_BLOCKCIPHER(r, version = [128, 128])
+    cipher = AES_BLOCKCIPHER(r, version = [128, 128])
     states = [s for s in cipher.states]
     rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
     layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
@@ -273,7 +287,7 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
     # (2) output difference of the state is 0
     # (3) difference of the data block is not 0 (default in diff_attacks);
     r = 7
-    cipher = TEST_ROCCA_AD(r)
+    cipher = ROCCA_AD(r)
     states = [s for s in cipher.states]
     rounds = {s: list(range(1, cipher.states[s].nbr_rounds+1)) for s in states}
     layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
@@ -286,20 +300,20 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
 
 if __name__ == '__main__':
     r = 2
-    #generate_codes(TEST_SPECK_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
-    #generate_codes(TEST_SIMON_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
-    #generate_codes(TEST_AES_PERMUTATION(r))
-    #generate_codes(TEST_ASCON_PERMUTATION(r))
-    #generate_codes(TEST_SKINNY_PERMUTATION(r, version = 64)) # version = 64, 128
-    #generate_codes(TEST_GIFT_PERMUTATION(r, version = 64)) # version = 64, 128
-    generate_codes(TEST_SIPHASH_PERMUTATION(r))
-    #generate_codes(TEST_ROCCA_AD(r))
+    #generate_codes(SPECK_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
+    #generate_codes(SIMON_PERMUTATION(r, version = 32)) # version = 32, 48, 64, 96, 128
+    #generate_codes(AES_PERMUTATION(r))
+    #generate_codes(ASCON_PERMUTATION(r))
+    #generate_codes(SKINNY_PERMUTATION(r, version = 64)) # version = 64, 128
+    #generate_codes(GIFT_PERMUTATION(r, version = 64)) # version = 64, 128
+    generate_codes(SIPHASH_PERMUTATION(r))
+    #generate_codes(ROCCA_AD(r))
     
-    #generate_codes(TEST_SPECK_BLOCKCIPHER(r, version=[32,64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
-    #generate_codes(TEST_SIMON_BLOCKCIPHER(r, version = [32, 64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
-    #generate_codes(TEST_AES_BLOCKCIPHER(r, version = [128, 128])) # version = [128, 128], [128, 192], [128, 256] 
-    #generate_codes(TEST_SKINNY_BLOCKCIPHER(r, version = [64, 64])) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
-    #generate_codes(TEST_GIFT_BLOCKCIPHER(r, version = [64, 128])) # version = [64, 128],  [128, 128]
+    #generate_codes(SPECK_BLOCKCIPHER(r, version=[32,64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    #generate_codes(SIMON_BLOCKCIPHER(r, version = [32, 64])) # version = [32, 64], [48, 72], [48, 96], [64, 96], [64, 128], [96, 96], [96, 144], [128, 128], [128, 192], [128, 256]
+    #generate_codes(AES_BLOCKCIPHER(r, version = [128, 128])) # version = [128, 128], [128, 192], [128, 256] 
+    #generate_codes(SKINNY_BLOCKCIPHER(r, version = [64, 64])) # version = [64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]  
+    #generate_codes(GIFT_BLOCKCIPHER(r, version = [64, 128])) # version = [64, 128],  [128, 128]
 
     TEST_DIFF_ATTACK_SPECK()
     #TEST_DIFF_ATTACK_SIMON()
