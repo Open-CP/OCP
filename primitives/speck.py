@@ -37,10 +37,10 @@ class Speck_permutation(Permutation):
 # Test vector for speck48_72: plaintext = [0x20796c, 0x6c6172], key = [0x121110, 0x0a0908, 0x020100], ciphertext = [0xc049a5, 0x385adc]
 # Test vector for speck48_96: plaintext = [0x6d2073, 0x696874], key = [0x1a1918, 0x121110, 0x0a0908, 0x020100], ciphertext = [0x735e10, 0xb6445d]
 # Test vector for speck64_96: plaintext = [0x74614620, 0x736e6165], key = [0x13121110, 0x0b0a0908, 0x03020100], ciphertext = [0x9f7952ec, 0x4175946c]
-# Test vector for speck64_128: plaintext = [0x3b726574, 0x7475432d], key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100], ciphertext [0x8c6fa548, 0x454e028b]
+# Test vector for speck64_128: plaintext = [0x3b726574, 0x7475432d], key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100], ciphertext = [0x8c6fa548, 0x454e028b]
 # Test vector for speck96_96: plaintext = [0x65776f68202c, 0x656761737520], key = [0x0d0c0b0a0908, 0x050403020100], ciphertext = [0x9e4d09ab7178, 0x62bdde8f79aa]
 # Test vector for speck96_144: plaintext = [0x656d6974206e, 0x69202c726576], key = [0x151413121110, 0x0d0c0b0a0908, 0x050403020100], ciphertext = [0x2bf31072228a, 0x7ae440252ee6]
-# Test vector for speck128_128: plaintext = [0x6c61766975716520, 0x7469206564616d20], key = [0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertxt = [0xa65d985179783265, 0x7860fedf5c570d18]
+# Test vector for speck128_128: plaintext = [0x6c61766975716520, 0x7469206564616d20], key = [0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0xa65d985179783265, 0x7860fedf5c570d18]
 # Test vector for speck128_192: plaintext = [0x7261482066656968, 0x43206f7420746e65], key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0x1be4cf3a13135566, 0xf9bc185de03c1886]
 # Test vector for speck128_256: plaintext = [0x65736f6874206e49, 0x202e72656e6f6f70], key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0x4109010405c0f53e, 0x4eeeb48d9c188f43]
 # https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
