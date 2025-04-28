@@ -109,8 +109,8 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi", solver_params
             model.Params.PoolSolutions = 1000000  # Set the maximum limit for the number of solutions
             try:
                 model.optimize()
-            except gp._exception.GurobiError:
-                print("Error: check your gurobi license. Model too large for size-limited license; visit https://gurobi.com/unrestricted for more information\n")
+            except gp.GurobiError:
+                print("Error: check your gurobi license. Visit https://gurobi.com/unrestricted for more information\n")
                 return None, None
             print("Number of solutions by solving the MILP model: ", model.SolCount)
             sol_list, obj_list = [], []
@@ -295,46 +295,24 @@ def create_numerical_cnf(cnf):
     return len(variables), variable2number, numerical_cnf
 
 
-def gen_sat_model(constraints=[], obj_var=[], obj=0, filename=""):       
+def gen_sat_model(constraints=[], filename=""):       
     """
-    Generate and solve a SAT model based on the given constraints and objective variables.
+    Generate and solve a SAT model based on the given constraints.
 
     Args:
         constraints (list[str]): A list of SAT constraints in string format.
-        obj (int): The target value (lower bound) for the objective function.
-        obj_var (list[str]): A list of variables representing the objective function.
     """
 
-    model_cons = constraints
+    # === Step 1: Convert Constraints to Numerical CNF Format === #
+    num_var, variable_map, numerical_cnf = create_numerical_cnf(constraints)
     
-    # === Step 1: Generate The Constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method === #
-    if obj_var:
-        if obj == 0: 
-            obj_cons = [f'-{var}' for var in obj_var] 
-        else:
-            n = len(obj_var)
-            dummy_var = [[f'obj_{i}_{j}' for j in range(obj)] for i in range(n - 1)]
-            obj_cons = [f'-{obj_var[0]} {dummy_var[0][0]}']
-            obj_cons += [f'-{dummy_var[0][j]}' for j in range(1, obj)]
-            for i in range(1, n - 1):
-                obj_cons += [f'-{obj_var[i]} {dummy_var[i][0]}']
-                obj_cons += [f'-{dummy_var[i - 1][0]} {dummy_var[i][0]}']
-                obj_cons += [f'-{obj_var[i]} -{dummy_var[i - 1][j - 1]} {dummy_var[i][j]}' for j in range(1, obj)]
-                obj_cons += [f'-{dummy_var[i - 1][j]} {dummy_var[i][j]}' for j in range(1, obj)]
-                obj_cons += [f'-{obj_var[i]} -{dummy_var[i - 1][obj - 1]}']
-            obj_cons += [f'-{obj_var[n - 1]} -{dummy_var[n - 2][obj - 1]}']
-        model_cons += obj_cons
-    
-    # === Step 2: Convert Constraints to Numerical CNF Format === #
-    num_var, variable_map, numerical_cnf = create_numerical_cnf(model_cons)
-    
-    # === Step 3: Generate the CNF Model === #
-    num_clause = len(model_cons)
+    # === Step 2: Generate the CNF Model === #
+    num_clause = len(constraints)
     content = f"p cnf {num_var} {num_clause}\n"  
     for constraint in numerical_cnf:
         content += constraint + ' 0\n'
     
-    # === Step 4. Write the model into a file === #
+    # === Step 3. Write the model into a file === #
     if filename:
         with open(filename, "w") as myfile:
             myfile.write(content)    
