@@ -6,14 +6,10 @@ import primitives.aes as aes
 import variables.variables as var
 import operators.operators as op
 import attacks.attacks as attacks
+import OCP
 
 # Implement the MILP model for related-key differential characteristics of AES.
 # Reference: Christina Boura, Patrick Derbez, and Margot Funk. Related-Key Differential Analysis of the AES.
-
-def TEST_AES_BLOCKCIPHER(r, version = [128, 128]): 
-    my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1] / version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = aes.AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
-    return my_cipher
 
 
 def addkeyScheduleExtraConstr(cipher):
@@ -34,7 +30,7 @@ def addkeyScheduleExtraConstr(cipher):
                 b = cipher.states["KEY_STATE"].vars[i+2][0][j]
                 c = cipher.states["KEY_STATE"].vars[i+2][0][j+8]
                 XOR = op.bitwiseXOR([a, b], [c], ID=f"addkeyScheduleExtraConstr_{i}_{j}")
-                XOR.model_version = "truncated_diff_1"
+                XOR.model_version = "bitwiseXOR_DIFF_TRUNCATED_1"
                 add_cons += XOR.generate_model("milp")
     return add_cons
 
@@ -90,45 +86,41 @@ def addMixColumnsExtraConstr(cipher):
                 #     print(v0[k].ID, v1[k].ID, v2[k].ID)
                 for k in range(4):
                     xor = op.bitwiseXOR([x0[k], x1[k]], [u0[k]], ID=f"addMixColumnsExtraConstr_xor0_{i}_{j}_{k}")
-                    xor.model_version = "truncated_diff_1"
+                    xor.model_version = "bitwiseXOR_DIFF_TRUNCATED_1"
                     add_cons += xor.generate_model("milp")
                     nxor0 = op.N_XOR([y0[k], y1[k], k2[k]], [v0[k]], ID=f"addMixColumnsExtraConstr_nxor0_{i}_{j}_{k}")
-                    nxor0.model_version = "truncated_diff"
+                    nxor0.model_version = "N_XOR_DIFF_TRUNCATED"
                     add_cons += nxor0.generate_model("milp")
                 matrix = op.Matrix("MC", u0, v0, mat=[[0 for _ in range(4)] for _ in range(4)], ID=F"addMixColumnsExtraConstr_matrix0_{i}_{j}")
-                matrix.model_version = "truncated_diff"
+                matrix.model_version = "Matrix_DIFF_TRUNCATED"
                 add_cons += matrix.generate_model("milp", branch_num=5)
                 
                 for k in range(4):
                     xor = op.bitwiseXOR([x0[k], x2[k]], [u1[k]], ID=f"addMixColumnsExtraConstr_xor1_{i}_{j}_{k}")
-                    xor.model_version = "truncated_diff_1"
+                    xor.model_version = "bitwiseXOR_DIFF_TRUNCATED_1"
                     add_cons += xor.generate_model("milp")
                     nxor0 = op.N_XOR([y0[k], y2[k], k1[k]], [v1[k]], ID=f"addMixColumnsExtraConstr_nxor1_{i}_{j}_{k}")
-                    nxor0.model_version = "truncated_diff"
+                    nxor0.model_version = "N_XOR_DIFF_TRUNCATED"
                     add_cons += nxor0.generate_model("milp")
                 matrix = op.Matrix("MC", u1, v1, mat=[[0 for k in range(4)] for l in range(4)], ID=F"addMixColumnsExtraConstr_matrix1_{i}_{j}")
-                matrix.model_version = "truncated_diff"
+                matrix.model_version = "Matrix_DIFF_TRUNCATED"
                 add_cons += matrix.generate_model("milp", branch_num=5)
                 
                 for k in range(4):
                     xor = op.bitwiseXOR([x1[k], x2[k]], [u2[k]], ID=f"addMixColumnsExtraConstr_xor2_{i}_{j}_{k}")
-                    xor.model_version = "truncated_diff_1"
+                    xor.model_version = "bitwiseXOR_DIFF_TRUNCATED_1"
                     add_cons += xor.generate_model("milp")
                     nxor0 = op.N_XOR([y1[k], y2[k], k0[k]], [v2[k]], ID=f"addMixColumnsExtraConstr_nxor2_{i}_{j}_{k}")
-                    nxor0.model_version = "truncated_diff"
+                    nxor0.model_version = "N_XOR_DIFF_TRUNCATED"
                     add_cons += nxor0.generate_model("milp")
                 matrix = op.Matrix("MC", u2, v2, mat=[[0 for k in range(4)] for l in range(4)], ID=F"addMixColumnsExtraConstr_matrix2_{i}_{j}")
-                matrix.model_version = "truncated_diff"
+                matrix.model_version = "Matrix_DIFF_TRUNCATED"
                 add_cons += matrix.generate_model("milp", branch_num=5)
     return add_cons
 
 
 def related_key_diff_AES(cipher, r):
-    states = [s for s in cipher.states]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "truncated_diff", states=states, rounds=rounds, layers=layers, positions=positions) # set model_version = "truncated_diff" for each operation of the cipher
+    attacks.set_model_versions(cipher, "DIFF_TRUNCATED") # set model_version = "DIFF_TRUNCATED" for each operation of the cipher
     add_constraints = []
     add_constraints += addkeyScheduleExtraConstr(cipher) # generate the first type of additional constraints 
     add_constraints += addMixColumnsExtraConstr(cipher) # generate the second type of additional constraints 
@@ -137,12 +129,13 @@ def related_key_diff_AES(cipher, r):
 
 
 if __name__ == '__main__':
+    # result on dragon2
     # result = {'Rounds': [i for i in range(3,6)], 'NA0': [3, 9, 11], 'NA1': [3, 9, 12], 'NA2': [3, 9, 13], 'NA2_': [5, 12, 17],'TIME': [0.27, 2.22, 3.37]}
     # result = {'Rounds': [i for i in range(3,10)], 'NA0': [1, 3, 4, 5, 11, 13, 16], 'NA1': [1, 3, 4, 5, 12, 13, 16], 'NA2': [1, 4, 5, 10, 13, 16, 20], 'NA2_': [1, 4, 5, 10, 14, 18, 24],'TIME': [0.09, 0.72, 2.06, 6.43, 15.33, 44.85, 53.32]}
     result = {'Rounds': [i for i in range(3,15)], 'NA0': [1, 3, 3, 5, 5, 10, 14, 16, 18, 20, 22, 24], 'NA1': [1, 3, 3, 5, 5, 10, 14, 16, 18, 20, 22, 24], 'NA2': [1, 3, 3, 5, 5, 10, 14, 16, 18, 20, 22, 24], 'NA2_': [1, 3, 3, 5, 5, 10, 15, 16, 20, 20, 24, 24],'TIME': [0.06, 0.34, 0.49, 2.59, 3.72, 8.18, 19.05, 26.57, 46.21, 68.4, 118.76, 125.51]}
 
     for r in result["Rounds"]:
-        cipher = TEST_AES_BLOCKCIPHER(r, version=[128, 256])
+        cipher = OCP.AES_BLOCKCIPHER(r, version=[128, 256])
         time_start = time.time()
         obj = related_key_diff_AES(cipher, r)
         result["NA2"].append(int(obj))

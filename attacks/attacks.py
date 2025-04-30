@@ -35,8 +35,10 @@ def set_model_versions(cipher, version, states=None, rounds=None, layers=None, p
             for l in layers[s][r]:
                 for p in positions[s][r][l]:
                     cons = cipher.states[s].constraints[r][l][p]
-                    if (operator_name is None) or (operator_name is not None and cons.__class__.__name__ == operator_name):
-                        cons.model_version = version
+                    if operator_name is None:
+                        cons.model_version = cons.__class__.__name__ + "_" + version
+                    elif operator_name is not None and cons.__class__.__name__ == operator_name:
+                        cons.model_version = version                        
 
 
 def set_model_noweight(): # TO DO

@@ -41,9 +41,9 @@ def SIMON_PERMUTATION(r=None, version=32):
     return my_cipher
 
 
-def ASCON_PERMUTATION(r=None):
+def ASCON_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
-    my_cipher = ascon.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r)
+    my_cipher = ascon.ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher
 
 
@@ -77,15 +77,9 @@ def PRESENT_PERMUTATION(r=None):
     return my_cipher
 
 
-def ROCCA_AD(r=5):
+def ROCCA_AD(r=5, represent_mode=0):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = rocca.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r)
-    return my_cipher
-
-
-def ROCCA_AD2(r=5):
-    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = rocca.Rocca_AD_permutation2("ROCCA_AD2", my_input, my_output, nbr_rounds=r)
+    my_cipher = rocca.Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher
 
 
@@ -136,8 +130,9 @@ Procedure:
 === Step 1: Initialization of the cipher for a specified number of rounds ===
 === Step 2: Configuration of model versions for differential analysis ===
     Configures the differential behavior of the cipher's operations based on the parameter model_version.
-    - model_versions = {} by default, which applies model_version = "diff_0" to all operations, aiming to search for the differential trails with the highest probability.
-    - model_version = "diff_1" for S-boxes, which models difference propagation without probabilities, aiming to search for the differential trails with the minimal number of active S-boxes.
+    - model_versions = "DEFAULT" by default, which applies to all operations
+    - For S-boxes with model_versions = "DEFAULT" or "DIFF_PR", it aims to search for the differential trails with the highest probability.
+    - For S-boxes with model_version = "DIFF",it aims to search for the differential trails with the minimal number of active S-boxes.
 === Step 3: Generate additional constraints ===
     - add_constraints = [] by default, indicating no additional constraints are added to the model.
     - users can generate additional constraints using "attacks.gen_add_constraints()".
@@ -203,12 +198,8 @@ def TEST_DIFF_ATTACK_ASCON():
 
     
     # TEST 3: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving MILP models
-    # set `model_version = "diff_1"` for each S-box.
-    states = ["STATE"]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: [1] for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(64)) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "diff_1", states=states, rounds=rounds, layers=layers, positions=positions)
+    # set `model_version = "ASCON_Sbox_DIFF"` for each S-box.
+    attacks.set_model_versions(cipher, "ASCON_Sbox_DIFF", operator_name="ASCON_Sbox")
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
     
 
@@ -224,12 +215,8 @@ def TEST_DIFF_ATTACK_GIFT():
 
 
     # TEST 2: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving MILP models
-    # set `model_version = "diff_1"` for each S-box.
-    states = ["STATE"]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: [0] for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states["STATE"].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "diff_1", states=states, rounds=rounds, layers=layers, positions=positions)
+    # set `model_version = "GIFT_Sbox_DIFF"` for each S-box.
+    attacks.set_model_versions(cipher, "GIFT_Sbox_DIFF", operator_name="GIFT_Sbox")
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
     
 
@@ -242,12 +229,8 @@ def TEST_DIFF_ATTACK_GIFT():
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
     # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
-    # set model_version = "diff_1" for each S-box.
-    states = ["STATE"]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: [0] for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states["STATE"].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "diff_1", states=states, rounds=rounds, layers=layers, positions=positions)
+    # set `model_version = "GIFT_Sbox_DIFF"` for each S-box.
+    attacks.set_model_versions(cipher, "GIFT_Sbox_DIFF", operator_name="GIFT_Sbox")
     sol, obj = attacks.diff_attacks(cipher, model_type="milp")
 
     # TEST 6: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
@@ -256,43 +239,31 @@ def TEST_DIFF_ATTACK_GIFT():
 
 def TEST_DIFF_ATTACK_AES():
     # TEST 1: Search for the best truncated differential trail of r-round AES by solving MILP models
-    # set model_version = "truncated_diff" for each operation within the cipher
+    # set model_version = "DIFF_TRUNCATED" for each operation within the cipher
     r = 6
     cipher = AES_PERMUTATION(r)
-    states = [s for s in cipher.states]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "truncated_diff", states=states, rounds=rounds, layers=layers, positions=positions)
+    attacks.set_model_versions(cipher, "DIFF_TRUNCATED")
     sol, obj = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
     
 
     # TEST 2: Search for the best truncated related-key differential trail of r-round AES
-    # set model_version = "truncated_diff" for each operation within the cipher
+    # set model_version = "DIFF_TRUNCATED" for each operation within the cipher
     r = 5
     cipher = AES_BLOCKCIPHER(r, version = [128, 128])
-    states = [s for s in cipher.states]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds + 1)) for s in states}
-    layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "truncated_diff", states=states, rounds=rounds, layers=layers, positions=positions)
+    attacks.set_model_versions(cipher, "DIFF_TRUNCATED")
     sol, obj = attacks.diff_attacks(cipher, model_type="milp", goal="search_optimal_truncated_trail")
 
 
 def TEST_DIFF_ATTACK_ROCCA_AD():
     # TEST 1: Search for the best truncated differential trail that are used in Forgery attacks of r-round ROCCA_AD
-    # set model_version = "truncated_diff" for each operation within the cipher
+    # set model_version = "DIFF_TRUNCATED" for each operation within the cipher
     # generate the following constraints to search for the differential trails that are used in Forgery attacks:
     # (1) input difference of the state is 0;
     # (2) output difference of the state is 0
     # (3) difference of the data block is not 0 (default in diff_attacks);
     r = 7
     cipher = ROCCA_AD(r)
-    states = [s for s in cipher.states]
-    rounds = {s: list(range(1, cipher.states[s].nbr_rounds+1)) for s in states}
-    layers = {s: {r: list(range(cipher.states[s].nbr_layers+1)) for r in rounds[s]} for s in states}
-    positions = {s: {r: {l: list(range(len(cipher.states[s].constraints[r][l]))) for l in layers[s][r]} for r in rounds[s]} for s in states}
-    attacks.set_model_versions(cipher, "truncated_diff", states=states, rounds=rounds, layers=layers, positions=positions)
+    attacks.set_model_versions(cipher, "DIFF_TRUNCATED")
     add_cons = attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", states=["STATE"], rounds={"STATE":[1]}, layers={"STATE":{1:[0]}}, positions={"STATE":{1:{0:list(range(128))}}}, bitwise=False, value=0)
     add_cons += attacks.gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", states=["STATE"], rounds={"STATE":[cipher.nbr_rounds]}, layers={"STATE":{cipher.nbr_rounds:[4]}}, positions={"STATE":{cipher.nbr_rounds:{4:list(range(128))}}}, bitwise=False, value=0)
     sol, obj = attacks.diff_attacks(cipher, model_type="milp", add_constraints=add_cons, goal="search_optimal_truncated_trail")
