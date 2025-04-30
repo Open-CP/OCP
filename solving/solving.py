@@ -83,7 +83,7 @@ def solve_milp(filename, solving_goal="optimize", solver="Gurobi", solver_params
     Returns: 
         a tuple (sol_list, obj_list) containing solutions and objective value.
     """
-    if solver == "Gurobi":
+    if solver == "Gurobi" or solver == "Default":
         if gurobipy_import == False: 
             print("gurobipy module can't be loaded ... skipping test\n")
             return None, None
