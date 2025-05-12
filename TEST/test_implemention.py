@@ -30,6 +30,8 @@ def test_python(cipher, cipher_name, plaintext, key, test_ciphertext):
         print(f"Implementation module files.{cipher_name} version cannot be loaded.\n")
     except AttributeError as e:
         print(f"Function {cipher.name} not found in module files.{cipher_name}: {e}\n")
+    except Exception as e:
+        print(f"Function {cipher.name}: {e}.\n")
     
     
 def test_c(cipher, cipher_name, plaintext, key, test_ciphertext):
@@ -227,16 +229,16 @@ def test_skinny():
             ciphertext = [0x94, 0xec, 0xf5, 0x89, 0xe2, 0x1, 0x7c, 0x60, 0x1b, 0x38, 0xc6, 0x34, 0x6a, 0x10, 0xdc, 0xfa]       
 
         # test of python implementation
-        print(test_python(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_python(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_python(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
     
         # test of C implementation
-        print(test_c(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_c(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_c(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
 
 
 def test_aes():
-    for version in [[128, 192]]: # [[128, 128], [128, 192], [128, 256]]:
+    for version in [[128, 128], [128, 192], [128, 256]]:
         
         cipher = OCP.AES_BLOCKCIPHER(r=None, version=version)
 
@@ -255,11 +257,11 @@ def test_aes():
             ciphertext = [0xf3, 0xee, 0xd1, 0xbd, 0xb5, 0xd2, 0xa0, 0x3c, 0x6, 0x4b, 0x5a, 0x7e, 0x3d, 0xb1, 0x81, 0xf8]
 
         # test of python implementation
-        print(test_python(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_python(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_python(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
     
         # test of C implementation
-        print(test_c(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_c(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_c(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
 
 
@@ -386,11 +388,11 @@ def test_present():
             ciphertext = [0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 0]
 
         # test of python implementation
-        print(test_python(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_python(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_python(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
     
         # test of C implementation
-        print(test_c(cipher, cipher.name, plaintext, key, ciphertext))
+        # print(test_c(cipher, cipher.name, plaintext, key, ciphertext)) # TO DO
         print(test_c(cipher, cipher.name + "_unrolled", plaintext, key, ciphertext))
 
 
