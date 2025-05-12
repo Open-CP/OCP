@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation
-import operators.operators as op
+from operators.boolean_operators import XOR
+from operators.modular_operators import ModAdd
 
 
 # The SipHash internal permutation 
@@ -27,14 +28,14 @@ class SipHash_permutation(Permutation):
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):  
-                S.SingleOperatorLayer("ADD1", i, 0, op.ModAdd, [[0,1], [2,3]], [0, 2]) # Modular addition layer
+                S.SingleOperatorLayer("ADD1", i, 0, ModAdd, [[0,1], [2,3]], [0, 2]) # Modular addition layer
                 S.RotationLayer("ROT1", i, 1, [['l', 13, 1], ['l', 16, 3]]) # Rotation layer
-                S.SingleOperatorLayer("XOR1", i, 2, op.bitwiseXOR, [[0,1], [2,3]], [1, 3]) # XOR layer
+                S.SingleOperatorLayer("XOR1", i, 2, XOR, [[0,1], [2,3]], [1, 3]) # XOR layer
                 S.RotationLayer("ROT2", i, 3, [['l', 32, 0]]) # Rotation layer
                 S.PermutationLayer("PERM1", i, 4, [2,1,0,3]) # Permutation layer
-                S.SingleOperatorLayer("ADD2", i, 5, op.ModAdd, [[0,1], [2,3]], [0, 2]) # Modular addition layer
+                S.SingleOperatorLayer("ADD2", i, 5, ModAdd, [[0,1], [2,3]], [0, 2]) # Modular addition layer
                 S.RotationLayer("ROT3", i, 6, [['l', 17, 1], ['l', 21, 3]]) # Rotation layer
-                S.SingleOperatorLayer("XOR2", i, 7, op.bitwiseXOR, [[0,1], [2,3]], [1, 3]) # XOR layer
+                S.SingleOperatorLayer("XOR2", i, 7, XOR, [[0,1], [2,3]], [1, 3]) # XOR layer
                 S.RotationLayer("ROT4", i, 8, [['l', 32, 0]]) # Rotation layer
                 S.PermutationLayer("PERM2", i, 9, [2,1,0,3]) # Permutation layer
                 

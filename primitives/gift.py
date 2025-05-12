@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.Sbox import GIFT_Sbox
+from operators.boolean_operators import XOR
 
 
 # The GIFT internal permutation               
@@ -26,7 +27,7 @@ class GIFT_permutation(Permutation):
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):              
-                s.SboxLayer("SB", i, 0, op.GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer            
+                s.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer            
                 s.PermutationLayer("P", i, 1, perm) # Permutation layer
                 s.AddConstantLayer("C", i, 2, "xor", [True]+[None]*(version-25)+[True]+[None, None, None, True]*5, constant_table)# Constant layer                      
                 
@@ -87,11 +88,13 @@ class GIFT_block_cipher(Block_cipher):
                 KS.PermutationLayer("PERM", i, 0, [110,111]+[i for i in range(96,110)]+[i for i in range(116,128)]+[i for i in range(112,116)]+[i for i in range(96)]) # key schedule 
         
                 # Internal permutation          
-                S.SboxLayer("SB", i, 0, op.GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
+                S.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
                 S.PermutationLayer("P", i, 1, perm) # Permutation layer
                 S.AddConstantLayer("C", i, 2, "xor", [True]+[None]*(p_bitsize-25)+[True]+[None, None, None, True]*5, constant_table)# Constant layer                      
-                if p_bitsize == 64: S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,0,1,1]*16) # Addroundkey layer 
-                elif p_bitsize == 128: S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [0,1,1,0]*32) # Addroundkey layer 
+                if p_bitsize == 64: 
+                    S.AddRoundKeyLayer("ARK", i, 3, XOR, SK, [0,0,1,1]*16) # Addroundkey layer 
+                elif p_bitsize == 128: 
+                    S.AddRoundKeyLayer("ARK", i, 3, XOR, SK, [0,1,1,0]*32) # Addroundkey layer 
 
     def gen_rounds_constant_table(self):
         constant_table = []

@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.Sbox import AES_Sbox
+from operators.boolean_operators import XOR
 
 
 # The AES internal permutation  
@@ -18,13 +19,13 @@ class AES_permutation(Permutation):
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 16, 0, 8
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         full_rounds = 10
-        if nbr_rounds == full_rounds: self.rounds_python_code_if_unrolled, self.rounds_c_code_if_unrolled = {"STATE": [[1, f"if i < {full_rounds-1}:"], [full_rounds, f"elif i == {full_rounds-1}:"]]}, {"STATE": [[1, f"if (i < {full_rounds-1})"+"{"], [full_rounds, f"else if (i == {full_rounds-1})"+"{"]]}
+        
         S = self.states["STATE"]
 
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):             
-                S.SboxLayer("SB", i, 0, op.AES_Sbox) # Sbox layer   
+                S.SboxLayer("SB", i, 0, AES_Sbox) # Sbox layer   
                 S.PermutationLayer("SR", i, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
                 if i != full_rounds: S.MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]], "0x1B")  #Mixcolumns layer
                 else: S.AddIdentityLayer("ID", i, 2)     # Identity layer 
@@ -101,15 +102,15 @@ class AES_block_cipher(Block_cipher):
             # key schedule    
             for i in range(1,k_nbr_rounds): 
                 KS.PermutationLayer("K_P", i, 0, k_perm) # Permutation layer
-                KS.SboxLayer("K_SB", i, 1, op.AES_Sbox, mask=([0 for _ in range(4*nk)] + [1, 1, 1, 1])) # Sbox layer   
+                KS.SboxLayer("K_SB", i, 1, AES_Sbox, mask=([0 for _ in range(4*nk)] + [1, 1, 1, 1])) # Sbox layer   
                 KS.AddConstantLayer("K_C", i, 2, "xor", [None for _ in range(4*nk)]+[True]*4, constant_table)  # Constant layer
-                KS.SingleOperatorLayer("K_XOR", i, 3, op.bitwiseXOR, [[0,4*nk], [1,4*nk+1], [2,4*nk+2], [3,4*nk+3]], [0,1,2,3]) # XOR layer 
-                KS.SingleOperatorLayer("K_XOR", i, 4, op.bitwiseXOR, [[j, j+4] for j in range(4)],  [j for j in range(4,8)]) # XOR layer 
-                KS.SingleOperatorLayer("K_XOR", i, 5, op.bitwiseXOR, [[j, j+4] for j in range(4,8)],  [j for j in range(8,12)]) # XOR layer 
-                KS.SingleOperatorLayer("K_XOR", i, 6, op.bitwiseXOR, [[j, j+4] for j in range(8,12)],  [j for j in range(12,16)]) # XOR layer 
+                KS.SingleOperatorLayer("K_XOR", i, 3, XOR, [[0,4*nk], [1,4*nk+1], [2,4*nk+2], [3,4*nk+3]], [0,1,2,3]) # XOR layer 
+                KS.SingleOperatorLayer("K_XOR", i, 4, XOR, [[j, j+4] for j in range(4)],  [j for j in range(4,8)]) # XOR layer 
+                KS.SingleOperatorLayer("K_XOR", i, 5, XOR, [[j, j+4] for j in range(4,8)],  [j for j in range(8,12)]) # XOR layer 
+                KS.SingleOperatorLayer("K_XOR", i, 6, XOR, [[j, j+4] for j in range(8,12)],  [j for j in range(12,16)]) # XOR layer 
                 if k_bitsize==192: 
-                    KS.SingleOperatorLayer("K_XOR", i, 7, op.bitwiseXOR, [[j, j+4] for j in range(12,16)],  [j for j in range(16,20)]) # XOR layer 
-                    KS.SingleOperatorLayer("K_XOR", i, 8, op.bitwiseXOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 7, XOR, [[j, j+4] for j in range(12,16)],  [j for j in range(16,20)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 8, XOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
                     if i == k_nbr_rounds-1:
                         for j in range(2*(nbr_rounds % 3)):
                             KS.constraints[i][8-j] = []
@@ -117,58 +118,31 @@ class AES_block_cipher(Block_cipher):
 
                 elif k_bitsize==256:
                     KS.PermutationLayer("K_P", i, 7, [i for i in range(36)]+[12,13,14,15]) # Permutation layer
-                    KS.SboxLayer("K_SB", i, 8, op.AES_Sbox, mask=([0 for _ in range(36)] + [1, 1, 1, 1])) # Sbox layer   
-                    KS.SingleOperatorLayer("K_XOR", i, 9, op.bitwiseXOR, [[j, j+20] for j in range(16, 20)],  [j for j in range(16, 20)]) # XOR layer 
-                    KS.SingleOperatorLayer("K_XOR", i, 10, op.bitwiseXOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
-                    KS.SingleOperatorLayer("K_XOR", i, 11, op.bitwiseXOR, [[j, j+4] for j in range(20,24)],  [j for j in range(24,28)]) # XOR layer 
-                    KS.SingleOperatorLayer("K_XOR", i, 12, op.bitwiseXOR, [[j, j+4] for j in range(24,28)],  [j for j in range(28,32)]) # XOR layer 
+                    KS.SboxLayer("K_SB", i, 8, AES_Sbox, mask=([0 for _ in range(36)] + [1, 1, 1, 1])) # Sbox layer   
+                    KS.SingleOperatorLayer("K_XOR", i, 9, XOR, [[j, j+20] for j in range(16, 20)],  [j for j in range(16, 20)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 10, XOR, [[j, j+4] for j in range(16,20)],  [j for j in range(20,24)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 11, XOR, [[j, j+4] for j in range(20,24)],  [j for j in range(24,28)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 12, XOR, [[j, j+4] for j in range(24,28)],  [j for j in range(28,32)]) # XOR layer 
                     if i == k_nbr_rounds-1 and nbr_rounds % 2 == 1:
                         for j in range(7, 13):
                             KS.constraints[i][j] = []
                             KS.AddIdentityLayer("ID", i, j)     # Identity layer
                             
             # Internal permutation
-            S.AddRoundKeyLayer("ARK", 1, 0, op.bitwiseXOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
-            S.AddIdentityLayer("ID", 1, 1)     # Identity layer 
-            S.AddIdentityLayer("ID", 1, 2)     # Identity layer 
-            S.AddIdentityLayer("ID", 1, 3)     # Identity layer 
-            for i in range(2,nbr_rounds+1):   
-                S.SboxLayer("SB", i, 0, op.AES_Sbox) # Sbox layer   
-                S.PermutationLayer("SR", i, 1, perm_s) # Shiftrows layer
-                if i != full_rounds: S.MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
-                else: S.AddIdentityLayer("ID", i, 2) # Identity layer 
-                S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
+            for i in range(1,nbr_rounds):   
+                S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
+                S.SboxLayer("SB", i, 1, AES_Sbox) # Sbox layer   
+                S.PermutationLayer("SR", i, 2, perm_s) # Shiftrows layer
+                if i != (full_rounds-1): S.MatrixLayer("MC", i, 3, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
+                else: S.AddIdentityLayer("ID", i, 3) # Identity layer     
+            S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
+            S.AddIdentityLayer("ID", nbr_rounds, 1)     # Identity layer 
+            S.AddIdentityLayer("ID", nbr_rounds, 2)     # Identity layer 
+            S.AddIdentityLayer("ID", nbr_rounds, 3)     # Identity layer 
                 
-        # Generate python and c code for round function if unrolled
-        self.rounds_code_if_unrolled(k_bitsize, full_rounds)
-
     def gen_rounds_constant_table(self):
         constant_table = []
         Rcon = [0x01000000, 0x02000000, 0x04000000, 0x08000000, 0x10000000, 0x20000000, 0x40000000, 0x80000000, 0x1B000000, 0x36000000]
         for i in range(1,self.states["KEY_STATE"].nbr_rounds): 
             constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff])      
         return constant_table
-    
-    def rounds_code_if_unrolled(self, k_bitsize, full_rounds):
-        nbr_rounds = self.states['STATE'].nbr_rounds
-        if nbr_rounds >= 2: 
-            self.rounds_python_code_if_unrolled["STATE"] = [[1, "if i == 0:"]]
-            self.rounds_c_code_if_unrolled["STATE"] = [[1, "if (i == 0)"+"{"]]
-            if nbr_rounds < full_rounds: 
-                self.rounds_python_code_if_unrolled["STATE"].append([2, f"elif 1 <= i <= {nbr_rounds-1}:"])
-                self.rounds_c_code_if_unrolled["STATE"].append([2, f"else if (i <= {nbr_rounds-1})"+"{"])
-            elif nbr_rounds == full_rounds:  
-                self.rounds_python_code_if_unrolled["STATE"].append([2, f"elif 1 <= i <= {nbr_rounds-2}:"])
-                self.rounds_python_code_if_unrolled["STATE"].append([nbr_rounds, f"elif i == {nbr_rounds-1}:"])
-                self.rounds_c_code_if_unrolled["STATE"].append([2, f"else if (i <= {nbr_rounds-2})"+"{"])
-                self.rounds_c_code_if_unrolled["STATE"].append([nbr_rounds, f"else if (i == {nbr_rounds-1})"+"{"])
-        if k_bitsize==128:
-            self.rounds_python_code_if_unrolled["KEY_STATE"] = [[1, f"if i < {self.states['KEY_STATE'].nbr_rounds-1}:"]]
-            self.rounds_c_code_if_unrolled["KEY_STATE"] = [[1, f"if (i < {self.states['KEY_STATE'].nbr_rounds-1})"+"{"]]
-        elif k_bitsize==256:
-            if nbr_rounds >= 2: 
-                self.rounds_python_code_if_unrolled["KEY_STATE"] = [[1, "if i % 2 == 1:\ni=(i/2)"]]
-                self.rounds_c_code_if_unrolled["KEY_STATE"] = [[1, "if (i % 2 == 1)"+"{"]]
-        
-
-    

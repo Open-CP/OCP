@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.boolean_operators import XOR
+from operators.modular_operators import ModAdd
 
 
 # The Speck internal permutation  
@@ -27,9 +28,9 @@ class Speck_permutation(Permutation):
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):
                 S.RotationLayer("ROT1", i, 0, ['r', rotr, 0]) # Rotation layer
-                S.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer   
+                S.SingleOperatorLayer("ADD", i, 1, ModAdd, [[0,1]], [0]) # Modular addition layer   
                 S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer 
-                S.SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[0,1]], [1]) # XOR layer 
+                S.SingleOperatorLayer("XOR", i, 3, XOR, [[0,1]], [1]) # XOR layer 
   
 
 # The Speck block cipher   
@@ -82,18 +83,18 @@ class Speck_block_cipher(Block_cipher):
   
                 # key schedule
                 KS.RotationLayer("ROT1", i, 0, ['r', rotr, right_k_index]) # Rotation layer
-                KS.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[right_k_index, left_k_index]], [right_k_index]) # Modular addition layer   
+                KS.SingleOperatorLayer("ADD", i, 1, ModAdd, [[right_k_index, left_k_index]], [right_k_index]) # Modular addition layer   
                 KS.RotationLayer("ROT2", i, 2, ['l', rotl, left_k_index]) # Rotation layer 
                 KS.AddConstantLayer("C", i, 3, "xor", [True if e==right_k_index else None for e in range(KS.nbr_words)], round_constants)  # Constant layer
-                KS.SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[right_k_index, left_k_index]], [left_k_index]) # XOR layer 
+                KS.SingleOperatorLayer("XOR", i, 4, XOR, [[right_k_index, left_k_index]], [left_k_index]) # XOR layer 
                 KS.PermutationLayer("SHIFT", i, 5, perm) # key schedule word shift
             
                 # Internal permutation
                 S.RotationLayer("ROT1", i, 0, ['r', rotr, 0]) # Rotation layer
-                S.SingleOperatorLayer("ADD", i, 1, op.ModAdd, [[0,1]], [0]) # Modular addition layer  
+                S.SingleOperatorLayer("ADD", i, 1, ModAdd, [[0,1]], [0]) # Modular addition layer  
                 S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer 
-                S.AddRoundKeyLayer("ARK", i, 3, op.bitwiseXOR, SK, [1,0]) # Addroundkey layer 
-                S.SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[0,1]], [1]) # XOR layer
+                S.AddRoundKeyLayer("ARK", i, 3, XOR, SK, [1,0]) # Addroundkey layer 
+                S.SingleOperatorLayer("XOR", i, 4, XOR, [[0,1]], [1]) # XOR layer
          
     def gen_rounds_constant_table(self):
         constant_table = []

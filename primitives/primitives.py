@@ -1,6 +1,7 @@
 from abc import ABC
 import variables.variables as var
 import operators.operators as op
+from operators.matrix import Matrix
 
 def generateID(name, round_nb, layer, position):
     return name + '_' + str(round_nb) + '_' + str(layer) + '_' + str(position)
@@ -133,7 +134,7 @@ class State:
                 self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name,crt_round,crt_layer,j)))
         for j, indexes in enumerate(indexes_list): 
             if len(indexes)!=m: raise Exception("MatrixLayer: input vector does not match matrix size") 
-            self.constraints[crt_round][crt_layer].append(op.Matrix(name, [self.vars[crt_round][crt_layer][x] for x in indexes], [self.vars[crt_round][crt_layer+1][x] for x in indexes], mat = mat, polynomial = polynomial, ID=generateID(name,crt_round,crt_layer,j)) )
+            self.constraints[crt_round][crt_layer].append(Matrix(name, [self.vars[crt_round][crt_layer][x] for x in indexes], [self.vars[crt_round][crt_layer+1][x] for x in indexes], mat = mat, polynomial = polynomial, ID=generateID(name,crt_round,crt_layer,j)) )
        
     # extract a subkey from the external variable, determined by "extraction_mask"
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):

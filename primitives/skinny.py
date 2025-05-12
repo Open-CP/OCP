@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.Sbox import Skinny_4bit_Sbox, Skinny_8bit_Sbox
+from operators.boolean_operators import XOR
 
 # The Skinny internal permutation       
 class Skinny_permutation(Permutation):
@@ -20,7 +21,7 @@ class Skinny_permutation(Permutation):
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 16, 0, int(p_bitsize/16)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         round_constants = self.gen_rounds_constant_table()
-        sbox = op.Skinny_4bit_Sbox if word_bitsize==4 else op.Skinny_8bit_Sbox 
+        sbox = Skinny_4bit_Sbox if word_bitsize==4 else Skinny_8bit_Sbox 
 
         S = self.states["STATE"]
 
@@ -110,7 +111,7 @@ class Skinny_block_cipher(Block_cipher):
                 mat2 = [[1,7],[0,None],[1,None],[2,None],[3,None],[4,None],[5,None],[6,None]]                
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         round_constants = self.gen_rounds_constant_table()
-        sbox = op.Skinny_4bit_Sbox if s_word_bitsize == 4 else op.Skinny_8bit_Sbox
+        sbox = Skinny_4bit_Sbox if s_word_bitsize == 4 else Skinny_8bit_Sbox
         if self.tweak_size >= 2: self.states_implementation_order = ["KEY_STATE", "SUBKEYS", "STATE"] 
         
         S = self.states["STATE"]
@@ -138,8 +139,8 @@ class Skinny_block_cipher(Block_cipher):
                         KS.AddIdentityLayer("ID", i, 1)     # Identity layer 
                     else:
                         KS.PermutationLayer("K_P", i, 0, k_perm_T) # Permutation layer
-                        KS.SingleOperatorLayer("K_XOR1", i, 1, op.bitwiseXOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
-                    KS.SingleOperatorLayer("K_XOR", i, 2, op.bitwiseXOR, [[j,16+j] for j in range(8)], [j for j in range(32,40)]) # XOR layer 
+                        KS.SingleOperatorLayer("K_XOR1", i, 1, XOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
+                    KS.SingleOperatorLayer("K_XOR", i, 2, XOR, [[j,16+j] for j in range(8)], [j for j in range(32,40)]) # XOR layer 
             elif self.tweak_size == 3:
                 for i in range(1, k_nbr_rounds): 
                     if i == 1: 
@@ -148,27 +149,19 @@ class Skinny_block_cipher(Block_cipher):
                         KS.AddIdentityLayer("ID", i, 2)     # Identity layer 
                     else:
                         KS.PermutationLayer("K_P", i, 0, k_perm_T) # Permutation layer
-                        KS.SingleOperatorLayer("K_XOR1", i, 1, op.bitwiseXOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
-                        KS.SingleOperatorLayer("K_XOR2", i, 2, op.bitwiseXOR, [[j,j] for j in range(32,40)], [j for j in range(32,40)], mat=mat2)    
-                    KS.SingleOperatorLayer("K_XOR", i, 3, op.bitwiseXOR, [[j,16+j] for j in range(8)], [j for j in range(48,56)]) # XOR layer 
-                    KS.SingleOperatorLayer("K_XOR", i, 4, op.bitwiseXOR, [[j,16+j] for j in range(32,40)], [j for j in range(48,56)]) # XOR layer 
+                        KS.SingleOperatorLayer("K_XOR1", i, 1, XOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
+                        KS.SingleOperatorLayer("K_XOR2", i, 2, XOR, [[j,j] for j in range(32,40)], [j for j in range(32,40)], mat=mat2)    
+                    KS.SingleOperatorLayer("K_XOR", i, 3, XOR, [[j,16+j] for j in range(8)], [j for j in range(48,56)]) # XOR layer 
+                    KS.SingleOperatorLayer("K_XOR", i, 4, XOR, [[j,16+j] for j in range(32,40)], [j for j in range(48,56)]) # XOR layer 
                     
             # Internal permutation
             for i in range(1,nbr_rounds+1):  
                 S.SboxLayer("SB", i, 0, sbox) # Sbox layer                        
                 S.AddConstantLayer("C", i, 1, "xor", [True,None,None,None, True,None,None,None, True], round_constants)  # Constant layer            
-                S.AddRoundKeyLayer("ARK", i, 2, op.bitwiseXOR, SK, mask=[1 for i in range(8)])  # AddRoundKey layer   
+                S.AddRoundKeyLayer("ARK", i, 2, XOR, SK, mask=[1 for i in range(8)])  # AddRoundKey layer   
                 S.PermutationLayer("SR", i, 3, [0,1,2,3, 7,4,5,6, 10,11,8,9, 13,14,15,12]) # Shiftrows layer
                 S.MatrixLayer("MC", i, 4, [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]])  #Mixcolumns layer
 
-        # Generate python and c code for round function if unrolled
-        self.rounds_code_if_unrolled()
-
-    def rounds_code_if_unrolled(self):
-        if (self.tweak_size == 2 or self.tweak_size == 3) and self.states["KEY_STATE"].nbr_rounds >= 2: 
-            self.rounds_python_code_if_unrolled = {"KEY_STATE": [[1, "if i == 0:"], [2, "else:"]]}
-            self.rounds_c_code_if_unrolled = {"KEY_STATE": [[1, "if (i == 0)"+"{"], [2, "else{"]]}
-    
     def gen_rounds_constant_table(self):
         constant_table = []
         round_constants = [0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33,

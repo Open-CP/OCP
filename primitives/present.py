@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.Sbox import PRESENT_Sbox
+from operators.boolean_operators import XOR
 
 
 # The PRESENT internal permutation               
@@ -24,7 +25,7 @@ class PRESENT_permutation(Permutation):
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):              
-                s.SboxLayer("SB", i, 0, op.PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer            
+                s.SboxLayer("SB", i, 0, PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer            
                 s.PermutationLayer("P", i, 1, perm) # Permutation layer
 
 
@@ -79,32 +80,18 @@ class PRESENT_block_cipher(Block_cipher):
             # key schedule
             for i in range(1,KS.nbr_rounds):    
                 KS.PermutationLayer("PERM", i, 0, perm_ks) # Permutation layer 
-                KS.SboxLayer("SB", i, 1, op.PRESENT_Sbox, sbox_mask_ks, sbox_index_ks)  # Sbox layer            
+                KS.SboxLayer("SB", i, 1, PRESENT_Sbox, sbox_mask_ks, sbox_index_ks)  # Sbox layer            
                 KS.AddConstantLayer("C", i, 2, "xor", cons_mask_ks, constant_table)# Constant layer                      
                 
             # Internal permutation          
             for i in range(1,S.nbr_rounds+1): 
-                S.AddRoundKeyLayer("ARK", i, 0, op.bitwiseXOR, SK, [1]*64) # Addroundkey layer 
+                S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, [1]*64) # Addroundkey layer 
                 if i < 32: 
-                    S.SboxLayer("SB", i, 1, op.PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
+                    S.SboxLayer("SB", i, 1, PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer            
                     S.PermutationLayer("P", i, 2, perm) # Permutation layer
                 elif i == 32:
                     S.AddIdentityLayer("ID", i, 1)
                     S.AddIdentityLayer("ID", i, 2)
-            
-        # Generate python and c code for round function if unrolled
-        self.rounds_code_if_unrolled(full_rounds=32)
-
 
     def gen_rounds_constant_table(self):
         return [[(i >> j) & 1 for j in reversed(range(5))] for i in range(1, self.states["KEY_STATE"].nbr_rounds)]
-    
-
-    def rounds_code_if_unrolled(self, full_rounds):
-        if self.states['KEY_STATE'].nbr_rounds == full_rounds:
-            self.rounds_python_code_if_unrolled["KEY_STATE"] = [[1, f"if i < {full_rounds-1}:"]]
-            self.rounds_c_code_if_unrolled["KEY_STATE"] = [[1, f"if (i < {full_rounds-1})"+"{"]]
-            self.rounds_python_code_if_unrolled["STATE"] = [[1, f"if i < {full_rounds-1}:"]]
-            self.rounds_c_code_if_unrolled["STATE"] = [[1, f"if (i < {full_rounds-1})"+"{"]]
-            self.rounds_python_code_if_unrolled["STATE"] += [[full_rounds, f"if i == {full_rounds-1}:"]]
-            self.rounds_c_code_if_unrolled["STATE"] += [[full_rounds, f"if (i == {full_rounds-1})"+"{"]]

@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation
-import operators.operators as op
+from operators.Sbox import ASCON_Sbox
+from operators.boolean_operators import XOR, N_XOR
 
 
 # The ASCON internal permutation      
@@ -35,15 +36,15 @@ class ASCON_permutation(Permutation):
         if represent_mode==0: 
             for i in range(1,nbr_rounds+1):
                 S.AddConstantLayer("C", i, 0, "xor", [None]*184+[True]*8, constant_table)  # Constant layer      
-                S.SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
-                S.SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
-                S.SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
+                S.SboxLayer("SB", i, 1, ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
+                S.SingleOperatorLayer("XOR", i, 2, XOR, [[(45+j)%64, (36+j)%64] for j in range(64)]+[[(3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[(63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[(54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[(57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320,640)]) # XOR layer 
+                S.SingleOperatorLayer("XOR", i, 3, XOR, [[j, j+320] for j in range(320)], [j for j in range(320)]) # XOR layer 
 
         elif represent_mode==1: 
             for i in range(1,nbr_rounds+1):
                 S.AddConstantLayer("C", i, 0, "xor", [None]*184+[True]*8, constant_table)  # Constant layer      
-                S.SboxLayer("SB", i, 1, op.ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
-                S.SingleOperatorLayer("3_XOR", i, 2, op.N_XOR, [[j, (45+j)%64, (36+j)%64] for j in range(64)]+[[64+j, (3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[128+j, (63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[192+j, (54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[256+j, (57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320)]) # 3-XOR layer 
+                S.SboxLayer("SB", i, 1, ASCON_Sbox, index=[[k+j*64 for j in range(5)] for k in range(64)])  # Sbox layer            
+                S.SingleOperatorLayer("3_XOR", i, 2, N_XOR, [[j, (45+j)%64, (36+j)%64] for j in range(64)]+[[64+j, (3+j)%64+64, (25+j)%64+64] for j in range(64)]+[[128+j, (63+j)%64+128, (58+j)%64+128] for j in range(64)]+[[192+j, (54+j)%64+192, (47+j)%64+192] for j in range(64)]+[[256+j, (57+j)%64+256, (23+j)%64+256] for j in range(64)], [j for j in range(320)]) # 3-XOR layer 
 
 
     def gen_rounds_constant_table(self):

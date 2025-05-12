@@ -1,5 +1,5 @@
 from primitives.primitives import Permutation, Block_cipher
-import operators.operators as op
+from operators.boolean_operators import XOR, AND, ANDXOR
 
 
 # The Simon internal permutation  
@@ -27,17 +27,17 @@ class Simon_permutation(Permutation):
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):                
                 S.RotationLayer("ROT", i, 0, [['l', 1, 0, 2], ['l', 8, 0, 3], ['l', 2, 0, 4]]) # Rotation layer 
-                S.SingleOperatorLayer("AND", i, 1, op.bitwiseAND, [[2, 3]], [2]) # bitwise AND layer   
-                S.SingleOperatorLayer("XOR1", i, 2, op.bitwiseXOR, [[1, 2]], [1]) # XOR layer 
-                S.SingleOperatorLayer("XOR2", i, 3, op.bitwiseXOR, [[1, 4]], [1]) # XOR layer 
+                S.SingleOperatorLayer("AND", i, 1, AND, [[2, 3]], [2]) # bitwise AND layer   
+                S.SingleOperatorLayer("XOR1", i, 2, XOR, [[1, 2]], [1]) # XOR layer 
+                S.SingleOperatorLayer("XOR2", i, 3, XOR, [[1, 4]], [1]) # XOR layer 
                 S.PermutationLayer("PERM", i, 4, [1,0]) # Permutation layer
        
 
         elif represent_mode==1:
             for i in range(1,nbr_rounds+1):         
                 S.RotationLayer("ROT", i, 0, [['l', 1, 0, 2], ['l', 8, 0, 3], ['l', 2, 0, 4]]) # Rotation layer 
-                S.SingleOperatorLayer("ANDXOR", i, 1, op.bitwiseANDXOR, [[2, 3, 1]], [1]) # bitwise AND-XOR layer
-                S.SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[1, 4]], [1]) # XOR layer 
+                S.SingleOperatorLayer("ANDXOR", i, 1, ANDXOR, [[2, 3, 1]], [1]) # bitwise AND-XOR layer
+                S.SingleOperatorLayer("XOR", i, 2, XOR, [[1, 4]], [1]) # XOR layer 
                 S.PermutationLayer("PERM", i, 3, [1,0]) # Permutation layer
 
                 
@@ -93,26 +93,26 @@ class Simon_block_cipher(Block_cipher):
                 # key schedule
                 KS.RotationLayer("ROT1", i, 0, ['r', 3, 0, k_nbr_words]) # Rotation layer
                 if k_nbr_words == 2 or k_nbr_words == 3:
-                    KS.SingleOperatorLayer("XOR", i, 1, op.bitwiseXOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words-1]) # XOR layer 
+                    KS.SingleOperatorLayer("XOR", i, 1, XOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words-1]) # XOR layer 
                     KS.RotationLayer("ROT2", i, 2, ['r', 1, k_nbr_words]) # Rotation layer 
-                    KS.SingleOperatorLayer("XOR", i, 3, op.bitwiseXOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words]) # XOR layer 
+                    KS.SingleOperatorLayer("XOR", i, 3, XOR, [[k_nbr_words-1, k_nbr_words]], [k_nbr_words]) # XOR layer 
                     KS.AddConstantLayer("C", i, 4, "xor", [True if e==k_nbr_words else None for e in range(KS.nbr_words+KS.nbr_temp_words)], constant_table)  # Constant layer
                     KS.PermutationLayer("PERM", i, 5, [k_nbr_words]+[i for i in range(k_nbr_words)]) # Shiftrows layer
                 elif k_nbr_words == 4:
-                    KS.SingleOperatorLayer("XOR", i, 1, op.bitwiseXOR, [[2, 4]], [4]) # XOR layer 
-                    KS.SingleOperatorLayer("XOR", i, 2, op.bitwiseXOR, [[3, 4]], [5]) # XOR layer 
+                    KS.SingleOperatorLayer("XOR", i, 1, XOR, [[2, 4]], [4]) # XOR layer 
+                    KS.SingleOperatorLayer("XOR", i, 2, XOR, [[3, 4]], [5]) # XOR layer 
                     KS.RotationLayer("ROT2", i, 3, ['r', 1, 4]) # Rotation layer 
-                    KS.SingleOperatorLayer("XOR", i, 4, op.bitwiseXOR, [[4, 5]], [4]) # XOR layer 
+                    KS.SingleOperatorLayer("XOR", i, 4, XOR, [[4, 5]], [4]) # XOR layer 
                     KS.AddConstantLayer("C", i, 5, "xor", [True if e==k_nbr_words else None for e in range(KS.nbr_words+KS.nbr_temp_words)], constant_table)  # Constant layer
                     KS.PermutationLayer("PERM", i, 6, [4,0,1,2]) # Shiftrows layer           
             
             # Internal permutation
             for i in range(1,nbr_rounds+1):
                 S.RotationLayer("ROT", i, 0, [['l', 1, 0, 2], ['l', 8, 0, 3], ['l', 2, 0, 4]]) # Rotation layer 
-                S.SingleOperatorLayer("AND", i, 1, op.bitwiseAND, [[2, 3]], [2]) # bitwise AND layer   
-                S.SingleOperatorLayer("XOR1", i, 2, op.bitwiseXOR, [[1, 2]], [1]) # XOR layer 
-                S.SingleOperatorLayer("XOR2", i, 3, op.bitwiseXOR, [[1, 4]], [1]) # XOR layer 
-                S.AddRoundKeyLayer("ARK", i, 4, op.bitwiseXOR, SK, [0,1]) # Addroundkey layer 
+                S.SingleOperatorLayer("AND", i, 1, AND, [[2, 3]], [2]) # bitwise AND layer   
+                S.SingleOperatorLayer("XOR1", i, 2, XOR, [[1, 2]], [1]) # XOR layer 
+                S.SingleOperatorLayer("XOR2", i, 3, XOR, [[1, 4]], [1]) # XOR layer 
+                S.AddRoundKeyLayer("ARK", i, 4, XOR, SK, [0,1]) # Addroundkey layer 
                 S.PermutationLayer("PERM", i, 5, [1,0]) # Permutation layer
 
     def gen_rounds_constant_table(self, version):
