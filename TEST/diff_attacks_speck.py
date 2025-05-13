@@ -4,9 +4,7 @@ import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import attacks.attacks as attacks
 import OCP
-script_dir = os.path.dirname(os.path.abspath(__file__)) 
-base_path = os.path.join(script_dir, '..', 'files')
-base_path = os.path.abspath(base_path)
+base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files'))
 
 
 def traditional_method(model_type="milp", R_start=1, R_end=1):
@@ -65,7 +63,8 @@ def matsui_method_sat(R_start=1, R_end=1):
         result["TIME"].append(round(time.time() - time_start, 2))  
         obj_sat -= 1
         print(result)
-    print_in_latex(result, os.path.join(base_path, f'{cipher.name}_diff_matsui_sat_result.txt'))
+    result["w"].pop(0)
+    print_in_latex(result, os.path.join(base_path, f'speck_diff_matsui_sat_result.txt'))
 
 
 def add_window_weight_cons(cipher, na, method=1, type=1):
@@ -160,28 +159,36 @@ def window_weight_method(method=1):
 
 
 def print_in_latex(result, filename=""):
+    if filename:
+        print(f"Generating LaTeX table from: {filename}")
     columns = list(result.keys())
-    num_rows = len(next(iter(result.values())))
-    with open(filename, "w") as fw:
-        fw.write(str(result)) 
+    num_rows = max(len(result[col]) for col in columns)
+    # Print header
+    print(" & ".join(columns) + r" \\")
+    print(r"\hline")
+    # Print rows
     for i in range(num_rows):
-        row = [str(result[col][i]) for col in columns]
+        row = []
+        for col in columns:
+            if i < len(result[col]):
+                row.append(str(result[col][i]))
+            else:
+                row.append(" ")
         print(" & ".join(row) + r" \\")
-        with open(filename, "w") as fw:
-            fw.write(" & ".join(row) + r" \\") 
     
 
         
 if __name__ == '__main__':
-    traditional_method("milp", 1, 6)
-    traditional_method("sat", 1, 6)
-    nonlinear_modadd_method_milp(1, 3)
-    matsui_method_milp(1,6)
-    matsui_method_sat(1,8)
-    window_weight_method(method=3) # method=1, 2, 3
+    traditional_method("milp", 1, 8)
+    traditional_method("sat", 1, 11)
+    nonlinear_modadd_method_milp(1, 8)
+    matsui_method_milp(1,8)
+    matsui_method_sat(1,22)
+    window_weight_method(method=1) # method=1, 2, 3
 
 
     # results for speck_32 on dragon2: 
+
     # (1) milp: traditional, nonlinear_modadd method, matsui
     # result = {'Rounds': [1, 2, 3, 4, 5, 6, 7, 8], 'w': [0, 1, 3, 5, 9, 13, 18, 24], 'TIME_t': [0.01, 0.07, 0.25, 1.42, 4.32, 26.02, 788.9, >10000], 'TIME_diff_1': [0.02, 0.07, 0.46, 1.56, 3.84, 41.69, 762.0], 'TIME_diff_2': [0.01, 0.04, 0.41, 0.75, 4.64, 65.37, 3763.0], 'TIME_diff_3': [0.01, 0.04, 0.5, 1.57, 3.91, 80.4, 3343.15], 'TIME_matsui': [0.02, 0.05, 0.62, 1.24, 23.24, 84.43, 2320.37]}
     # (2) milp: window_weight_method1:
@@ -191,7 +198,10 @@ if __name__ == '__main__':
     # (4) milp: window_weight_method3:
     # result_type1 = {'Rounds': [2, 3, 4, 5, 6, 7, 8], 'w': [1, 3, 5, 9, 13, 18, 24], 'TIME\_type1': [0.24, 0.73, 4.29, 10.39, 65.93, 490.28, 4081.14]}
 
-    # print_in_latex(result_type1)
+    # (5) sat: traditional, matsui
+    # result = {'Rounds': [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22], 'w': [0, 1, 3, 5, 9, 13, 18, 24, 30, 34, 38, 42, 45, 49, 54, 58, 63, 69, 74, 77, 81, 85], 'TIME_t': [0.0, 0.02, 0.06, 0.14, 0.64, 4.09, 39.7, 593.06, 6296.88, 17798.22, 33956.7], 'TIME_matsui': [0.0, 0.02, 0.05, 0.08, 0.61, 1.5, 10.59, 52.33, 312.61, 481.49, 1163.05, 960.04, 318.9, 735.39, 1873.77, 1606.72, 5598.9, 44169.68, 72830.99, 11758.64, 46774.63, 55983.3513]}
+    
+    # print_in_latex(result, "files/speck_result.txt")
     
 
     
