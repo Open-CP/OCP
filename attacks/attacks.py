@@ -179,12 +179,12 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_o
         constraints = [f'-{var}' for var in hw_list]
         return constraints
     # === At-least-k is transformed into at-most-(n-k) ===
+    n = len(hw_list)
     if greater_or_equal:
         weight = n - weight
         minus = ''
     else:
         minus = '-'
-    n = len(hw_list)
     if dummy_variables is None:
         dummy_variables = [[f'dummy_hw_{i}_{j}' for j in range(weight)] for i in range(n - 1)]
     constraints = [f'{minus}{hw_list[0]} {dummy_variables[0][0]}']
