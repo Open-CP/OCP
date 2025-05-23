@@ -174,12 +174,12 @@ def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", states=Non
 
 
 def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_or_equal=False): # reference: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
+    n = len(hw_list)
     # === Special case: require all variables to be False ===
     if (not greater_or_equal and weight == 0) or (greater_or_equal and weight == n):
         constraints = [f'-{var}' for var in hw_list]
         return constraints
     # === At-least-k is transformed into at-most-(n-k) ===
-    n = len(hw_list)
     if greater_or_equal:
         weight = n - weight
         minus = ''
