@@ -24,7 +24,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
     
     def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF":
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:
                 # reference: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
                 model_list = []
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
@@ -49,7 +49,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             model_list = []
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF": 
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
                 # reference: Fu, K., Wang, M., Guo, Y., Sun, S., Hu, L. (2016). MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck 
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d']
@@ -77,7 +77,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_1": # Type 1 constraint using the Indicator constraint provided by Gurobi
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_1": # Type 1 constraint using the Indicator constraint provided by Gurobi
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d']
                 for i in range(self.input_vars[0].bitsize-1) :
@@ -101,7 +101,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_2": # Type 2 constraint using the Indicator constraint provided by Gurobi
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_2": # Type 2 constraint using the Indicator constraint provided by Gurobi
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(self.input_vars[0].bitsize-1) :
@@ -122,7 +122,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_3": # Type 3 constraint using the Indicator constraint provided by Gurobi
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_3": # Type 3 constraint using the Indicator constraint provided by Gurobi
                 var_in1, var_in2, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('in', 1, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(self.input_vars[0].bitsize-1) :

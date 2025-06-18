@@ -2,9 +2,13 @@ import math
 import os
 import sys
 import time 
-from operators.operators import UnaryOperator, RaiseExceptionVersionNotExisting
+import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from tools.minimize_logic import ttb_to_cnf_espresso
+from operators.operators import UnaryOperator, RaiseExceptionVersionNotExisting
+from tools.minimize_logic import ttb_to_ineq_logic
+from tools.polyhedron import ttb_to_ineq_convex_hull
+from tools.inequality import inequality_to_constraint_sat, inequality_to_constraint_milp
+base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files/sbox_modeling/'))
 
 
 class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship between the input variable and output variable (must be of same bitsize)
@@ -16,114 +20,12 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.table_inv = None
         
     def computeDDT(self):  # method computing the DDT of the Sbox
-        DDT = [[0]*(2**self.output_bitsize) for _ in range(2**self.input_bitsize)] 
+        ddt = [[0]*(2**self.output_bitsize) for _ in range(2**self.input_bitsize)] 
         for in_diff in range(2**self.input_bitsize):
             for j in range(2**self.input_bitsize):
                 out_diff = self.table[j] ^ self.table[j^in_diff]
-                DDT[in_diff][out_diff] += 1 
-        return DDT
-    
-
-    def star_ddt_to_truthtable(self, ddt): # Convert star-DDT into a truthtable, which encode the differential propagations without probalities
-        ttable = ''
-        for n in range(2**(self.input_bitsize+self.output_bitsize)):
-            dx = n >> self.output_bitsize
-            dy = n & ((1 << self.output_bitsize) - 1)
-            if ddt[dx][dy] > 0: ttable += '0'
-            else: ttable += '1'
-        return ttable
-
-
-    def pddt_to_truthtable(self, ddt, p): # Convert p-DDT into a truthtable, which encode the differential propagations with the item in ddt equal to p.  
-        ttable = ''    
-        for n in range(2**(self.input_bitsize+self.output_bitsize)):
-            dx = n >> self.output_bitsize
-            dy = n & ((1 << self.output_bitsize) - 1)
-            if ddt[dx][dy] == p: ttable += '0'
-            else: ttable += '1'
-        return ttable
-
-
-    def ddt_to_truthtable(self, len_diff_spectrum, diff_weights, ddt): # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
-        ttable = ''
-        for n in range(2**(self.input_bitsize+self.output_bitsize+len_diff_spectrum)):
-            dx = n >> (self.output_bitsize + len_diff_spectrum)
-            dy = (n >> len_diff_spectrum) & ((1 << self.output_bitsize) - 1)
-            p = bin(n & ((1 << (len_diff_spectrum)) - 1))[2:].zfill(len_diff_spectrum)
-            w = 0
-            for i in range(len_diff_spectrum): w += diff_weights[i] * int(p[i])
-            if ddt[dx][dy] > 0 and abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2))) == w: ttable += '0'
-            else: ttable += '1'
-        return ttable
-
-
-    def ddt_to_truthtable_sat(self, diff_weights, max_diff_weights, ddt): # Convert the DDT, which encode the differential propagations with probalities into a truthtable in sat. All weights should be integers in this case.  
-        if any([i != int(i) for i in diff_weights]):
-            raise ValueError("All transition's weights should be integers")
-        ttable = ''
-        for n in range(2**(self.input_bitsize+self.output_bitsize+max_diff_weights)):
-            dx = n >> (self.output_bitsize + max_diff_weights)
-            dy = (n >> max_diff_weights) & ((1 << self.output_bitsize) - 1)
-            p = tuple(int(x) for x in bin(n & ((1 << max_diff_weights) - 1))[2:].zfill(max_diff_weights))
-            if ddt[dx][dy] > 0:
-                w = int(abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2))))
-                if p == tuple([0]*(max_diff_weights - w) + [1]*w): ttable += '0' 
-                else: ttable += '1'                
-            else: ttable += '1'
-        return ttable
-    
-
-    def gen_model_constraints(self, filename, model_type='milp', mode=0, tool_type="espresso"):
-        if os.path.exists(filename):
-            with open(filename, 'r') as file:
-                for line in file:
-                    if 'Constraints:' in line:
-                        constraints = eval(line.split(':', 1)[1].strip())
-                    if 'Weight:' in line:
-                        objective_fun = line[len("Weight: "):]
-            return constraints, objective_fun
-        input_variables = [f'a{i}' for i in range(self.input_bitsize)]
-        output_variables = [f'b{i}' for i in range(self.output_bitsize)]
-        if "DIFF" in self.model_version or self.model_version == "DEFAULT": ddt = self.computeDDT()
-        objective_fun = ''
-        if self.model_version == "DEFAULT" or "DIFF_PR" in self.model_version:
-            diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
-            diff_weights = [abs(float(math.log(d/(2**self.input_bitsize), 2))) for d in diff_spectrum]  
-            len_diff_spectrum = len(diff_spectrum)   
-            if model_type == 'milp':
-                pr_variables = [f'p{i}' for i in range(len_diff_spectrum)]  
-                num_vars = self.input_bitsize + self.output_bitsize + len_diff_spectrum
-                ttable = self.ddt_to_truthtable(len_diff_spectrum, diff_weights, ddt)
-                objective_fun = "{}".format(" + ".join(["{:0.04f} p{:d}".format(diff_weights[i], i) for i in range(len_diff_spectrum)]))
-            elif model_type == 'sat':
-                max_diff_weights = int(max(diff_weights))
-                pr_variables = [f'p{i}' for i in range(max_diff_weights)] 
-                num_vars = self.input_bitsize + self.output_bitsize + max_diff_weights
-                ttable = self.ddt_to_truthtable_sat(diff_weights, max_diff_weights, ddt)
-                objective_fun = "{}".format(" + ".join(["p{:d}".format(i) for i in range(max_diff_weights)])) 
-            variables = input_variables + output_variables + pr_variables
-        elif "DIFF_P" in self.model_version:
-            num_vars = self.input_bitsize + self.output_bitsize
-            variables = input_variables + output_variables
-            ttable = self.pddt_to_truthtable(ddt, int(self.model_version.replace("diff_p", "")))
-        elif "DIFF" in self.model_version:
-            num_vars = self.input_bitsize + self.output_bitsize
-            variables = input_variables + output_variables
-            ttable = self.star_ddt_to_truthtable(ddt)
-        time_start = time.time()
-        if tool_type=="espresso":
-            constraints = ttb_to_cnf_espresso(model_type, ttable, num_vars, variables, mode=mode)
-        time_end = time.time()
-        variables_mapping = "Input: {0}; msb: {1}".format("||".join(input_variables), input_variables[0])
-        variables_mapping += "\nOutput: {0}; msb: {1}".format("||".join(output_variables), output_variables[0])
-        with open(filename, 'w') as file:
-            file.write(f"{variables_mapping}\n")
-            file.write("Time used to simplify the constraints: {:0.04f} s\n".format(time_end - time_start))
-            file.write(f"Number of constraints: {len(constraints)}\n") 
-            file.write(f"Constraints: {constraints}\n") 
-            file.write(f"Weight: {objective_fun}\n") 
-        return constraints, objective_fun
-    
+                ddt[in_diff][out_diff] += 1 
+        return ddt
     
     def differential_branch_number(self): # Return differential branch number of the S-Box.
         ret = (1 << self.input_bitsize) + (1 << self.output_bitsize)
@@ -139,6 +41,83 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     def is_bijective(self): # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
         return len(set(self.table)) == len(self.table) and all(i in self.table for i in range(len(self.table)))
 
+    # ---------------- Truth Table Generation ---------------- #
+    def star_ddt_to_truthtable(self): # Convert star-DDT into a truthtable, which encode the differential propagations without probalities
+        ddt = self.computeDDT()
+        ttable = ''
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            dx = n >> self.output_bitsize
+            dy = n & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] > 0: ttable += '1'
+            else: ttable += '0'
+        return ttable
+
+    def pddt_to_truthtable(self, p): # Convert p-DDT into a truthtable, which encode the differential propagations with the item in ddt equal to p.  
+        ddt = self.computeDDT()
+        ttable = ''    
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            dx = n >> self.output_bitsize
+            dy = n & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] == p: ttable += '1'
+            else: ttable += '0'
+        return ttable
+
+    def ddt_to_truthtable_milp(self): # Convert the DDT into a truthtable, which encode the differential propagations with probalities.  
+        ddt = self.computeDDT()
+        ttable = ''
+        diff_weights = self.gen_weights(ddt)
+        len_diff_weights = len(diff_weights)
+        for n in range(2**(self.input_bitsize+self.output_bitsize+len_diff_weights)):
+            dx = n >> (self.output_bitsize + len_diff_weights)
+            dy = (n >> len_diff_weights) & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] > 0:
+                p = bin(n & ((1 << (len_diff_weights)) - 1))[2:].zfill(len_diff_weights)
+                w = 0
+                for i in range(len_diff_weights): 
+                    w += diff_weights[i] * int(p[i])
+                if abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2))) == w: ttable += '1'
+                else: ttable += '0'
+            else: ttable += '0'
+        return ttable
+
+    def ddt_to_truthtable_sat(self): # Convert the DDT, which encode the differential propagations with probalities into a truthtable in sat.
+        ddt = self.computeDDT()
+        ttable = ''
+        integers_weight, floats_weight = self.gen_integer_float_weight(ddt)
+        len_diff_weights = int(max(integers_weight)+len(floats_weight))
+        for n in range(2**(self.input_bitsize+self.output_bitsize+len_diff_weights)):
+            dx = n >> (self.output_bitsize + len_diff_weights)
+            dy = (n >> len_diff_weights) & ((1 << self.output_bitsize) - 1)
+            if ddt[dx][dy] > 0:
+                p = tuple(int(x) for x in bin(n & ((1 << len_diff_weights) - 1))[2:].zfill(len_diff_weights))
+                w = abs(float(math.log(ddt[dx][dy]/(2**self.input_bitsize), 2)))
+                pattern = self.gen_weight_pattern_sat(integers_weight, floats_weight, w)
+                if p == tuple(pattern):  ttable += '1'
+                else: ttable += '0'
+            else: ttable += '0'
+        return ttable
+    
+    def gen_spectrum(self, table):
+        spectrum = sorted(list(set([table[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
+        return spectrum
+    
+    def gen_weights(self, table):
+        spectrum = self.gen_spectrum(table)
+        weights = [abs(float(math.log(i/(2**self.input_bitsize), 2))) for i in spectrum]
+        return weights
+    
+    def gen_integer_float_weight(self, table):
+        weights = self.gen_weights(table)
+        integers = sorted([int(x) for x in weights if x == int(x)])
+        floats = sorted([x-int(x) for x in weights if x != int(x)])
+        return integers, floats
+        
+    def gen_weight_pattern_sat(self, integers_weight, floats_weight, w):
+        int_w = int(w)
+        float_w = w - int_w
+        return [0] * (max(integers_weight) - int_w) + [1] * int_w + [1 if f == float_w else 0 for f in floats_weight]
+    
+    # ---------------- Implementation Code Generation ---------------- #
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
             if not isinstance(self.input_vars[0], list):
@@ -181,148 +160,276 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         else: return None
             
             
-    def generate_model(self, model_type='sat', mode = 0, unroll=True, weight=True):
-        script_dir = os.path.dirname(os.path.abspath(__file__)) 
-        base_path = os.path.join(script_dir, '..', 'files')
-        base_path = os.path.abspath(base_path)
+    # ---------------- Modeling Interface ---------------- #
+    def generate_model(self, model_type='sat', mode = 0, tool_type="minimize_logic", count_active=True, filename_load=None):
+        self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{mode}_{tool_type}.txt')
+        if filename_load is not None and os.path.exists(self.model_filename):
+            return self.reload_constraints_objfun_from_file(self.model_filename)        
         if model_type == 'sat': 
-            filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF_PR":
-                # modeling all possible (input difference, output difference, probablity) to search for the best differential characteristic
-                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                model_list = []
-                var_p = []
-                for i in range(sbox_weight.count('+') + 1): var_p.append(f"{self.ID}_p{i}")
-                for ineq in sbox_inequalities:
-                    temp = ineq
-                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
-                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
-                    for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
-                    model_list += [temp]
-                self.weight = var_p                
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF":
-                # modeling all possible (input difference, output difference)
-                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                model_list = []
-                for ineq in sbox_inequalities:
-                    temp = ineq
-                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
-                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
-                    model_list += [temp]
-                if weight:
-                    var_At = [self.ID + '_At']    
-                    model_list += [f"-{var} {var_At[0]}" for var in var_in]
-                    model_list += [" ".join(var_in) + ' -' + var_At[0]]
-                    self.weight = var_At         
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)):
-                # word-wise difference propagations, the input difference equals the ouput difference
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
-                model_list = [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
-                if weight: self.weight = var_in               
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            return self.generate_model_sat(mode, tool_type, count_active)
         elif model_type == 'milp': 
-            model_list = []
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF_PR":
-                # modeling all possible (input difference, output difference, probablity)
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                var_p = []    
-                filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
-                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
-                for i in range(sbox_weight.count('+') + 1):
-                    var_p.append(f"{self.ID}_p{i}")
-                    sbox_weight = sbox_weight.replace(f"p{i}", f"{self.ID}_p{i}")
-                for ineq in sbox_inequalities:
-                    temp = ineq
-                    for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
-                    for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
-                    for i in range(sbox_weight.count('+')+1): temp = temp.replace(f"p{i}", var_p[i])
-                    model_list += [temp]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_p))
-                self.weight = [sbox_weight]
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF":
-                # modeling all possible (input difference, output difference)
-                filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_{self.model_version}.txt')
-                sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, mode)
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                vars = var_in + var_out
-                for ineq in sbox_inequalities:
-                    temp = ineq
-                    for i in range(self.input_bitsize): 
-                        temp = temp.replace(f"a{i}", var_in[i])
-                    for i in range(self.output_bitsize): 
-                        temp = temp.replace(f"b{i}", var_out[i])
-                    model_list += [temp]
-                if weight:
-                    var_At = [self.ID + '_At']    
-                    model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
-                    model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
-                    vars += var_At
-                    self.weight = var_At
-                model_list.append('Binary\n' +  ' '.join(v for v in vars))
-                return model_list                
-            elif self.model_version == self.__class__.__name__ + "_DIFF_P":
-                # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                var_p = []    
-                ddt = self.computeDDT()
-                diff_spectrum = sorted(list(set([ddt[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
-                weight = ''
-                for w in range(len(diff_spectrum)):
-                    var_p.append(f"{self.ID}_p{w}")
-                    filename = os.path.join(base_path, f'constraints_sbox_{str(self.__class__.__name__)}_{model_type}_DIFF_P{diff_spectrum[w]}.txt')
-                    sbox_inequalities, sbox_weight = self.gen_model_constraints(filename, model_type, f"DIFF_P{diff_spectrum[w]}", mode)
-                    for ineq in sbox_inequalities:
-                        temp = ineq
-                        for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
-                        for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
-                        temp_0, temp_1 = temp.split(">=")[0], int(temp.split(" >= ")[1])
-                        temp = temp_0 + f"- 10000 {var_p[w]} >= {temp_1-10000}"
-                        model_list += [temp]
-                    weight += " + " + "{:0.04f} ".format(abs(float(math.log(diff_spectrum[w]/(2**self.input_bitsize), 2)))) + var_p[w]
-                self.weight = [weight]
-                model_list += [' + '.join(var_p) + ' = 1\n']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out + var_p))
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)):
-                # word-wise difference propagations, the input difference equals the ouput difference
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
-                model_list += [f'{var_in[0]} - {var_out[0]} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                if weight: self.weight = var_in           
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED_BN":
-                # modeling the differential branch number of sbox to calculate the minimum number of differentially active s-boxes
-                branch_num = self.differential_branch_number()
-                var_in, var_out = self.get_vars("in", unroll=unroll), self.get_vars("out", unroll=unroll)
-                vars = var_in + var_out
-                if branch_num >= 3: # modeling the differential branch number of sbox 
-                    var_d = [self.ID + '_d'] 
-                    model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
-                    model_list += [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d[0] + ' >= 0']
-                    vars += var_d
-                if self.is_bijective(): # For bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
-                    model_list += [f"{len(var_in)} " + f" + {len(var_in)} " .join(var_out) +  " - " + " - ".join(var_in) + ' >= 0']
-                    model_list += [f"{len(var_out)} " + f" + {len(var_out)} ".join(var_in) +  " - " +  " - ".join(var_out) + ' >= 0']                    
-                if weight:
-                    var_At = [self.ID + '_At'] 
-                    model_list += [f"{var_At[0]} - {var_in[i]} >= 0" for i in range(len(var_in))]
-                    model_list += [" + ".join(var_in) + ' - ' + var_At[0] + ' >= 0']
-                    self.weight = var_At  
-                    vars += var_At
-                model_list.append('Binary\n' +  ' '.join(v for v in vars))
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            return self.generate_model_milp(mode, tool_type, count_active)      
+        elif model_type == 'cp': 
+            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+    
+    # ---------------- Common utilities in SAT and MILP modeling ---------------- #
+    def _reload_constraints_objfun_from_file(self):
+        if os.path.exists(self.model_filename):
+            with open(self.model_filename, 'r') as file:
+                for line in file:
+                    if 'Constraints:' in line:
+                        constraints = eval(line.split(':', 1)[1].strip())
+                    if 'Weight:' in line:
+                        objective_fun = line[len("Weight: "):]
+            return constraints, objective_fun
+        else:
+            return None, None     
+        
+    def _trans_template_ineq(self, template_inequalities, template_weight, var_in, var_out, var_p=None):
+        a, b, p = "a", "b", "p" # Variable prefixes for input (a), output (b), and probability (p) in modeling
+        inequalities = []
+        for ineq in template_inequalities:
+            temp = ineq
+            for i in range(self.input_bitsize): 
+                temp = temp.replace(f"{a}{i}", var_in[i])
+            for i in range(self.output_bitsize): 
+                temp = temp.replace(f"{b}{i}", var_out[i])
+            if var_p: 
+                for i in range(template_weight.count('+')+1): 
+                    temp = temp.replace(f"{p}{i}", var_p[i])
+            inequalities += [temp]
+        return inequalities
+    
+    def _trans_template_weight(self, template_weight, var_p):
+        p = "p" # Variable prefixes for probability (p) in modeling
+        weight = copy.deepcopy(template_weight)
+        for i in range(weight.count('+') + 1):
+            weight = weight.replace(f"{p}{i}", f"{var_p[i]}")
+        return weight
+    
+    def _gen_model_input_output_variables(self):
+        input_variables = [f'a{i}' for i in range(self.input_bitsize)]
+        output_variables = [f'b{i}' for i in range(self.output_bitsize)]
+        return input_variables, output_variables
+    
+    def _write_model_constraints(self, input_variables, output_variables, constraints, objective_fun, time):
+        variables_mapping = "Input: {0}; msb: {1}".format("||".join(input_variables), input_variables[0])
+        variables_mapping += "\nOutput: {0}; msb: {1}".format("||".join(output_variables), output_variables[0])        
+        dir_path = os.path.dirname(self.model_filename)
+        if not os.path.exists(dir_path): 
+            os.makedirs(dir_path, exist_ok=True)
+        with open(self.model_filename, 'w') as file:
+            file.write(f"{variables_mapping}\n")
+            file.write(f"Time used to simplify the constraints: {time:.4f} s\n")
+            file.write(f"Number of constraints: {len(constraints)}\n") 
+            file.write(f"Constraints: {constraints}\n") 
+            file.write(f"Weight: {objective_fun}\n") 
+    
+    # ---------------- SAT Model Generation ---------------- #
+    def generate_model_sat(self, mode = 0, tool_type="minimize_logic", count_active=True):
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+            return self._gen_model_sat_diff_pr(mode, tool_type)
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF":
+            return self._gen_model_sat_diff(mode, tool_type, count_active)
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)):
+            return self._gen_model_sat_diff_word_truncated(count_active)            
+        else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
+    
+    def _gen_model_sat_diff_pr(self, mode, tool_type): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(mode, tool_type)
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
+        self.weight = var_p
+        return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
+    
+    def _gen_model_sat_diff(self, mode, tool_type, count_active): # modeling all possible (input difference, output difference)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(mode, tool_type)
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
+        if count_active: # to calculate the minimum number of active S-boxes
+            var_At = [self.ID + '_At']    
+            model_list += self._model_count_active_sbox_sat(var_in, var_At[0])
+            self.weight = var_At         
+        return model_list
+    
+    def _gen_model_sat_diff_word_truncated(self, count_active): # word-wise difference propagations, the input difference equals the ouput difference
+        var_in, var_out = [self.get_var_ID('in', 0, unroll=True)], [self.get_var_ID('out', 0, unroll=True)]
+        if count_active: 
+            self.weight = var_in               
+        return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
+
+    def _gen_model_constraints_sat(self, mode, tool_type):
+        ttable = self._gen_model_ttable_sat()
+        input_variables, output_variables = self._gen_model_input_output_variables()
+        pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_sat()
+        variables = input_variables + output_variables + pr_variables
+        time_start = time.time()
+        if tool_type == "minimize_logic":
+            inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode)
+        else: raise Exception(str(self.__class__.__name__) + ": unknown tool type '" + tool_type + "'")
+        constraints = [inequality_to_constraint_sat(ineq, variables) for ineq in inequalities]
+        time_end = time.time()
+        self._write_model_constraints(input_variables, output_variables, constraints, objective_fun, time_end-time_start)
+        return constraints, objective_fun
+    
+    def _gen_model_ttable_sat(self):
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+            return self.ddt_to_truthtable_sat()
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
+            return self.star_ddt_to_truthtable()
+        else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
+    
+    def _gen_model_pr_variables_objective_fun_sat(self):
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+            ddt = self.computeDDT()
+            integers_weight, floats_weight = self.gen_integer_float_weight(ddt)
+            pr_variables = [f'p{i}' for i in range(max(integers_weight)+len(floats_weight))] 
+            objective_fun = " + ".join(pr_variables[:max(integers_weight)])
+            if floats_weight is not []:
+                objective_fun += " + " + " + ".join(f"{w:.4f} {v}" for w, v in zip(floats_weight, pr_variables[max(integers_weight):]))
+            return pr_variables, objective_fun
+        return [], ""
+        
+    def _model_count_active_sbox_sat(self, var_in, var_At):
+        return [f"-{var} {var_At}" for var in var_in] + [" ".join(var_in) + ' -' + var_At]
+
+    # ---------------- MILP Model Generation ---------------- #
+    def generate_model_milp(self, mode = 0, tool_type="polyhedron", count_active=True):
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+            return self._generate_model_milp_diff_pr(mode, tool_type)
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF":
+            return self._generate_model_milp_diff(mode, tool_type, count_active)
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF_P":
+            return self._generate_model_milp_diff_p(mode, tool_type)
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
+            return self._generate_model_milp_diff_word_truncated(count_active)            
+        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1": #  bit-wise truncated difference propagations
+            return self._generate_model_milp_diff_bit_truncated(count_active)
+        else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
+    
+    def _generate_model_milp_diff_pr(self, mode, tool_type): # modeling all possible (input difference, output difference, probablity)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
+        model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)
+        model_list += self._declare_vars_type_milp('Binary', var_in + var_out + var_p)
+        self.weight = [self._trans_template_weight(sbox_weight, var_p)]   
+        return model_list  
+
+    def _generate_model_milp_diff(self, mode, tool_type, count_active):  # modeling all possible (input difference, output difference)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)     
+        model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
+        all_vars = var_in + var_out
+        if count_active: # to calculate the minimum number of active S-boxes
+            var_At = [self.ID + '_At']   
+            model_list += self._model_count_active_sbox_milp(var_in, var_At[0]) 
+            all_vars += var_At
+            self.weight = var_At
+        model_list += self._declare_vars_type_milp('Binary', all_vars)
+        return model_list   
+    
+    def _generate_model_milp_diff_p(self, mode, tool_type): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        ddt = self.computeDDT()
+        diff_spectrum = self.gen_spectrum(ddt) + [2**self.input_bitsize]
+        var_p = [f"{self.ID}_p{w}" for w in range(len(diff_spectrum))]    
+        weight = ''
+        model_list = []
+        model_v = self.model_version
+        for w in range(len(diff_spectrum)):
+            self.model_version = model_v + str(diff_spectrum[w])
+            sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+            for ineq in sbox_inequalities:
+                temp = ineq
+                for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
+                for i in range(self.output_bitsize): temp = temp.replace(f"b{i}", var_out[i])
+                temp_0, temp_1 = temp.split(">=")[0], int(temp.split(" >= ")[1])
+                temp = temp_0 + f"- 10000 {var_p[w]} >= {temp_1-10000}"
+                model_list += [temp]
+            weight += " + " + "{:0.04f} ".format(abs(float(math.log(diff_spectrum[w]/(2**self.input_bitsize), 2)))) + var_p[w]
+        model_list += [' + '.join(var_p) + ' = 1\n']
+        model_list += self._declare_vars_type_milp('Binary', var_in + var_out + var_p)
+        self.weight = [weight]
+        return model_list
+    
+    def _generate_model_milp_diff_word_truncated(self, count_active): # word-wise truncated difference propagations, the input difference equals the ouput difference
+        var_in, var_out = [self.get_var_ID('in', 0, unroll=True)], [self.get_var_ID('out', 0, unroll=True)]
+        model_list = [f'{var_in[0]} - {var_out[0]} = 0']
+        model_list += self._declare_vars_type_milp('Binary', var_in + var_out)
+        if count_active: # to calculate the minimum number of active S-boxes
+            self.weight = var_in           
+        return model_list
+    
+    def _generate_model_milp_diff_bit_truncated(self, count_active): #  bit-wise truncated difference propagations
+        branch_num = self.differential_branch_number()
+        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        all_vars = var_in + var_out
+        model_list = []
+        if branch_num >= 3: # model the differential branch number of sbox
+            var_d = [self.ID + '_d'] 
+            model_list += self._model_branch_num_milp(var_in, var_out, var_d[0], branch_num)
+            all_vars += var_d
+        if self.is_bijective(): # for bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
+            model_list += self._model_bijective_milp(var_in, var_out)       
+        if count_active: # to calculate the minimum number of differentially active s-boxes
+            var_At = [self.ID + '_At'] 
+            model_list += self._model_count_active_sbox_milp(var_in, var_At[0])
+            self.weight = var_At  
+            all_vars += var_At
+        model_list += self._declare_vars_type_milp('Binary', all_vars)
+        return model_list
+
+    def _gen_model_constraints_milp(self, mode=0, tool_type="polyhedron"):
+        ttable = self._gen_model_ttable_milp()
+        input_variables, output_variables = self._gen_model_input_output_variables()
+        pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_milp()
+        variables = input_variables + output_variables + pr_variables
+        time_start = time.time()
+        if tool_type=="minimize_logic":
+            inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode)
+        elif tool_type=="polyhedron":
+            inequalities = ttb_to_ineq_convex_hull(ttable, variables)
+        constraints = [inequality_to_constraint_milp(ineq, variables) for ineq in inequalities]
+        time_end = time.time()
+        self._write_model_constraints(input_variables, output_variables, constraints, objective_fun, time_end-time_start)
+        return constraints, objective_fun
+    
+    def _declare_vars_type_milp(self, var_type, variables):
+        return [f'{var_type}\n' +  ' '.join(variables)]
+
+    def _model_count_active_sbox_milp(self, var_in, var_At):
+        return [f"{var_At} - {var_in[i]} >= 0" for i in range(len(var_in))] + [" + ".join(var_in) + ' - ' + var_At + ' >= 0']
+    
+    def _model_branch_num_milp(self, var_in, var_out, var_d, branch_num):
+        return [f"{var_d} - {var} >= 0" for var in var_in + var_out] + [" + ".join(var_in + var_out) + ' - ' + str(branch_num) + ' ' + var_d + ' >= 0']
+
+    def _model_bijective_milp(self, var_in, var_out):
+        model_list = [f"{len(var_in)} " + f" + {len(var_in)} " .join(var_out) +  " - " + " - ".join(var_in) + ' >= 0']
+        model_list += [f"{len(var_out)} " + f" + {len(var_out)} ".join(var_in) +  " - " +  " - ".join(var_out) + ' >= 0']   
+        return model_list
+        
+    def _gen_model_ttable_milp(self):
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
+            return self.star_ddt_to_truthtable()
+        elif self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+            return self.ddt_to_truthtable_milp()
+        elif self.model_version[:len(self.__class__.__name__ + "_XORDIFF_P")] == self.__class__.__name__ + "_XORDIFF_P" and self.model_version[len(self.__class__.__name__ + "_XORDIFF_P"):].isdigit():
+            return self.pddt_to_truthtable(int(self.model_version[len(self.__class__.__name__ + "_XORDIFF_P"):]))   
+        else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
+
+    def _gen_model_pr_variables_objective_fun_milp(self):
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]: 
+            ddt = self.computeDDT()
+            weights = self.gen_weights(ddt)
+            pr_variables = [f'p{i}' for i in range(len(weights))]
+            objective_fun = " + ".join(f"{w:.4f} {v}" for w, v in zip(weights, pr_variables))
+            return pr_variables, objective_fun
+        return [], ""
 
 
-
+# ---------------- Cipher Sbox ---------------- #
 class Skinny_4bit_Sbox(Sbox):         # Operator of the Skinny 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)

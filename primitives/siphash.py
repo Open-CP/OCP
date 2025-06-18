@@ -38,4 +38,11 @@ class SipHash_permutation(Permutation):
                 S.SingleOperatorLayer("XOR2", i, 7, XOR, [[0,1], [2,3]], [1, 3]) # XOR layer
                 S.RotationLayer("ROT4", i, 8, [['l', 32, 0]]) # Rotation layer
                 S.PermutationLayer("PERM2", i, 9, [2,1,0,3]) # Permutation layer
-                
+
+        self.test_vectors = self.gen_test_vectors()
+    
+    def gen_test_vectors(self):
+        # Test vector from  https://www.aumasson.jp/siphash/siphash.pdf
+        IN =[0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
+        OUT = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8] 
+        return [[IN], OUT]

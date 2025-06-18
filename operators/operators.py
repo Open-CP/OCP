@@ -102,20 +102,20 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             
     def generate_model(self, model_type='sat', unroll=True):   
         if model_type == 'sat': 
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF":  
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:  
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF": 
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 model_list = [f"{var_in[0]} - {var_out[0]} = 0"]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
@@ -157,18 +157,18 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
     def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
-            elif self.direction =='l' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            elif self.direction =='l' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction == 'r' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            if self.direction == 'r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f'{var_in[i]} - {var_out[(i + self.amount) % len(var_in)]} = 0' for i in range(len(var_in))] 
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif self.direction =='l' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            elif self.direction =='l' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f'{var_in[(i+self.amount)%len(var_in)]} - {var_out[i]} = 0' for i in range(len(var_in))] 
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return  model_list               
@@ -195,12 +195,12 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
     def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
                 model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
                 model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]
                 return model_list        
-            elif self.direction =='l' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            elif self.direction =='l' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]
                 model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
                 model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]              
@@ -208,13 +208,13 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
-            if self.direction =='r' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
                 model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]                    
                 model_list += [f"{var_in[i]} - {var_in[i]} = 0" for i in range(len(var_in)-self.amount, len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))        
                 return model_list  
-            elif self.direction =='l' and (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT"): 
+            elif self.direction =='l' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f"{var_in[i]} - {var_in[i]} = 0" for i in range(self.amount)]
                 model_list += [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
                 model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]
@@ -265,20 +265,20 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
         
     def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': 
-            if (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT") and self.add_type == 'xor': 
+            if (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED" and self.add_type == 'xor': 
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if (self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == "DEFAULT") and self.add_type == 'xor': 
+            if (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED" and self.add_type == 'xor': 
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
                 var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
                 model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))

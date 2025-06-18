@@ -33,19 +33,6 @@ class Speck_permutation(Permutation):
                 S.SingleOperatorLayer("XOR", i, 3, XOR, [[0,1]], [1]) # XOR layer 
   
 
-# The Speck block cipher   
-# Test vector for speck32_64: plaintext = [0x6574, 0x694c], key = [0x1918, 0x1110, 0x0908, 0x0100], ciphertext = [0xa868, 0x42f2]
-# Test vector for speck48_72: plaintext = [0x20796c, 0x6c6172], key = [0x121110, 0x0a0908, 0x020100], ciphertext = [0xc049a5, 0x385adc]
-# Test vector for speck48_96: plaintext = [0x6d2073, 0x696874], key = [0x1a1918, 0x121110, 0x0a0908, 0x020100], ciphertext = [0x735e10, 0xb6445d]
-# Test vector for speck64_96: plaintext = [0x74614620, 0x736e6165], key = [0x13121110, 0x0b0a0908, 0x03020100], ciphertext = [0x9f7952ec, 0x4175946c]
-# Test vector for speck64_128: plaintext = [0x3b726574, 0x7475432d], key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100], ciphertext = [0x8c6fa548, 0x454e028b]
-# Test vector for speck96_96: plaintext = [0x65776f68202c, 0x656761737520], key = [0x0d0c0b0a0908, 0x050403020100], ciphertext = [0x9e4d09ab7178, 0x62bdde8f79aa]
-# Test vector for speck96_144: plaintext = [0x656d6974206e, 0x69202c726576], key = [0x151413121110, 0x0d0c0b0a0908, 0x050403020100], ciphertext = [0x2bf31072228a, 0x7ae440252ee6]
-# Test vector for speck128_128: plaintext = [0x6c61766975716520, 0x7469206564616d20], key = [0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0xa65d985179783265, 0x7860fedf5c570d18]
-# Test vector for speck128_192: plaintext = [0x7261482066656968, 0x43206f7420746e65], key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0x1be4cf3a13135566, 0xf9bc185de03c1886]
-# Test vector for speck128_256: plaintext = [0x65736f6874206e49, 0x202e72656e6f6f70], key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100], ciphertext = [0x4109010405c0f53e, 0x4eeeb48d9c188f43]
-# https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
-
 class Speck_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
@@ -80,7 +67,8 @@ class Speck_block_cipher(Block_cipher):
             for i in range(1,nbr_rounds+1):
                 # subkeys extraction
                 SK.ExtractionLayer("SK_EX", i, 0, [left_k_index], KS.vars[i][0])
-  
+
+            for i in range(1,nbr_rounds):
                 # key schedule
                 KS.RotationLayer("ROT1", i, 0, ['r', rotr, right_k_index]) # Rotation layer
                 KS.SingleOperatorLayer("ADD", i, 1, ModAdd, [[right_k_index, left_k_index]], [right_k_index]) # Modular addition layer   
@@ -89,15 +77,62 @@ class Speck_block_cipher(Block_cipher):
                 KS.SingleOperatorLayer("XOR", i, 4, XOR, [[right_k_index, left_k_index]], [left_k_index]) # XOR layer 
                 KS.PermutationLayer("SHIFT", i, 5, perm) # key schedule word shift
             
+            for i in range(1,nbr_rounds+1):
                 # Internal permutation
                 S.RotationLayer("ROT1", i, 0, ['r', rotr, 0]) # Rotation layer
                 S.SingleOperatorLayer("ADD", i, 1, ModAdd, [[0,1]], [0]) # Modular addition layer  
                 S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer 
                 S.AddRoundKeyLayer("ARK", i, 3, XOR, SK, [1,0]) # Addroundkey layer 
                 S.SingleOperatorLayer("XOR", i, 4, XOR, [[0,1]], [1]) # XOR layer
+
+        self.test_vectors = self.gen_test_vectors(version)
          
     def gen_rounds_constant_table(self):
         constant_table = []
         for i in range(1,self.states["STATE"].nbr_rounds+1):    
             constant_table.append([i-1])
         return constant_table
+    
+    def gen_test_vectors(self, version):
+        # test vectors from https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
+        if version == [32, 64]:
+            plaintext = [0x6574, 0x694c]
+            key = [0x1918, 0x1110, 0x0908, 0x0100]
+            ciphertext = [0xa868, 0x42f2]
+        elif version == [48, 72]: 
+            plaintext = [0x20796c, 0x6c6172]
+            key = [0x121110, 0x0a0908, 0x020100]
+            ciphertext = [0xc049a5, 0x385adc]
+        elif version == [48, 96]: 
+            plaintext = [0x6d2073, 0x696874]
+            key = [0x1a1918, 0x121110, 0x0a0908, 0x020100]
+            ciphertext = [0x735e10, 0xb6445d]
+        elif version == [64, 96]: 
+            plaintext = [0x74614620, 0x736e6165]
+            key = [0x13121110, 0x0b0a0908, 0x03020100]
+            ciphertext = [0x9f7952ec, 0x4175946c]
+        elif version == [64, 128]: 
+            plaintext = [0x3b726574, 0x7475432d]
+            key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100]
+            ciphertext = [0x8c6fa548, 0x454e028b]
+        elif version == [96, 96]: 
+            plaintext = [0x65776f68202c, 0x656761737520]
+            key = [0x0d0c0b0a0908, 0x050403020100]
+            ciphertext = [0x9e4d09ab7178, 0x62bdde8f79aa]
+        elif version == [96, 144]: 
+            plaintext = [0x656d6974206e, 0x69202c726576]
+            key = [0x151413121110, 0x0d0c0b0a0908, 0x050403020100]
+            ciphertext = [0x2bf31072228a, 0x7ae440252ee6]
+        elif version == [128, 128]: 
+            plaintext = [0x6c61766975716520, 0x7469206564616d20]
+            key = [0x0f0e0d0c0b0a0908, 0x0706050403020100]
+            ciphertext = [0xa65d985179783265, 0x7860fedf5c570d18]
+        elif version == [128, 192]: 
+            plaintext = [0x7261482066656968, 0x43206f7420746e65]
+            key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100]
+            ciphertext = [0x1be4cf3a13135566, 0xf9bc185de03c1886]
+        elif version == [128, 256]: 
+            plaintext = [0x65736f6874206e49, 0x202e72656e6f6f70]
+            key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100]
+            ciphertext = [0x4109010405c0f53e, 0x4eeeb48d9c188f43]
+        return [[plaintext, key], ciphertext]

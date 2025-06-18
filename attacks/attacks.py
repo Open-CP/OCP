@@ -1,5 +1,6 @@
 import os
 import sys
+import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import attacks.linear_cryptanalysis as lin
 import attacks.differential_cryptanalysis as dif
@@ -9,62 +10,35 @@ import visualisations.visualisations as vis
 
 # ********************* ATTACKS ********************* # 
 """
-This module provides functions for performing attacks on ciphers:
-1. Automated generation of constraints for round operations of the cipher.
-2. Customizable generation of additional constraints.
-3. Configuration of model versions to control modeling behavior.
-4. Definition of the objective function.
+This module consists of four main functional components:
+1. Model Behavior Configuration
+   - Provides flexible specification and automatic filling of cipher states, rounds, layers, and positions.
+   - Enables configuration of model versions to customize and control the modeling process.
+2. Model Constraint and Objective Function Generation
+   - Automates the generation of constraints and objective functions for each states, round, layer, or operation in the cipher.
+   - Supports parameterized.
+3. Modeling and Solving for Attacks
+   - Offers unified interfaces for building and solving MILP/SAT models for attacks.
+   - Supports parameterized.
+4. Additional Constraints and Advanced Strategies
+   - Supports injection of user-defined constraints and standard predefined constraints (e.g., input non-zero).
+   - Implements advanced cryptanalysis techniques such as Matsui’s branch-and-bound strategy to enhance search efficiency.
 """
 
-def set_model_versions(cipher, version, states=None, rounds=None, layers=None, positions=None, operator_name=None):
+# =================== Model Behavior Configuration ===================
+def fill_states_rounds_layers_positions(cipher, states=None, rounds=None, layers=None, positions=None):
     """
-    Assigns a specified model_version to constraints (operators) in the cipher based on specified parameters.
+    Fill in states, rounds, layers, and positions to full coverage when the corresponding argument is None; otherwise, keep user-supplied values.
 
     Args:
         cipher (object): The cipher object.
-        version (str): The model_version to apply (e.g., "truncated_diff").
-        states (list[str]): List of states (e.g., ["STATE", "KEY_STATE", "SUBKEYS"]). 
-        rounds (dict): Dictionary specifying rounds (e.g., {"STATE": [1, 2, 3]}).
-        layers (dict): Dictionary specifying layers (e.g., {"STATE": {1: [0, 1, 2]}}).
-        positions (dict): Dictionary specifying positions (e.g., {"STATE": {1: {0: [1, 2, 3]}}}).
-    """
-    
-    states, rounds, layers, positions = gen_full_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
-    for s in states:
-        for r in rounds[s]:            
-            for l in layers[s][r]:
-                for p in positions[s][r][l]:
-                    cons = cipher.states[s].constraints[r][l][p]
-                    if operator_name is None:
-                        cons.model_version = cons.__class__.__name__ + "_" + version
-                    elif operator_name is not None and cons.__class__.__name__ == operator_name:
-                        cons.model_version = version                        
-
-
-def set_model_noweight(): # TO DO
-    """
-    Specify constraints IDs that should not contribute to the objective function.
+        states (list[str]): List of states (e.g., ["STATE", "KEY_STATE", "SUBKEYS"]). If None, use all.
+        rounds (dict): Dictionary specifying rounds (e.g., {"STATE": [1, 2, 3]}). If None, use all.
+        layers (dict): Dictionary specifying layers (e.g., {"STATE": {1: [0, 1, 2]}}). If None, use all.
+        positions (dict): Dictionary specifying positions (e.g., {"STATE": {1: {0: [1, 2, 3]}}}). If None, use all.
 
     Returns:
-        dict: A list of constraints IDs.
-    """
-    noweight = []
-    return noweight
-
-
-def gen_full_states_rounds_layers_positions(cipher, states=None, rounds=None, layers=None, positions=None):
-    """
-    Generate mappings of states, rounds, layers, and constraint positions for a given cipher.
-
-    Args:
-        cipher (object): The cipher object.
-        states (list[str]): List of states (e.g., ["STATE", "KEY_STATE", "SUBKEYS"]). Defaults to all states.
-        rounds (dict): Dictionary specifying rounds (e.g., {"STATE": [1, 2, 3]}). Defaults to all rounds.
-        layers (dict): Dictionary specifying layers (e.g., {"STATE": {1: [0, 1, 2]}}). Defaults to all layers.
-        positions (dict): Dictionary specifying positions (e.g., {"STATE": {1: {0: [1, 2, 3]}}}). Defaults to all positions.
-        
-    Returns:
-        states, rounds, layers, positions (dict)
+        tuple: (states, rounds, layers, positions)
     """
 
     if states is None:
@@ -78,8 +52,22 @@ def gen_full_states_rounds_layers_positions(cipher, states=None, rounds=None, la
     return states, rounds, layers, positions
 
 
-def gen_round_constraints(cipher, model_type = "milp", states=None, rounds=None, layers=None, positions=None): # Generate constraints for a given cipher based on user-specified parameters.
-    states, rounds, layers, positions = gen_full_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
+def set_model_versions(cipher, version, states=None, rounds=None, layers=None, positions=None, operator_name=None): # Assigns a specified model_version to constraints (operators) in the cipher based on specified parameters.
+    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
+    for s in states:
+        for r in rounds[s]:            
+            for l in layers[s][r]:
+                for p in positions[s][r][l]:
+                    cons = cipher.states[s].constraints[r][l][p]
+                    if operator_name is None:
+                        cons.model_version = cons.__class__.__name__ + "_" + version
+                    elif operator_name is not None and operator_name in cons.__class__.__name__:
+                        cons.model_version = cons.__class__.__name__ + "_" + version                            
+
+
+# =================== Model Constraint and Objective Function Generation ===================
+def gen_round_model_constraint(cipher, model_type, states=None, rounds=None, layers=None, positions=None, **sbox_model_params): # Generate constraints for a given cipher based on user-specified parameters.
+    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
         
     constraint = []
     for s in states:  
@@ -87,14 +75,17 @@ def gen_round_constraints(cipher, model_type = "milp", states=None, rounds=None,
             for l in layers[s][r]:
                 for p in positions[s][r][l]:
                     cons = cipher.states[s].constraints[r][l][p]
-                    cons_gen = cons.generate_model(model_type=model_type)
+                    if "Sbox" in cons.__class__.__name__:
+                        cons_gen = cons.generate_model(model_type=model_type, **sbox_model_params)
+                    else:
+                        cons_gen = cons.generate_model(model_type=model_type)
                     constraint += cons_gen
     return constraint
 
 
-def gen_round_obj_fun(cipher, model_type = "milp", states=None, rounds=None, layers=None, positions=None, flatten=True): # Generate objective functions for a given cipher based on user-specified parameters.   
-    states, rounds, layers, positions = gen_full_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
-
+def gen_round_obj_fun(cipher, model_type, states=None, rounds=None, layers=None, positions=None, flatten=True): # Generate objective functions for a given cipher based on user-specified parameters.   
+    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
+    
     obj_fun = [[] for _ in range(cipher.states["STATE"].nbr_rounds)]
     for s in states:  
         for r in rounds[s]:
@@ -104,74 +95,55 @@ def gen_round_obj_fun(cipher, model_type = "milp", states=None, rounds=None, lay
                     cons.generate_model(model_type=model_type)
                     if hasattr(cons, 'weight'): 
                         obj_fun[r-1] += cons.weight
-    if flatten:
+    if flatten: # Output a single list, e.g., flatten the list of objective variables from [[w1, w2], [w3, w4]] to [w1, w2, w3, w4]. flatten=True: suitable for direct use in optimization; flatten=False: useful for round-wise processing.
         return [obj for row in obj_fun for obj in row]
     return obj_fun
 
 
-def gen_add_constraints(cipher, model_type="milp", cons_type="EQUAL", states=None, rounds=None, layers=None, positions=None, value=None, vars=None, bitwise=True): 
+# =================== Modeling and Solving for Attacks ===================
+def gen_attacks_model(cipher, model_type, filename="", add_constraints=None, model_args=None):
     """
-    Generate additional constraints to the model based on specified parameters.
-
+    Generate an MILP/SAT model for the attack.
+    
     Args:
-        cipher (object): The cipher object.
-        model_type (str): The type of model to use (e.g., "milp", "sat", "cp").
-        cons_type (str): The type of constraint to generate. Options:
-            - "EQUAL": Enforces the selected variable equals `value`.
-            - "GREATER_EQUAL": Enforces the selected variable is at least `value`.
-            - "LESS_EQUAL": Enforces the selected variable does not exceed `value`.
-            - "SUM_EQUAL": Enforces the sum of selected variables equals `value`.
-            - "SUM_GREATER_EQUAL": Enforces the sum of selected variables is at least `value`.
-            - "SUM_LESS_EQUAL": Enforces the sum of selected variables does not exceed `value`.
-            - "INPUT_NOT_ZERO": Enforces the sum of input variables is at least 1.
-            - "TRUNCATED_INPUT_NOT_ZERO": Enforces the sum of truncated input variables is at least 1.
-        states (list[str]): List of states (e.g., ["STATE", "KEY_STATE", "SUBKEYS"]). 
-        rounds (dict): Dictionary specifying rounds (e.g., {"STATE": [1, 2, 3]}).
-        layers (dict): Dictionary specifying layers (e.g., {"STATE": {1: [0, 1, 2]}}).
-        positions (dict): Dictionary specifying positions (e.g., {"STATE": {1: {0: [1, 2, 3]}}}).
-        value (int): The target value for the constraint (e.g., 0, 1, 2).
-        vars (list[str]): List of variable names to include in the constraints.
-        bitwise (bool): If True, constraints are applied at the bit level. 
-        
+        cipher (Cipher): The cipher object.
+        model_type (str): The type of model to use for the attack (e.g., 'milp', 'sat'). 
+        add_constraints (list[str]): Additional constraints to be added to the model.
     Returns:
-        list[str]: A list of generated constraints.
+        result: the MILP or SAT model.
     """
+    obj_function = model_args.get("obj_function", True)
+    sbox_model_params = model_args.get("sbox_model_params", None)
+    
+    constraints = gen_round_model_constraint(cipher, model_type, sbox_model_params) # Generate round constraints
+    if "matsui_constraint" in model_args:
+        Round = model_args.get("matsui_constraint").get("Round")
+        best_obj = model_args.get("matsui_constraint").get("best_obj")
+        if Round is None or best_obj is None:
+            raise ValueError("Must provide 'Round' and 'best_obj' for Matsui strategy.")
+        if model_type == "milp":
+            cons_type = model_args["matsui_constraint"].get("matsui_milp_cons_type", "all")
+            constraints += gen_matsui_constraints_milp(cipher, Round, best_obj, cons_type)
+        elif model_type == "sat":
+            GroupConstraintChoice = model_args["matsui_constraint"].get("GroupConstraintChoice", 1)
+            GroupNumForChoice = model_args["matsui_constraint"].get("GroupNumForChoice", 1)
+            constraints += gen_matsui_constraints_sat(cipher, Round, best_obj, model_args.get("obj_sat", 0), GroupConstraintChoice, GroupNumForChoice)
+            obj_function = False          
 
-    add_cons, add_vars = [], []
-    if (rounds is not None) and (states is not None) and (layers is not None) and (positions is not None):
-        for s in states:
-            for r in rounds[s]:            
-                for l in layers[s][r]:
-                    if bitwise: 
-                        add_vars += [f"{cipher.states[s].vars[r][l][p].ID}_{j}" for p in positions[s][r][l] for j in range(cipher.states[s].vars[r][l][p].bitsize)]
-                    else: 
-                        add_vars += [cipher.states[s].vars[r][l][p].ID for p in positions[s][r][l]]
-    if vars is not None: 
-        add_vars += vars    
-    if cons_type == "EQUAL":
-        if model_type == "milp": add_cons += [f"{add_vars[i]} = {value}" for i in range(len(add_vars))]
-        elif model_type == "sat" and value == 0: add_cons += [f"-{add_vars[i]}" for i in range(len(add_vars))]
-        elif model_type == "sat" and value == 1: add_cons += [f"{add_vars[i]}" for i in range(len(add_vars))]
-    elif cons_type == "GREATER_EQUAL":
-        if model_type == "milp": add_cons += [f"{add_vars[i]} >= {value}" for i in range(len(add_vars))]
-    elif cons_type == "LESS_EQUAL":
-        if model_type == "milp": add_cons += [f"{add_vars[i]} <= {value}" for i in range(len(add_vars))]
-    elif cons_type == "SUM_EQUAL":
-        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" = {value}"]
-    elif cons_type == "SUM_GREATER_EQUAL":
-        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" >= {value}"]
-        elif model_type == "sat" and value == 1: add_cons += [' '.join(f"{add_vars[i]}" for i in range(len(add_vars)))]
-    elif cons_type == "SUM_LESS_EQUAL":
-        if model_type == "milp": add_cons += [' + '.join(f"{add_vars[i]}" for i in range(len(add_vars))) + f" <= {value}"]
-    elif cons_type == "INPUT_NOT_ZERO" or "TRUNCATED_INPUT_NOT_ZERO":
-        states = [s for s in ["STATE", "KEY_STATE"] if s in cipher.states]
-        rounds = {s: [1] for s in states}
-        layers = {s: {r: [0] for r in rounds[s]} for s in states}
-        positions = {s: {r: {l: list(range(cipher.states[s].nbr_words)) for l in layers[s][r]} for r in rounds[s]} for s in states}
-        bitwise = True if cons_type != "TRUNCATED_INPUT_NOT_ZERO" else False
-        add_cons += gen_add_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", states=states, rounds=rounds, layers=layers, positions=positions, value=1, bitwise=bitwise)        
-    return add_cons
+    if obj_function: 
+        obj_fun = gen_round_obj_fun(cipher, model_type = model_type) # Generate the objective function
+        if model_type == "sat":  # Generate The Constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method.
+            constraints += gen_sequential_encoding_sat(hw_list=obj_fun, weight=model_args.get("obj_sat", 0))
+        
+    constraints += (add_constraints or []) # Add additional constraints
 
+    if model_type == "milp":
+        return solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun, filename=filename) # Generate a MILP model in standard format
+    elif model_type == "sat":
+        return solving.gen_sat_model(constraints=constraints, filename=filename) # Generate a SAT model in standard format
+    else:
+        raise Exception(str(cipher.__class__.__name__) + ": unknown model type '" + model_type + "'")
+ 
 
 def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_or_equal=False): # reference: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
     n = len(hw_list)
@@ -201,56 +173,122 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_o
     return constraints
 
 
-def create_numerical_cnf(cnf): # Convert given CNF clauses into numerical CNF format.
-    # Extract unique variables and assign numerical IDs
-    family_of_variables = ' '.join(cnf).replace('-', '')
-    variables = sorted(set(family_of_variables.split()))
-    variable2number = {variable: i + 1 for (i, variable) in enumerate(variables)}
+def modeling_solving_optimal_solution(cipher, model_type, filename, add_constraints=None, model_args=None, solving_args=None):
+    solving_goal = solving_args.get("solving_goal", "Default")
+    solver = solving_args.get("solver", "Default")
+    # show_mode = solving_args.get("show_mode", 0)
     
-    # Convert CNF constraints to numerical format
-    numerical_cnf = []
-    for clause in cnf:
-        literals = clause.split()
-        numerical_literals = []
-        lits_are_neg = (literal[0] == '-' for literal in literals)
-        numerical_literals.extend(tuple(f'{"-" * lit_is_neg}{variable2number[literal[lit_is_neg:]]}'
-                                  for lit_is_neg, literal in zip(lits_are_neg, literals)))
-        numerical_clause = ' '.join(numerical_literals)
-        numerical_cnf.append(numerical_clause)
-    return len(variables), variable2number, numerical_cnf
-
-
-def gen_attacks_model(cipher, model_type="milp", add_constraints=[], obj_sat=0, filename=""):
-    """
-    Generate MILP or SAT models for attacks.
-    
-    Args:
-        cipher (Cipher): The cipher object.
-        model_type (str): The type of model to use for the attack (e.g., 'milp', 'sat'). 
-        add_constraints (list[str]): Additional constraints to be added to the model.
-        
-    Returns:
-        result: the MILP or SAT model.
-    """
-
-    # Step 1. Generate round constraints and the objective function from the cipher
-    constraints = gen_round_constraints(cipher=cipher, model_type=model_type)
-    obj_fun = gen_round_obj_fun(cipher, model_type = model_type)
-
-    # Step 2. Add additional constraints
-    constraints += add_constraints
-    if model_type == "sat" and obj_fun: # Generate The Constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method.
-        constraints += gen_sequential_encoding_sat(hw_list=obj_fun, weight=obj_sat)  
-        
-    # Step 3. Generate a MILP/SAT/CP model in standard format
     if model_type == "milp":
-        return solving.gen_milp_model(constraints=constraints, obj_fun=obj_fun, filename=filename), {}
+        model = gen_attacks_model(cipher, "milp", filename, add_constraints=add_constraints, model_args=model_args)
+        sol, obj = solving.solve_milp(filename, solving_goal=solving_goal, solver=solver)
+    
     elif model_type == "sat":
-        return solving.gen_sat_model(constraints=constraints, filename=filename)
+        obj_sat = model_args.get("obj_sat", 0)
+        sol = {}
+        while not sol:
+            print("Current SAT objective value: ", obj_sat)
+            model_args["obj_sat"] = obj_sat
+            model, variable_map = gen_attacks_model(cipher, "sat", filename, add_constraints=add_constraints, model_args=model_args)
+            sol = solving.solve_sat(filename, variable_map, solving_goal=solving_goal, solver=solver)
+            obj_sat += 1
+        obj = obj_sat - 1
+    if obj is not None:
+        print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
+    else:
+        print("******** optimal solution not found ********")
+    return sol, obj
 
 
+# =================== Additional Constraints and Advanced Strategies ===================
+def gen_predefined_constraints(cipher, model_type, cons_type, cons_args=None): 
+    """
+    Generate commonly used, predefined model constraints based on type and parameters.
+
+    Args:
+        cons_type (str): The constraint type, must be one of the predefined types:
+            - "EQUAL": All selected variables equal a target value.
+            - "GREATER_EQUAL": All selected variables >= target value.
+            - "LESS_EQUAL": All selected variables <= target value.
+            - "SUM_EQUAL": Sum of selected variables == target value.
+            - "SUM_GREATER_EQUAL": Sum of selected variables >= target value.
+            - "SUM_LESS_EQUAL": Sum of selected variables <= target value.
+            - "INPUT_NOT_ZERO": Input variables sum >= 1 (at least one active).
+            - "TRUNCATED_INPUT_NOT_ZERO": Truncated input variables sum >= 1.
+        cons_args (dict): Parameters for constraint generation, including:
+            - cons_value (int): Target value for the constraint.
+            - cons_vars (list[str]): Additional variable names to include.
+            - bitwise (bool): If True, expand variables by bit.
+
+    Returns:
+        list[str]: List of generated model constraint strings.
+
+    """
+    cons_args = cons_args or {}
+
+    if cons_type in ["EQUAL", "SUM_EQUAL", "GREATER_EQUAL", "SUM_GREATER_EQUAL", "LESS_EQUAL", "SUM_LESS_EQUAL"]:
+        cons_vars = cons_args.get("cons_vars", [])
+        cons_value = cons_args.get("cons_value", 0)
+        bitwise = cons_args.get("bitwise", True)
+        cons_vars_name = []
+        for var in cons_vars:
+            if isinstance(var, str):
+                cons_vars_name.append(var) 
+            else:
+                cons_vars_name.extend([f"{var.ID}_{j}" for j in range(var.bitsize)] if bitwise else [f"{var.ID}"])
+        if cons_type == "EQUAL":
+            return gen_constraints_equal(model_type, cons_value, cons_vars_name)
+        elif cons_type == "GREATER_EQUAL":
+            return gen_constraints_greater_equal(model_type, cons_value, cons_vars_name)
+        elif cons_type == "LESS_EQUAL":
+            return gen_constraints_less_equal(model_type, cons_value, cons_vars_name)
+        elif cons_type == "SUM_EQUAL":
+            return gen_constraints_sum_equal(model_type, cons_value, cons_vars_name)
+        elif cons_type == "SUM_GREATER_EQUAL":
+            return gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars_name)
+        elif cons_type == "SUM_LESS_EQUAL":
+            return gen_constraints_sum_less_equal(model_type, cons_value, cons_vars_name)
+
+    elif cons_type in ["INPUT_NOT_ZERO", "TRUNCATED_INPUT_NOT_ZERO"]:
+        cons_args["cons_vars"] = cipher.states["STATE"].vars[1][0][:cipher.states["STATE"].nbr_words] + (cipher.states["KEY_STATE"].vars[1][0][:cipher.states["KEY_STATE"].nbr_words] if "KEY_STATE" in cipher.states else [])
+        cons_args["cons_value"] = 1
+        return gen_predefined_constraints(cipher, model_type=model_type, cons_type="SUM_GREATER_EQUAL", cons_args=cons_args)        
+    
+
+def gen_constraints_equal(model_type, cons_value, cons_vars):
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} = {cons_value}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 0: 
+        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 1: 
+        return [f"{cons_vars[i]}" for i in range(len(cons_vars))]
+
+
+def gen_constraints_sum_equal(model_type, cons_value, cons_vars):
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
+
+def gen_constraints_less_equal(model_type, cons_value, cons_vars):
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} <= {cons_value}" for i in range(len(cons_vars))]
+
+def gen_constraints_sum_less_equal(model_type, cons_value, cons_vars):     
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
+
+def gen_constraints_greater_equal(model_type, cons_value, cons_vars): 
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} >= {cons_value}" for i in range(len(cons_vars))]
+
+def gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars):     
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
+    elif model_type == "sat" and cons_value == 1: 
+        return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
+
+
+# Adding Matsui's branch-and-bound constraints in differential and linear cryptanalysis
 def gen_matsui_constraints_milp(cipher, Round, best_obj, cons_type="all"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
-    states, rounds, layers, positions = gen_full_states_rounds_layers_positions(cipher)
+    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher)
     add_cons = []
     for i in range(1, Round):
         if best_obj[i-1] > 0:
@@ -275,16 +313,39 @@ def gen_matsui_constraints_milp(cipher, Round, best_obj, cons_type="all"): # Gen
                                     cons.generate_model(model_type='milp')
                                     if hasattr(cons, 'weight'):
                                         w_vars += cons.weight
-            vars = [" + ".join(w_vars) + " - obj"]
-            add_cons += gen_add_constraints(cipher, model_type="milp", cons_type="SUM_LESS_EQUAL", vars=vars, value=-best_obj[i-1])
-      
+            all_vars = [" + ".join(w_vars) + " - obj"]
+            add_cons += gen_predefined_constraints(cipher, model_type="milp", cons_type="SUM_LESS_EQUAL", cons_args={"cons_vars": all_vars, "cons_value":-best_obj[i-1]})  
     return add_cons
 
 
-def gen_matsui_constraints_sat(obj_var, dummy_var, k, left, right, m): # Generate Matsui's additional constraints for MILP models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
-    """
-    Generate CNF clauses that constrain the number of active variables in the range [left, right] to be at most `m`, using sequential counter encoded auxiliary variables `dummy_var`.
-    """
+def gen_matsui_constraints_sat(cipher, Round, best_obj, obj_sat, GroupConstraintChoice=1, GroupNumForChoice=1): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
+    if len(best_obj) == Round-1:
+        best_obj = [0] + best_obj
+    obj_var = gen_round_obj_fun(cipher, model_type = "sat", flatten=False)
+    Main_Vars = list([])
+    for r in range(Round):
+        for i in range(len(obj_var[Round - 1 - r])):
+            Main_Vars += [obj_var[Round - 1 - r][i]]
+    dummy_var = [[f'dummy_hw_{i}_{j}' for j in range(obj_sat)] for i in range(len(Main_Vars) - 1)]
+    constraints = gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var) #  # Generate the constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method
+    
+    MatsuiRoundIndex = []
+    if GroupConstraintChoice == 1:
+        for group in range(GroupNumForChoice):
+            for round_offset in range(1, Round - group + 1):
+                MatsuiRoundIndex.append([group, group + round_offset])
+    
+    for matsui_count in range(0, len(MatsuiRoundIndex)):
+        StartingRound = MatsuiRoundIndex[matsui_count][0]
+        EndingRound = MatsuiRoundIndex[matsui_count][1]
+        PartialCardinalityCons = obj_sat - best_obj[StartingRound] - best_obj[Round-EndingRound]
+        left = len(obj_var[0]) * StartingRound
+        right = len(obj_var[0]) * EndingRound-1
+        constraints += gen_matsui_partial_cardinality_sat(Main_Vars, dummy_var, obj_sat, left, right, PartialCardinalityCons)
+    return constraints
+
+
+def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m): # Generate CNF clauses that constrain the number of active variables in the range [left, right] to be at most `m`, using sequential counter encoded auxiliary variables `dummy_var`.
     n = len(obj_var)
     add_cons = []
 
@@ -308,145 +369,3 @@ def gen_matsui_constraints_sat(obj_var, dummy_var, k, left, right, m): # Generat
             add_cons.append(f"-{obj_var[i]}")
 
     return add_cons
-
-
-def diff_attacks(cipher, model_type="milp", goal="search_optimal_trail", add_constraints=None, obj_sat=0, solver="Default", show_mode=0):
-    """
-    Perform differential attacks on a given cipher using specified model_type.
-
-    Parameters:
-        cipher (Cipher): The cipher object.
-        model_type (str): Type of model to use (e.g., 'milp', 'sat').
-        goal (str): Type of trail to search (e.g., 'search_optimal_trail', 'search_optimal_truncated_trail').
-        add_constraints (list): Additional model constraints.
-        obj_sat (int): Starting objective value for SAT model (e.g., 0, 1, 2).
-        show_mode (int): Mode to display results (e.g., 0, 1, 2).
-
-    Returns:
-        tuple: Solution and its objective value, or (None, None) if no solution found.
-    """
-    
-    # Step 1. Define filename and ensure the directory exists, create if not
-    filename = f"files/{cipher.name}_{goal}_{model_type}_model.{'lp' if model_type == 'milp' else 'cnf'}"
-    dir_path = os.path.dirname(filename)
-    if not os.path.exists(dir_path): 
-        os.makedirs(dir_path, exist_ok=True)
-
-    # Step 2. Add constraints based on the goal. For searching for the optimal trail, the input difference should not be zero.
-    if add_constraints is None:
-        add_constraints = []
-    if goal == "search_optimal_trail":
-        add_constraints += gen_add_constraints(cipher, model_type=model_type, cons_type="INPUT_NOT_ZERO")    
-    elif goal == "search_optimal_truncated_trail":
-        add_constraints += gen_add_constraints(cipher, model_type=model_type, cons_type="TRUNCATED_INPUT_NOT_ZERO") 
-
-    # Step 3. Generate and Solve the MILP/SAT/CP model for the attack
-    if model_type == "milp":
-        model = gen_attacks_model(cipher, model_type=model_type, add_constraints=add_constraints, filename=filename)
-        sol, obj = solving.solve_milp(filename, solver=solver)
-        if sol == None: return None, None
-        else: solving.formulate_solutions(cipher, sol)  
-
-    elif model_type == "sat":
-        sol = {}
-        while not sol:
-            print("Current SAT objective value: ", obj_sat)
-            model, variable_map = gen_attacks_model(cipher, model_type=model_type, add_constraints=add_constraints, obj_sat=obj_sat, filename=filename)
-            sol = solving.solve_sat(filename, variable_map, solver=solver)
-            obj_sat += 1
-        if sol == None: return None, None
-        else: solving.formulate_solutions(cipher, sol)
-        obj = obj_sat - 1 
-    
-    # Step 4. Display results
-    print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
-    vis.print_trails(cipher, mode=show_mode)
-    return sol, obj
-
-
-def diff_attacks_matsui_milp(cipher, Round, BEST_OBJ, cons_type="all", solver="Default", show_mode=0):
-    """
-    Perform differential attacks using MILP models with Matsui's strategy.
-
-    Args:
-        cipher (object): The cipher object.
-        Round (int): Number of rounds to model.
-        BEST_OBJ (list[int]): List of known best objective values for each round.
-        cons_type (str): Type of Matsui constraint to apply ("all", "upper", or "lower"). Default is "all".
-        show_mode (int): Mode for visualizing the solution. Default is 0.
-
-    Returns:
-        int: Objective value of the solved MILP model.
-    """
-    
-    # Step 1. Generate Matsui's Additional Constraints
-    add_cons = gen_matsui_constraints_milp(cipher=cipher, Round=Round, BEST_OBJ=BEST_OBJ, cons_type=cons_type)
-
-    # Step 2. Generate and Solve MILP model
-    sol, obj = diff_attacks(cipher, model_type="milp", add_constraints=add_cons, solver=solver, show_mode=show_mode)
-
-    return obj
-
-
-def diff_attacks_matsui_sat(cipher, Round, obj_sat, GroupConstraintChoice, GroupNumForChoice, BEST_OBJ, solver="Default", show_mode=0):
-    """
-    Perform differential attacks using SAT model with Matsui constraints.
-
-    Args:
-        cipher (object): The cipher object.
-        Round (int): Number of rounds.
-        obj_sat (int): Target objective value for SAT model.
-        GroupConstraintChoice (int): Choice of grouping method.
-        GroupNumForChoice1 (int): Number of groups if GroupConstraintChoice == 1.
-        BEST_OBJ (list[int]): List of known best objective values for each round.
-        show_mode (int): Mode for visualizing solutions. Default is 0.
-
-    Returns:
-        bool: True if a valid solution is found, False otherwise.
-    """
-
-    # Step 1: Generate basic round constraints
-    constraints = gen_round_constraints(cipher, model_type="sat")
-    
-    # Step 2: Enforce non-zero input difference
-    constraints += gen_add_constraints(cipher, model_type="sat", cons_type="INPUT_NOT_ZERO") 
-
-    # Generate The Constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method
-    obj_var = gen_round_obj_fun(cipher, model_type = "sat", flatten=False)
-    Main_Vars = list([])
-    for r in range(Round):
-        for i in range(len(obj_var[Round - 1 - r])):
-            Main_Vars += [obj_var[Round - 1 - r][i]]
-    dummy_var = [[f'dummy_hw_{i}_{j}' for j in range(obj_sat)] for i in range(len(Main_Vars) - 1)]
-    constraints += gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var)
-
-    # Step 4: Generate Matsui condition and corresponding constraints
-    MatsuiRoundIndex = []
-    if GroupConstraintChoice == 1:
-        for group in range(GroupNumForChoice):
-            for round_offset in range(1, Round - group + 1):
-                MatsuiRoundIndex.append([group, group + round_offset])
-                
-    for matsui_count in range(0, len(MatsuiRoundIndex)):
-        StartingRound = MatsuiRoundIndex[matsui_count][0]
-        EndingRound = MatsuiRoundIndex[matsui_count][1]
-        PartialCardinalityCons = obj_sat - BEST_OBJ[StartingRound] - BEST_OBJ[Round - EndingRound]
-        left = len(obj_var[0]) * StartingRound
-        right = len(obj_var[0]) * EndingRound-1
-        constraints += gen_matsui_constraints_sat(Main_Vars, dummy_var, obj_sat, left, right, PartialCardinalityCons)
-    
-    
-    # Step 5: Generate and solve the SAT model
-    filename = f"files/{cipher.name}_search_optimal_solution_sat_model_matsui.cnf"
-    dir_path = os.path.dirname(filename)
-    if not os.path.exists(dir_path): 
-        os.makedirs(dir_path, exist_ok=True)
-    model, variable_map = solving.gen_sat_model(constraints=constraints, filename=filename)
-    sol = solving.solve_sat(filename, variable_map, solver=solver)
-    if sol == None: 
-        return False
-    else: 
-        solving.formulate_solutions(cipher, sol)       
-        print(f"******** objective value of the optimal solution: {int(round(obj_sat))} ********")
-        vis.print_trails(cipher, mode=show_mode)   
-    return True

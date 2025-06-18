@@ -190,7 +190,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             
     def generate_model(self, model_type='sat', unroll=True, branch_num=None):
         if model_type == 'milp' or model_type == 'sat': 
-            if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_DIFF" or self.model_version == self.__class__.__name__ + "_DIFF_1":
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
                 model_list = []
                 if self.polynomial: bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) > len(self.mat):
@@ -217,7 +217,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         cons = n_xor.generate_model(model_type, unroll)
                         model_list += cons
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED":
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED":
                 var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
@@ -225,7 +225,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_DIFF_TRUNCATED_1":
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1":
                 var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 

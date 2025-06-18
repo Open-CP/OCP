@@ -169,8 +169,7 @@ class Primitive(ABC):
         self.states = []                # list of states used by the primitive
         self.inputs_constraints = []    # constraints linking the primitive inputs to the states input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the states output variables
-        self.rounds_python_code_if_unrolled = {}
-        self.rounds_c_code_if_unrolled = {}
+        self.test_vectors = []
         
         
 # ********************************************** PERMUTATIONS **********************************************
