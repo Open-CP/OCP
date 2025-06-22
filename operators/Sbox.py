@@ -165,8 +165,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     # ---------------- Modeling Interface ---------------- #
     def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, count_active=True, filename_load=None):
         self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{tool_type}_{mode}.txt')
-        if filename_load is not None and os.path.exists(self.model_filename):
-            return self.reload_constraints_objfun_from_file(self.model_filename)        
+        self.filename_load = filename_load
         if model_type == 'sat': 
             return self.generate_model_sat(tool_type, mode, count_active)
         elif model_type == 'milp': 
@@ -259,6 +258,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
 
     def _gen_model_constraints_sat(self, tool_type, mode):
+        if self.filename_load is not None and os.path.exists(self.model_filename):
+            return self._reload_constraints_objfun_from_file()        
         ttable = self._gen_model_ttable_sat()
         input_variables, output_variables = self._gen_model_input_output_variables()
         pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_sat()
@@ -383,6 +384,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
 
     def _gen_model_constraints_milp(self, tool_type="polyhedron", mode=0):
+        if self.filename_load is not None and os.path.exists(self.model_filename):
+            return self._reload_constraints_objfun_from_file()        
         ttable = self._gen_model_ttable_milp()
         input_variables, output_variables = self._gen_model_input_output_variables()
         pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_milp()
