@@ -1,0 +1,6 @@
+Input: a0||a1||a2||a3||a4||a5||a6||a7; msb: a0
+Output: b0||b1||b2||b3||b4||b5||b6||b7; msb: b0
+Time used to simplify the constraints: 3600.8396 s
+Number of constraints: 0
+Constraints: []
+Weight: 

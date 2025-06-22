@@ -1,0 +1,6 @@
+Input: a0||a1||a2||a3||a4||a5||a6||a7; msb: a0
+Output: b0||b1||b2||b3||b4||b5||b6||b7; msb: b0
+Time used to simplify the constraints: 1.0621 s
+Number of constraints: 33
+Constraints: ['- a1 - a4 - b2 - b4 - b5 >= -4', 'a3 - a6 + b7 >= 0', '- a1 - b0 - b2 - b4 + b5 >= -3', 'a3 - b1 + b5 - b6 >= -1', 'a2 + a3 + b3 - b6 + b7 >= 0', 'b0 - b1 >= 0', 'a0 - b1 >= 0', 'a1 - b5 >= 0', '- a1 - a3 - a7 + b5 - b7 >= -3', 'a3 - a7 + b5 - b6 + b7 >= -1', 'b2 >= 1', '- a1 + a3 + b5 + b6 + b7 >= 0', '- a0 - a3 - b2 - b4 + b6 + b7 >= -3', '- a2 - a3 + b3 - b5 + b7 >= -2', '- a2 + a3 + b3 - b5 - b7 >= -2', '- a1 - a2 - a3 - b1 - b3 - b6 - b7 >= -6', '- a0 - a3 + a6 + a7 + b7 >= -1', '- a1 + a2 - a3 - b1 - b3 + b7 >= -3', '- a3 - a6 - b7 >= -2', 'a7 - b1 >= 0', 'a0 - b6 >= 0', '- a1 + b3 + b5 >= 0', '- a6 - b1 >= -1', 'a5 + b1 >= 1', 'a4 - a5 - b2 - b4 >= -2', '- a1 + a2 + a3 - b1 - b3 - b7 >= -3', '- a3 + a6 - b2 - b4 + b5 + b6 - b7 >= -3', 'a1 - a4 - b2 - b4 + b5 >= -2', 'b4 >= 1', 'a2 - a3 + b3 - b5 - b6 - b7 >= -3', '- a0 + a3 + a6 + a7 - b7 >= -1', '- a0 - a1 + a3 - b2 - b4 + b6 - b7 >= -4', '- a2 + a3 - b3 - b5 - b6 + b7 >= -3']
+Weight: 

@@ -1,0 +1,6 @@
+Input: a0||a1||a2||a3||a4||a5||a6||a7; msb: a0
+Output: b0||b1||b2||b3||b4||b5||b6||b7; msb: b0
+Time used to simplify the constraints: 0.8261 s
+Number of constraints: 16
+Constraints: ['- b7 >= 0', '- b6 >= 0', '- b5 >= 0', '- b4 >= 0', '- b3 >= 0', '- b2 >= 0', '- b1 >= 0', '- b0 >= 0', '- a7 >= 0', '- a6 >= 0', '- a5 >= 0', '- a4 >= 0', '- a3 >= 0', '- a2 >= 0', '- a1 >= 0', '- a0 >= 0']
+Weight: 
