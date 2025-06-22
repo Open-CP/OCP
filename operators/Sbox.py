@@ -9,7 +9,9 @@ from tools.minimize_logic import ttb_to_ineq_logic
 from tools.polyhedron import ttb_to_ineq_convex_hull
 from tools.inequality import inequality_to_constraint_sat, inequality_to_constraint_milp
 base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files/sbox_modeling/'))
-
+if not os.path.exists(base_path): 
+    os.makedirs(base_path, exist_ok=True)
+        
 
 class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship between the input variable and output variable (must be of same bitsize)
     def __init__(self, input_vars, output_vars, input_bitsize, output_bitsize, ID = None):
@@ -161,14 +163,14 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             
             
     # ---------------- Modeling Interface ---------------- #
-    def generate_model(self, model_type='sat', mode = 0, tool_type="minimize_logic", count_active=True, filename_load=None):
-        self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{mode}_{tool_type}.txt')
+    def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, count_active=True, filename_load=None):
+        self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{tool_type}_{mode}.txt')
         if filename_load is not None and os.path.exists(self.model_filename):
             return self.reload_constraints_objfun_from_file(self.model_filename)        
         if model_type == 'sat': 
-            return self.generate_model_sat(mode, tool_type, count_active)
+            return self.generate_model_sat(tool_type, mode, count_active)
         elif model_type == 'milp': 
-            return self.generate_model_milp(mode, tool_type, count_active)      
+            return self.generate_model_milp(tool_type, mode, count_active)      
         elif model_type == 'cp': 
             RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
@@ -216,9 +218,6 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     def _write_model_constraints(self, input_variables, output_variables, constraints, objective_fun, time):
         variables_mapping = "Input: {0}; msb: {1}".format("||".join(input_variables), input_variables[0])
         variables_mapping += "\nOutput: {0}; msb: {1}".format("||".join(output_variables), output_variables[0])        
-        dir_path = os.path.dirname(self.model_filename)
-        if not os.path.exists(dir_path): 
-            os.makedirs(dir_path, exist_ok=True)
         with open(self.model_filename, 'w') as file:
             file.write(f"{variables_mapping}\n")
             file.write(f"Time used to simplify the constraints: {time:.4f} s\n")
@@ -227,24 +226,24 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             file.write(f"Weight: {objective_fun}\n") 
     
     # ---------------- SAT Model Generation ---------------- #
-    def generate_model_sat(self, mode = 0, tool_type="minimize_logic", count_active=True):
+    def generate_model_sat(self, tool_type="minimize_logic", mode = 0, count_active=True):
         if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
-            return self._gen_model_sat_diff_pr(mode, tool_type)
+            return self._gen_model_sat_diff_pr(tool_type, mode)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF":
-            return self._gen_model_sat_diff(mode, tool_type, count_active)
+            return self._gen_model_sat_diff(tool_type, mode, count_active)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)):
             return self._gen_model_sat_diff_word_truncated(count_active)            
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
     
-    def _gen_model_sat_diff_pr(self, mode, tool_type): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
-        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(mode, tool_type)
+    def _gen_model_sat_diff_pr(self, tool_type, mode): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
         self.weight = var_p
         return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
     
-    def _gen_model_sat_diff(self, mode, tool_type, count_active): # modeling all possible (input difference, output difference)
-        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(mode, tool_type)
+    def _gen_model_sat_diff(self, tool_type, mode, count_active): # modeling all possible (input difference, output difference)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         if count_active: # to calculate the minimum number of active S-boxes
@@ -259,7 +258,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             self.weight = var_in               
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
 
-    def _gen_model_constraints_sat(self, mode, tool_type):
+    def _gen_model_constraints_sat(self, tool_type, mode):
         ttable = self._gen_model_ttable_sat()
         input_variables, output_variables = self._gen_model_input_output_variables()
         pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_sat()
@@ -295,21 +294,21 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return [f"-{var} {var_At}" for var in var_in] + [" ".join(var_in) + ' -' + var_At]
 
     # ---------------- MILP Model Generation ---------------- #
-    def generate_model_milp(self, mode = 0, tool_type="polyhedron", count_active=True):
+    def generate_model_milp(self, tool_type="polyhedron", mode = 0, count_active=True):
         if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
-            return self._generate_model_milp_diff_pr(mode, tool_type)
+            return self._generate_model_milp_diff_pr(tool_type, mode)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF":
-            return self._generate_model_milp_diff(mode, tool_type, count_active)
+            return self._generate_model_milp_diff(tool_type, mode, count_active)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF_P":
-            return self._generate_model_milp_diff_p(mode, tool_type)
+            return self._generate_model_milp_diff_p(tool_type, mode)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
             return self._generate_model_milp_diff_word_truncated(count_active)            
         elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1": #  bit-wise truncated difference propagations
             return self._generate_model_milp_diff_bit_truncated(count_active)
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
     
-    def _generate_model_milp_diff_pr(self, mode, tool_type): # modeling all possible (input difference, output difference, probablity)
-        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+    def _generate_model_milp_diff_pr(self, tool_type, mode): # modeling all possible (input difference, output difference, probablity)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
         var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)
@@ -317,8 +316,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = [self._trans_template_weight(sbox_weight, var_p)]   
         return model_list  
 
-    def _generate_model_milp_diff(self, mode, tool_type, count_active):  # modeling all possible (input difference, output difference)
-        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+    def _generate_model_milp_diff(self, tool_type, mode, count_active):  # modeling all possible (input difference, output difference)
+        sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
         var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)     
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         all_vars = var_in + var_out
@@ -330,7 +329,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         model_list += self._declare_vars_type_milp('Binary', all_vars)
         return model_list   
     
-    def _generate_model_milp_diff_p(self, mode, tool_type): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
+    def _generate_model_milp_diff_p(self, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
         var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
         ddt = self.computeDDT()
         diff_spectrum = self.gen_spectrum(ddt) + [2**self.input_bitsize]
@@ -338,9 +337,11 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         weight = ''
         model_list = []
         model_v = self.model_version
+        mode = mode if isinstance(mode, list) else [mode] * len(diff_spectrum)
         for w in range(len(diff_spectrum)):
             self.model_version = model_v + str(diff_spectrum[w])
-            sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(mode, tool_type)
+            self.model_filename = os.path.join(base_path, f'constraints_milp_{self.model_version}_{tool_type}_{mode[w]}.txt')
+            sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode[w])
             for ineq in sbox_inequalities:
                 temp = ineq
                 for i in range(self.input_bitsize): temp = temp.replace(f"a{i}", var_in[i])
@@ -381,7 +382,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         model_list += self._declare_vars_type_milp('Binary', all_vars)
         return model_list
 
-    def _gen_model_constraints_milp(self, mode=0, tool_type="polyhedron"):
+    def _gen_model_constraints_milp(self, tool_type="polyhedron", mode=0):
         ttable = self._gen_model_ttable_milp()
         input_variables, output_variables = self._gen_model_input_output_variables()
         pr_variables, objective_fun = self._gen_model_pr_variables_objective_fun_milp()
