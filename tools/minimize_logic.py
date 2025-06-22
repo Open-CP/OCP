@@ -4,8 +4,9 @@ except ImportError:
     print("PyEDA is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/")        
 import subprocess
 import os
-base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files'))
-
+base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files/sbox_modeling/'))
+if not os.path.exists(base_path): 
+    os.makedirs(base_path, exist_ok=True)
 
 def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list of integer coefficients representing a linear inequality of the form: sum_i (coeff_i * x_i) >= rhs
     """    
@@ -58,7 +59,6 @@ def ttb_to_ineq_logic(ttable, variables, mode=0): # Convert a truth table to CNF
     file_contents += cont_ttable
 
     # Setup paths
-    os.makedirs(base_path, exist_ok=True)  # Ensure output directory exists
     pla_file = os.path.join(base_path, 'ttable.txt')
     result_file = os.path.join(base_path, 'sttable.txt')
 
@@ -74,10 +74,12 @@ def ttb_to_ineq_logic(ttable, variables, mode=0): # Convert a truth table to CNF
     # Run espresso via subprocess
     try:
         result = subprocess.run(espresso_command, capture_output=True, text=True, timeout=3600)
+        if result.returncode != 0:
+            raise RuntimeError(f"Espresso execution failed:\n{result.stderr}")
     except subprocess.TimeoutExpired:
-        raise RuntimeError("Espresso execution exceeded the 3600s time limit.")
-    if result.returncode != 0:
-        raise RuntimeError(f"Espresso execution failed:\n{result.stderr}")
+        print("Espresso execution exceeded the 3600s time limit.")
+        return []
+    
     
     # Save output and parse
     with open(result_file, 'w') as fw:
