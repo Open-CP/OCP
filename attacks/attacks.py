@@ -1,6 +1,6 @@
 import os
 import sys
-import copy
+import time
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import attacks.linear_cryptanalysis as lin
 import attacks.differential_cryptanalysis as dif
@@ -66,10 +66,11 @@ def set_model_versions(cipher, version, states=None, rounds=None, layers=None, p
 
 
 # =================== Model Constraint and Objective Function Generation ===================
-def gen_round_model_constraint(cipher, model_type, states=None, rounds=None, layers=None, positions=None, **sbox_model_params): # Generate constraints for a given cipher based on user-specified parameters.
+def gen_round_model_constraint_obj_fun(cipher, model_type, states=None, rounds=None, layers=None, positions=None, **sbox_model_params): # Generate constraints for a given cipher based on user-specified parameters.
     states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
         
     constraint = []
+    obj_fun = [[] for _ in range(cipher.states["STATE"].nbr_rounds)]
     for s in states:  
         for r in rounds[s]:
             for l in layers[s][r]:
@@ -80,24 +81,9 @@ def gen_round_model_constraint(cipher, model_type, states=None, rounds=None, lay
                     else:
                         cons_gen = cons.generate_model(model_type=model_type)
                     constraint += cons_gen
-    return constraint
-
-
-def gen_round_obj_fun(cipher, model_type, states=None, rounds=None, layers=None, positions=None, flatten=True): # Generate objective functions for a given cipher based on user-specified parameters.   
-    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher, states, rounds, layers, positions)
-    
-    obj_fun = [[] for _ in range(cipher.states["STATE"].nbr_rounds)]
-    for s in states:  
-        for r in rounds[s]:
-            for l in layers[s][r]:
-                for p in positions[s][r][l]:
-                    cons = cipher.states[s].constraints[r][l][p]
-                    cons.generate_model(model_type=model_type)
                     if hasattr(cons, 'weight'): 
                         obj_fun[r-1] += cons.weight
-    if flatten: # Output a single list, e.g., flatten the list of objective variables from [[w1, w2], [w3, w4]] to [w1, w2, w3, w4]. flatten=True: suitable for direct use in optimization; flatten=False: useful for round-wise processing.
-        return [obj for row in obj_fun for obj in row]
-    return obj_fun
+    return constraint, obj_fun
 
 
 # =================== Modeling and Solving for Attacks ===================
@@ -112,10 +98,10 @@ def gen_attacks_model(cipher, model_type, filename="", add_constraints=None, mod
     Returns:
         result: the MILP or SAT model.
     """
-    obj_function = model_args.get("obj_function", True)
-    sbox_model_params = model_args.get("sbox_model_params", None)
+    obj_fun_flag = model_args.get("obj_fun_flag", True)
+    sbox_model_params = model_args.get("sbox_model_params", {})
     
-    constraints = gen_round_model_constraint(cipher, model_type, sbox_model_params) # Generate round constraints
+    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, model_type, **sbox_model_params) # Generate round constraints
     if "matsui_constraint" in model_args:
         Round = model_args.get("matsui_constraint").get("Round")
         best_obj = model_args.get("matsui_constraint").get("best_obj")
@@ -127,13 +113,16 @@ def gen_attacks_model(cipher, model_type, filename="", add_constraints=None, mod
         elif model_type == "sat":
             GroupConstraintChoice = model_args["matsui_constraint"].get("GroupConstraintChoice", 1)
             GroupNumForChoice = model_args["matsui_constraint"].get("GroupNumForChoice", 1)
-            constraints += gen_matsui_constraints_sat(cipher, Round, best_obj, model_args.get("obj_sat", 0), GroupConstraintChoice, GroupNumForChoice)
-            obj_function = False          
+            obj_sat = model_args.get("obj_sat", 0)
+            constraints += gen_matsui_constraints_sat(Round, best_obj, obj_sat, GroupConstraintChoice, GroupNumForChoice, obj_fun)
+            obj_fun_flag = False          
 
-    if obj_function: 
-        obj_fun = gen_round_obj_fun(cipher, model_type = model_type) # Generate the objective function
+    if obj_fun_flag: 
+        obj_fun = [obj for row in obj_fun for obj in row]
         if model_type == "sat":  # Generate The Constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method.
             constraints += gen_sequential_encoding_sat(hw_list=obj_fun, weight=model_args.get("obj_sat", 0))
+    else:
+        obj_fun = None
         
     constraints += (add_constraints or []) # Add additional constraints
 
@@ -174,14 +163,11 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_o
 
 
 def modeling_solving_optimal_solution(cipher, model_type, filename, add_constraints=None, model_args=None, solving_args=None):
-    solving_goal = solving_args.get("solving_goal", "Default")
-    solver = solving_args.get("solver", "Default")
-    # show_mode = solving_args.get("show_mode", 0)
-    
+    time_start = time.time()
     if model_type == "milp":
         model = gen_attacks_model(cipher, "milp", filename, add_constraints=add_constraints, model_args=model_args)
-        sol, obj = solving.solve_milp(filename, solving_goal=solving_goal, solver=solver)
-    
+        sol, obj = solving.solve_milp(filename, solving_args)
+        
     elif model_type == "sat":
         obj_sat = model_args.get("obj_sat", 0)
         sol = {}
@@ -189,13 +175,15 @@ def modeling_solving_optimal_solution(cipher, model_type, filename, add_constrai
             print("Current SAT objective value: ", obj_sat)
             model_args["obj_sat"] = obj_sat
             model, variable_map = gen_attacks_model(cipher, "sat", filename, add_constraints=add_constraints, model_args=model_args)
-            sol = solving.solve_sat(filename, variable_map, solving_goal=solving_goal, solver=solver)
+            sol = solving.solve_sat(filename, variable_map, solving_args)
             obj_sat += 1
         obj = obj_sat - 1
     if obj is not None:
         print(f"******** objective value of the optimal solution: {int(round(obj))} ********")
     else:
         print("******** optimal solution not found ********")
+    time_end = time.time()
+    solving_args["time"] = round(time_end - time_start, 2)
     return sol, obj
 
 
@@ -318,10 +306,9 @@ def gen_matsui_constraints_milp(cipher, Round, best_obj, cons_type="all"): # Gen
     return add_cons
 
 
-def gen_matsui_constraints_sat(cipher, Round, best_obj, obj_sat, GroupConstraintChoice=1, GroupNumForChoice=1): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
+def gen_matsui_constraints_sat(Round, best_obj, obj_sat, GroupConstraintChoice=1, GroupNumForChoice=1, obj_var=[]): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
     if len(best_obj) == Round-1:
         best_obj = [0] + best_obj
-    obj_var = gen_round_obj_fun(cipher, model_type = "sat", flatten=False)
     Main_Vars = list([])
     for r in range(Round):
         for i in range(len(obj_var[Round - 1 - r])):
