@@ -53,40 +53,47 @@ This module provides functions for building and solving MILP, SAT and CP models.
    - Supports both optimizing for the best solution and exhaustive search for all possible solutions.
 """
 
-def solve_milp(filename, solving_goal="Default", solver="Default", solving_args=None):
+def solve_milp(filename, solving_args=None):
     """
     Solve a MILP model.
     
     Args:
         filename (str): Path to the MILP model file.
-        solving_goal (str): The optimization goal:
-            - "Optimal": Find the optimal solution.
-            - "All": Find all feasible solutions.
-        solver (str): solver name (e.g, "Gurobi", "SCIP")
+        solving_args (dict): 
+            - solving_goal: The optimization goal:
+                - "Optimal": Find the optimal solution.
+                - "All": Find all feasible solutions.
+            - solver: solver name (e.g, "Gurobi", "SCIP")
     
     Returns: 
         a tuple (sol_list, obj_list) containing solutions and objective value.
     """
-    print(f"Solving the MILP model: solving_goal = {solving_goal}, solver = {solver}, solving_args = {solving_args}")
+    solver = solving_args.get("solver", "Default")
+
+    print(f"Solving the MILP model: solving_args = {solving_args}")
     if solver == "Gurobi" or solver == "Default":
-        return solve_milp_gurobi(filename, solving_goal, solving_args)
+        return solve_milp_gurobi(filename, solving_args)
     
     elif solver == "SCIP":
-        return solve_milp_scip(filename, solving_goal, solving_args)
-        
+        return solve_milp_scip(filename, solving_args)
+
+    print("No MILP Solver Support!") 
     return None, None
 
 
-def solve_milp_gurobi(filename, solving_goal="Default", solving_args=None): # Solve a MILP model using Gurobi.
+def solve_milp_gurobi(filename, solving_args=None): # Solve a MILP model using Gurobi.
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
         return None, None
     
-    solving_args = solving_args or {}
+    solving_goal = solving_args.get("solving_goal", "Default")
+    
     model = gp.read(filename)
+    
+    # Set Parameters provided by Gurobi. TO DO MORE 
     if "timeLimit" in solving_args: model.Params.timeLimit = solving_args["timeLimit"]
 
-    if solving_goal == "Optimal" or solving_goal == "Default":
+    if solving_goal in ["Optimal", "Default"]:
         try:            
             model.optimize()
         except gp.GurobiError:
@@ -122,15 +129,15 @@ def solve_milp_gurobi(filename, solving_goal="Default", solving_args=None): # So
     return None, None
 
 
-def solve_milp_scip(filename, solving_goal="Default", solving_args=None): # Solve a MILP model using SCIP.
+def solve_milp_scip(filename, solving_args=None): # Solve a MILP model using SCIP.
     if not scip_import:
         print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
         return None, None
     
-    solving_args = solving_args or {}
+    solving_goal = solving_args.get("solving_goal", "Default")
     model = Model()
     model.readProblem(filename)        
-    if solving_goal == "Optimal" or solving_goal == "Default":
+    if solving_goal in ["Optimal", "Default"]:
         model.optimize()
         if model.getStatus() == "optimal":
             sol_dic = {}
@@ -166,7 +173,6 @@ def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write
         content += "Minimize\nobj\n"
     content += "Subject To\n"
 
-
     # === Step 2: Process Constraints === #
     bin_vars, in_vars = [], []
     for constraint in constraints:
@@ -201,35 +207,51 @@ def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write
     return content
 
 
-def solve_sat(filename, variable_map, solving_goal="Default", solver="Default"):
+def solve_sat(filename, variable_map, solving_args):
     """
     Solve a SAT problem
     
     Args:
         filename (str): Path to the CNF file.
-        solving_goal (str): The optimization goal:
-            - "Feasible": Find a feasible solution.
-            - "All": Find all feasible solutions.
-        solver (str): solver name.
+        solving_args (dict): 
+            - solving_goal: The optimization goal:
+                - "Feasible": Find a feasible solution.
+                - "All": Find all feasible solutions.
+            - solver: solver name (e.g, "Gurobi", "SCIP")
     
     Returns: 
         a list of all solutions found.
     """
-    print(f"Solving the SAT model: solving_goal = {solving_goal}, solver = {solver}")
+    solver = solving_args.get("solver", "Default")
+
+    print(f"Solving the SAT model: solving_args = {solving_args}")
+
+    if solver in ["Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
+        return solve_sat_pysat(filename, variable_map, solving_args)
+    
+    elif solver == "ORTools":
+        return solve_sat_ortools(filename, variable_map, solving_args)
+
+    print("No SAT Solver Support!")    
+    return None
+
+
+def solve_sat_pysat(filename, variable_map, solving_args):
     if not pysat_import:
         print("pysat module can't be loaded ... skipping test\n")
         return None
     
+    solver = solving_args.get("solver", "Default")
+    solving_goal = solving_args.get("solving_goal", "Default")
     cnf = CNF(filename)
-    if solver in ["Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
-        if solver == "Default":
-            solver = Solver()
-        else:
-            solver = Solver(name=solver)
-    else: print("No SAT Solver Support!")
+    if solver == "Default":
+        solver = Solver()
+    else:
+        solver = Solver(name=solver)
+    
     solver.append_formula(cnf.clauses)
 
-    if solving_goal == "Feasible" or solving_goal == "Default":
+    if solving_goal in ["Feasible", "Default"]:
         if solver.solve():
             model = solver.get_model()
             sol_dic = {}
@@ -262,6 +284,10 @@ def solve_sat(filename, variable_map, solving_goal="Default", solver="Default"):
     else:
         return None
     
+
+def solve_sat_ortools(filename, variable_map, solving_args): # TO DO
+    return None
+
 
 def create_numerical_cnf(cnf): # Convert a given CNF formula into numerical CNF format. Return (number of variables, mapping of variables to numerical IDs, numerical CNF constraints)
     # Extract unique variables and assign numerical IDs
