@@ -232,8 +232,8 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                     n = len(current_var_in)
                     for k in range(0, n + 1):  # All subsets (0 to n elements)
                         for comb in combinations(current_var_in, k):
-                            is_even_parity = (len(comb) % 2 == 0)
-                            clause = [f"{current_var_out}" if is_even_parity else f"-{current_var_out}"]
+                            is_odd_parity = (len(comb) % 2 == 1)
+                            clause = [f"{current_var_out}" if is_odd_parity else f"-{current_var_out}"]
                             clause += [f"-{v}" if v in comb else f"{v}" for v in current_var_in]
                             model_list.append(" ".join(clause))
                 return model_list
