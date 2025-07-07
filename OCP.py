@@ -28,13 +28,15 @@ def generate_codes(cipher):
     
 
 def test_vectors(cipher):
-    if cipher.test_vectors is []:
+    if cipher.test_vectors == []:
         print("warning: no test vector defined!")
+        return False
+    
     # test Python implementation
     # imp.test_implementation_python(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
     imp.test_implementation_python(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
 
-    # # # test C implementation
+    # test C implementation
     # imp.test_implementation_c(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
     imp.test_implementation_c(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
 
