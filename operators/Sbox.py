@@ -252,7 +252,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
     
     def _gen_model_sat_diff_word_truncated(self, count_active): # word-wise difference propagations, the input difference equals the ouput difference
-        var_in, var_out = (self.get_var_model("in", 0, bit_level=False), self.get_var_model("out", 0, bit_level=False))
+        var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
         if count_active: 
             self.weight = var_in               
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
@@ -357,7 +357,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
     
     def _generate_model_milp_diff_word_truncated(self, count_active): # word-wise truncated difference propagations, the input difference equals the ouput difference
-        var_in, var_out = (self.get_var_model("in", 0, bit_level=False), self.get_var_model("out", 0, bit_level=False))
+        var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
         model_list = [f'{var_in[0]} - {var_out[0]} = 0']
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out)
         if count_active: # to calculate the minimum number of active S-boxes
