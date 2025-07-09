@@ -68,6 +68,8 @@ def solve_milp(filename, solving_args=None):
     Returns: 
         a tuple (sol_list, obj_list) containing solutions and objective value.
     """
+
+    solving_args = solving_args or {}
     solver = solving_args.get("solver", "Default")
 
     print(f"Solving the MILP model: solving_args = {solving_args}")
@@ -81,7 +83,7 @@ def solve_milp(filename, solving_args=None):
     return None, None
 
 
-def solve_milp_gurobi(filename, solving_args=None): # Solve a MILP model using Gurobi.
+def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi.
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
         return None, None
@@ -129,7 +131,7 @@ def solve_milp_gurobi(filename, solving_args=None): # Solve a MILP model using G
     return None, None
 
 
-def solve_milp_scip(filename, solving_args=None): # Solve a MILP model using SCIP.
+def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
     if not scip_import:
         print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
         return None, None
@@ -207,7 +209,7 @@ def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write
     return content
 
 
-def solve_sat(filename, variable_map, solving_args):
+def solve_sat(filename, variable_map, solving_args=None):
     """
     Solve a SAT problem
     
@@ -222,6 +224,8 @@ def solve_sat(filename, variable_map, solving_args):
     Returns: 
         a list of all solutions found.
     """
+    
+    solving_args = solving_args or {}
     solver = solving_args.get("solver", "Default")
 
     print(f"Solving the SAT model: solving_args = {solving_args}")
