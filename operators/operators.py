@@ -39,18 +39,25 @@ class Operator(ABC):
     def generate_implementation_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
     
-    def get_vars(self, in_out, index=0, unroll=False):
-        if not isinstance(self.input_vars[index], list):
-            if in_out == 'in':
-                return [self.get_var_ID('in', index, unroll) + '_' + str(i) for i in range(self.input_vars[index].bitsize)]
-            elif in_out == 'out':
-                return [self.get_var_ID('out', index, unroll) + '_' + str(i) for i in range(self.output_vars[index].bitsize)]
-        elif isinstance(self.input_vars[index], list):
-            if in_out == 'in':
-                return [self.get_var_ID('in', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.input_vars[index])) for j in range(self.input_vars[index][i].bitsize)]
-            elif in_out == 'out':
-                return [self.get_var_ID('out', index, unroll=unroll, index2=i) + '_' + str(j) for i in range(len(self.output_vars[index])) for j in range(self.output_vars[index][i].bitsize)]
-    
+    def get_var_model(self, in_out, index, bitwise=True):
+        var = self.input_vars[index] if in_out == 'in' else self.output_vars[index]
+        if not isinstance(var, list):
+            var_ID = self.get_var_ID(in_out, index, unroll=True)
+            if bitwise and var.bitsize > 1:
+                return [f"{var_ID}_{i}" for i in range(var.bitsize)]
+            return [var_ID]
+        elif isinstance(var, list):
+            vars = []
+            for i, v in enumerate(var):
+                var_ID = self.get_var_ID(in_out, index, unroll=True, index2=i)
+                if bitwise and v.bitsize > 1:
+                    vars.extend([f"{var_ID}_{j}" for j in range(v.bitsize)])
+                else:
+                    vars.append(var_ID)
+            return vars
+        else:
+            raise TypeError(f"{self.__class__.__name__}: Expected Variable or list of Variable at index {index}, "f"got {type(var)} instead.")
+
     @abstractmethod
     def generate_implementation(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation of that operator
         pass
@@ -100,23 +107,23 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
             
-    def generate_model(self, model_type='sat', unroll=True):   
+    def generate_model(self, model_type='sat'):   
         if model_type == 'sat': 
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:  
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))                
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))                
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list = [f"{var_in[0]} - {var_out[0]} = 0"]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
@@ -154,16 +161,16 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
                 return ["//Rotation Macros", "#define ROTL(n, d, bitsize) (((n << d) | (n >> ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))", "#define ROTR(n, d, bitsize) (((n >> d) | (n << ((__uint128_t)(bitsize) - d))) & (((__uint128_t)1 << (bitsize)) - 1))"]
         else: return None
         
-    def generate_model(self, model_type='sat', unroll=True):
+    def generate_model(self, model_type='sat'):
         if model_type == 'sat': 
-            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
             if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
             elif self.direction =='l' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
             if self.direction == 'r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f'{var_in[i]} - {var_out[(i + self.amount) % len(var_in)]} = 0' for i in range(len(var_in))] 
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
@@ -192,9 +199,9 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='sat', unroll=True):
+    def generate_model(self, model_type='sat'):
         if model_type == 'sat': 
-            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
             if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]              
                 model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
@@ -207,7 +214,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
             if self.direction =='r' and (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]): 
                 model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
                 model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]                    
@@ -263,23 +270,23 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         else: return None
         
-    def generate_model(self, model_type='sat', unroll=True):
+    def generate_model(self, model_type='sat'):
         if model_type == 'sat': 
             if (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) and self.add_type == 'xor': 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
             if (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) and self.add_type == 'xor': 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)], [self.get_var_ID('out', 0, unroll) + '_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
-                var_in, var_out = [self.get_var_ID('in', 0, unroll)], [self.get_var_ID('out', 0, unroll)]
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list

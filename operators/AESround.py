@@ -62,14 +62,14 @@ class AESround(Operator): # Operator for the AES round
             return code_list
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='sat', unroll=True):
+    def generate_model(self, model_type='sat'):
         if model_type == 'sat' or model_type == 'milp': 
             model_list = []
             for i in range(len(self.layers)):
                 for j in range(len(self.layers[i])):
                     cons = self.layers[i][j]
                     cons.model_version = self.model_version.replace(self.__class__.__name__, cons.__class__.__name__)
-                    model_list += cons.generate_model(model_type, unroll=unroll)
+                    model_list += cons.generate_model(model_type)
             return model_list
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")

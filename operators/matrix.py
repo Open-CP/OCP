@@ -85,6 +85,8 @@ def matrix_power_mod2(matrix, power): # Compute the power of a matrix (mod 2).
 
 def generate_pmr_for_mds(mds, mod_poly, degree): # Generate the Primitive Matrix Representation (PMR) for a given MDS matrix.
     sig_degree = (1 << degree)
+    if isinstance(mod_poly, str):
+        mod_poly = int(mod_poly, 0)
     if mod_poly < sig_degree: mod_poly += sig_degree
     matrix2 = generate_binary_matrix_2(mod_poly, degree)
     matrix3 = generate_binary_matrix_3(mod_poly, degree)
@@ -188,7 +190,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             model_list.append("} ")
             return model_list
             
-    def generate_model(self, model_type='sat', unroll=True, branch_num=None):
+    def generate_model(self, model_type='sat', branch_num=None):
         if model_type == 'milp' or model_type == 'sat': 
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
                 model_list = []
@@ -214,11 +216,11 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         var_out.append(vo)
                         n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(self.input_vars[0].bitsize*i+j))
                         n_xor.model_version = self.model_version.replace(self.__class__.__name__, n_xor.__class__.__name__)
-                        cons = n_xor.generate_model(model_type, unroll)
+                        cons = n_xor.generate_model(model_type)
                         model_list += cons
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED":
-                var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
+                var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
@@ -226,7 +228,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1":
-                var_in, var_out = [self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll)for i in range (len(self.output_vars))]
+                var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]

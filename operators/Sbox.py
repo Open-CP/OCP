@@ -236,14 +236,14 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     
     def _gen_model_sat_diff_pr(self, tool_type, mode): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
         self.weight = var_p
         return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
     
     def _gen_model_sat_diff(self, tool_type, mode, count_active): # modeling all possible (input difference, output difference)
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         if count_active: # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']    
@@ -252,7 +252,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
     
     def _gen_model_sat_diff_word_truncated(self, count_active): # word-wise difference propagations, the input difference equals the ouput difference
-        var_in, var_out = [self.get_var_ID('in', 0, unroll=True)], [self.get_var_ID('out', 0, unroll=True)]
+        var_in, var_out = (self.get_var_model("in", 0, bit_level=False), self.get_var_model("out", 0, bit_level=False))
         if count_active: 
             self.weight = var_in               
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
@@ -310,7 +310,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     
     def _generate_model_milp_diff_pr(self, tool_type, mode): # modeling all possible (input difference, output difference, probablity)
         sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out + var_p)
@@ -319,7 +319,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
 
     def _generate_model_milp_diff(self, tool_type, mode, count_active):  # modeling all possible (input difference, output difference)
         sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)     
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0)) 
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         all_vars = var_in + var_out
         if count_active: # to calculate the minimum number of active S-boxes
@@ -331,7 +331,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list   
     
     def _generate_model_milp_diff_p(self, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         ddt = self.computeDDT()
         diff_spectrum = self.gen_spectrum(ddt) + [2**self.input_bitsize]
         var_p = [f"{self.ID}_p{w}" for w in range(len(diff_spectrum))]    
@@ -357,7 +357,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
     
     def _generate_model_milp_diff_word_truncated(self, count_active): # word-wise truncated difference propagations, the input difference equals the ouput difference
-        var_in, var_out = [self.get_var_ID('in', 0, unroll=True)], [self.get_var_ID('out', 0, unroll=True)]
+        var_in, var_out = (self.get_var_model("in", 0, bit_level=False), self.get_var_model("out", 0, bit_level=False))
         model_list = [f'{var_in[0]} - {var_out[0]} = 0']
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out)
         if count_active: # to calculate the minimum number of active S-boxes
@@ -366,7 +366,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     
     def _generate_model_milp_diff_bit_truncated(self, count_active): #  bit-wise truncated difference propagations
         branch_num = self.differential_branch_number()
-        var_in, var_out = self.get_vars("in", unroll=True), self.get_vars("out", unroll=True)
+        var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         all_vars = var_in + var_out
         model_list = []
         if branch_num >= 3: # model the differential branch number of sbox
