@@ -17,7 +17,7 @@ class GIFT_permutation(Permutation):
         """
         
         if nbr_rounds==None: nbr_rounds=28 if version==64 else 40 if version==128 else None
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 3, version, 0, 1
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (3, version, 0, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         s = self.states["STATE"]
         constant_table = self.gen_rounds_constant_table()

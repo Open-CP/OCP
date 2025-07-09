@@ -18,7 +18,7 @@ class Skinny_permutation(Permutation):
         # define the parameters
         p_bitsize = version
         if nbr_rounds==None: nbr_rounds=32 if version==64 else 40 if version==128 else None
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 16, 0, int(p_bitsize/16)
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, int(p_bitsize/16))
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         round_constants = self.gen_rounds_constant_table()
         sbox = Skinny_4bit_Sbox if word_bitsize==4 else Skinny_8bit_Sbox 

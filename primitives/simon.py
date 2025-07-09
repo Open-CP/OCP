@@ -17,8 +17,8 @@ class Simon_permutation(Permutation):
                 
         p_bitsize = version
         if nbr_rounds==None: nbr_rounds=32 if version==32 else 36 if version==48 else 42 if version==64 else 52 if version==96 else 68 if version==128 else None
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 5, 2, 3, p_bitsize>>1
-        elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 2, 3, p_bitsize>>1
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (5, 2, 3, p_bitsize>>1)
+        elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 2, 3, p_bitsize>>1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
         S = self.states["STATE"]

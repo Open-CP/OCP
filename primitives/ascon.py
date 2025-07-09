@@ -16,8 +16,8 @@ class ASCON_permutation(Permutation):
         :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
         if nbr_rounds==None: nbr_rounds=12
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 320, 320, 1
-        elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 3, 320, 0, 1
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 320, 320, 1)
+        elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (3, 320, 0, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         
         S = self.states["STATE"]

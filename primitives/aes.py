@@ -16,7 +16,7 @@ class AES_permutation(Permutation):
         :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
         if nbr_rounds==None: nbr_rounds=10
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 4, 16, 0, 8
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, 8)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         full_rounds = 10
         

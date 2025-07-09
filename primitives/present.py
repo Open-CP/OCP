@@ -17,7 +17,7 @@ class PRESENT_permutation(Permutation):
         """
         
         if nbr_rounds==None: nbr_rounds=31
-        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = 2, version, 0, 1
+        if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (2, version, 0, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         s = self.states["STATE"]
         perm = [0, 4, 8, 12, 16, 20, 24, 28, 32, 36, 40, 44, 48, 52, 56, 60, 1, 5, 9, 13, 17, 21, 25, 29, 33, 37, 41, 45, 49, 53, 57, 61, 2, 6, 10, 14, 18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 58, 62, 3, 7, 11, 15, 19, 23, 27, 31, 35, 39, 43, 47, 51, 55, 59, 63]
@@ -59,9 +59,9 @@ class PRESENT_block_cipher(Block_cipher):
             (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, p_bitsize, 0, 1),  (3, k_bitsize, 0, 1),  (1, p_bitsize, 0, 1)
             perm_ks = [(61+i)%k_bitsize for i in range(k_bitsize)]
             if k_bitsize == 80:
-                sbox_mask_ks, sbox_index_ks, cons_mask_ks = [1], [[0, 1, 2, 3]], [None]*60 + [True]*5
+                sbox_mask_ks, sbox_index_ks, cons_mask_ks = ([1], [[0, 1, 2, 3]], [None]*60 + [True]*5)
             elif k_bitsize == 128:
-                sbox_mask_ks, sbox_index_ks, cons_mask_ks = [1, 1], [[0, 1, 2, 3], [4, 5, 6, 7]], [None]*61 + [True]*5
+                sbox_mask_ks, sbox_index_ks, cons_mask_ks = ([1, 1], [[0, 1, 2, 3], [4, 5, 6, 7]], [None]*61 + [True]*5)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         
         S = self.states["STATE"]
