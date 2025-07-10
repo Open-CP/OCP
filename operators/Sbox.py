@@ -207,6 +207,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         weight = copy.deepcopy(template_weight)
         for i in range(weight.count('+') + 1):
             weight = weight.replace(f"{p}{i}", f"{var_p[i]}")
+        weight = weight.replace("\n", "")
         return weight
     
     def _gen_model_input_output_variables(self):
