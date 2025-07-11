@@ -20,13 +20,23 @@ class Operator(ABC):
         
     def display(self): 
         print("ID: ", self.ID)
+        
         print("Input:")
         for i in range(len(self.input_vars)):
-            self.input_vars[i].display()
+            if not isinstance(self.input_vars[i], list):
+                self.input_vars[i].display()
+            else:
+                for j in range(len(self.input_vars[i])):
+                    self.input_vars[i][j].display()
+        
         print("Output:")
         for i in range(len(self.output_vars)):
-            self.output_vars[i].display()
-        return self.__class__.__name__    
+            if not isinstance(self.output_vars[i], list):
+                self.output_vars[i].display()
+            else:
+                for j in range(len(self.output_vars[i])):
+                    self.output_vars[i][j].display()
+        return self.__class__.__name__ 
         
     def get_var_ID(self, in_out, index, unroll=False, index2=None):    # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
         if in_out == 'out': 

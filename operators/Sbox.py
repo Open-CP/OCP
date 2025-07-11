@@ -165,7 +165,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             
             
     # ---------------- Modeling Interface ---------------- #
-    def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, count_active=True, filename_load=None):
+    def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, count_active=True, filename_load=True):
         self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{tool_type}_{mode}.txt')
         self.filename_load = filename_load
         if model_type == 'sat': 
