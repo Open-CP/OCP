@@ -145,11 +145,20 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         elif implementation_type == 'c': 
             return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
-        
-    def generate_implementation_header(self, implementation_type='python'):
+
+    def get_header_ID(self): 
+        return [self.__class__.__name__, self.model_version, self.input_vars[0].bitsize, self.mat, self.polynomial]
+
+    def generate_implementation_header_unique(self, implementation_type='python'):
         if implementation_type == 'python': 
             model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
-            model_list.append("#Matrix Macro ")
+        elif implementation_type == 'c': 
+            model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
+        return model_list        
+
+    def generate_implementation_header(self, implementation_type='python'):
+        if implementation_type == 'python': 
+            model_list= ["#Matrix Macro "]
             model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")      
             for i, out_v in enumerate(self.output_vars):
                 model = '\t' + 'y' + str(i) + ' = ' 
@@ -169,8 +178,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
             return model_list
         elif implementation_type == 'c': 
-            model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
-            model_list.append("//Matrix Macro ")
+            model_list = ["//Matrix Macro "]
             model_list.append("#define " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2] + ", "  + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2] + ")  { \\")      
             for i, out_v in enumerate(self.output_vars):
                 model = '\t' + 'y' + str(i) + ' = ' 

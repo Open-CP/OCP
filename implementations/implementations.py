@@ -23,6 +23,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
         if language == 'c': myfile.write("#include <stdint.h>\n#include <stdio.h>\n\n")
         
         header_set = []
+        matrix_seen = rot_seen = False
         nbr_rounds_table = [my_prim.states[s].nbr_rounds for s in my_prim.states]
         nbr_layers_table = [my_prim.states[s].nbr_layers for s in my_prim.states]
         constraints_table = [my_prim.states[s].constraints for s in my_prim.states]
@@ -30,10 +31,25 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
            for r in range(1,nbr_rounds_table[i]+1):
                for l in range(nbr_layers_table[i]+1):
                    for cons in constraints_table[i][r][l]:
-                       if [cons.__class__.__name__, cons.model_version] not in header_set:
-                           header_set.append([cons.__class__.__name__, cons.model_version]) 
-                           if cons.generate_implementation_header(language) != None: 
-                               for line in cons.generate_implementation_header(language): myfile.write(line + '\n')
+                       # generate the unique header for certain types of operators
+                       if cons.__class__.__name__ == 'Matrix' and not matrix_seen: 
+                          header = cons.generate_implementation_header_unique(language)
+                          for line in header: myfile.write(line + '\n')
+                          myfile.write('\n')
+                          matrix_seen = True
+                       elif cons.__class__.__name__ == 'Rot' and not rot_seen: 
+                          header = cons.generate_implementation_header_unique(language)
+                          for line in header: myfile.write(line + '\n')
+                          myfile.write('\n')
+                          rot_seen = True                                              
+
+                      # generate the header     
+                       header_ID = cons.get_header_ID()
+                       if header_ID not in header_set:
+                           header_set.append(header_ID) 
+                           header = cons.generate_implementation_header(language)
+                           if header != None: 
+                               for line in header: myfile.write(line + '\n')
                                myfile.write('\n')
                         
         if language == 'python':

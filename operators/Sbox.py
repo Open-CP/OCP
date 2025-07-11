@@ -148,6 +148,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 return model_list
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
+    def get_header_ID(self): 
+        return [self.__class__.__name__, self.model_version, self.input_bitsize, self.output_bitsize, self.table]
         
     def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 

@@ -35,7 +35,10 @@ class Operator(ABC):
         if in_out == 'in':
             if index2 is not None: return self.input_vars[index][index2].ID if unroll else self.input_vars[index][index2].remove_round_from_ID()
             else: return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
-            
+
+    def get_header_ID(self): 
+        return [self.__class__.__name__, self.model_version]
+
     def generate_implementation_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
     
@@ -149,7 +152,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             else: return [self.get_var_ID('out', 0, unroll) + ' = ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
-    def generate_implementation_header(self, implementation_type='python'):
+    def generate_implementation_header_unique(self, implementation_type='python'):
         if implementation_type == 'python': 
             return ["#Rotation Macros ", "def ROTL(n, d, bitsize): return ((n << d) | (n >> (bitsize - d))) & (2**bitsize - 1)", "def ROTR(n, d, bitsize): return ((n >> d) | (n << (bitsize - d))) & (2**bitsize - 1)"]
         elif implementation_type == 'c': 
