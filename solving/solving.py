@@ -186,6 +186,7 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
 
     elif target == "SATISFIABLE":
         model.setIntParam("limits/solutions", 1)
+        model.optimize()
         if model.getStatus() in ["optimal", "feasible", "solution limit", "time limit", "userinterrupt"]:
             sol_dic = {}
             for v in model.getVars():
