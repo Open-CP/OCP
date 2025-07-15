@@ -156,7 +156,7 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
             sol_list.append(sol_dic)
         return sol_list
     
-    return None
+    raise ValueError(f"Unknown target: {target}")
 
 
 def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
@@ -209,7 +209,7 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
                 break
         return sol_list
         
-    return None
+    raise ValueError(f"Unknown target: {target}")
 
 
 def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write the MILP model in standard .lp format, based on the given constraints and objective function.
@@ -281,8 +281,7 @@ def solve_sat(filename, variable_map, solving_args=None):
     elif solver == "ORTools":
         return solve_sat_ortools(filename, variable_map, solving_args)
 
-    print("No SAT Solver Support!")    
-    return None
+    raise ValueError(f"No SAT Solver Support: {solver}")
 
 
 def solve_sat_pysat(filename, variable_map, solving_args):
@@ -304,14 +303,12 @@ def solve_sat_pysat(filename, variable_map, solving_args):
         if solver.solve():
             model = solver.get_model()
             sol_dic = {}
-            for v in model:
-                sol_dic[abs(v)] = v  
-            for var in variable_map:
-                if sol_dic[variable_map[var]] > 0:
-                    variable_map[var] = 1
-                else:
-                    variable_map[var] = 0
-            return variable_map
+            for var, value in variable_map.items():
+                if value in model:
+                    sol_dic[var] = 1
+                elif -value in model:
+                    sol_dic[var] = 0
+            return sol_dic
         else:
             print("No solution exists.")
             return None
@@ -321,17 +318,19 @@ def solve_sat_pysat(filename, variable_map, solving_args):
         while solver.solve():
             model = solver.get_model()
             sol_dic = {}
-            for v in model:
-                sol_dic[abs(v)] = v          
+            for var, value in variable_map.items():
+                if value in model:
+                    sol_dic[var] = 1
+                elif -value in model:
+                    sol_dic[var] = 0       
             sol_list.append(sol_dic)
-            block_clause = [-l for l in model]
+            block_clause = [-l for l in model] # TO DO: if abs(l) in main_vars
             solver.add_clause(block_clause)
         solver.delete()
         print("Number of solutions by solving the SAT model: ", len(sol_list))
         return sol_list
     
-    else:
-        return None
+    raise ValueError(f"Unknown target: {target}")
     
 
 def solve_sat_ortools(filename, variable_map, solving_args): # TO DO
