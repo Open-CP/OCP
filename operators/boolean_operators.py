@@ -135,7 +135,7 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                     i1, i2, o = var_in1[i],var_in2[i],var_out[i]
                     model_list += [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}', f'-{i1} -{i2} -{o}']
                 return model_list      
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF": 
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False),  self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list = [f'{var_in1[0]} {var_in2[0]} -{var_out[0]}', f'{var_in1[0]} -{var_in2[0]} {var_out[0]}', f'-{var_in1[0]} {var_in2[0]} {var_out[0]}']
                 return model_list
@@ -192,13 +192,13 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                         model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
                     model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
                     return model_list
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF": 
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 var_d = [self.ID + '_d']
                 model_list += [f'{var_in1[0]} + {var_in2[0]} + {var_out[0]} - 2 {var_d[0]} >= 0', f'{var_d[0]} - {var_in1[0]} >= 0', f'{var_d[0]} - {var_in2[0]} >= 0', f'{var_d[0]} - {var_out[0]} >= 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_d))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1": 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1": 
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list += [f'{var_in1[0]} + {var_in2[0]} - {var_out[0]} >= 0', f'{var_in2[0]} + {var_out[0]} - {var_in1[0]} >= 0', f'{var_in1[0]} + {var_out[0]} - {var_in2[0]} >= 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
@@ -268,7 +268,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                     model_list += [s]
                 model_list.append('Binary\n' + ' '.join(sum(var_in, []) + sum(var_d, []) + var_out))
                 return model_list
-            elif len(self.input_vars) == 3 and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED":  # cited from: "Related-Key Differential Analysis of the AES".
+            elif len(self.input_vars) == 3 and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":  # cited from: "Related-Key Differential Analysis of the AES".
                 var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("in", 2, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 i1, i2, i3, o = var_in1[0], var_in2[0], var_in3[0], var_out[0]
                 model_list += [f'{i1} + {i2} + {i3} - {o} >= 0', f'{i2} + {i3} + {o} - {i1} >= 0', f'{i1} + {i3} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} - {i3} >= 0']

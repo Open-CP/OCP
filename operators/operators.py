@@ -125,7 +125,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:  
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))                
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF": 
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))                
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -135,7 +135,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED": 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF": 
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list = [f"{var_in[0]} - {var_out[0]} = 0"]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
@@ -288,7 +288,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
             if (self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) and self.add_type == 'xor': 
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF" and self.add_type == 'xor': 
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -298,7 +298,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                 model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and self.add_type == 'xor': 
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF" and self.add_type == 'xor': 
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))

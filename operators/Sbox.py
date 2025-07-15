@@ -165,13 +165,13 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             
             
     # ---------------- Modeling Interface ---------------- #
-    def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, count_active=True, filename_load=True):
+    def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, filename_load=True):
         self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{tool_type}_{mode}.txt')
         self.filename_load = filename_load
         if model_type == 'sat': 
-            return self.generate_model_sat(tool_type, mode, count_active)
+            return self.generate_model_sat(tool_type, mode)
         elif model_type == 'milp': 
-            return self.generate_model_milp(tool_type, mode, count_active)      
+            return self.generate_model_milp(tool_type, mode)      
         elif model_type == 'cp': 
             RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
@@ -228,13 +228,13 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             file.write(f"Weight: {objective_fun}\n") 
     
     # ---------------- SAT Model Generation ---------------- #
-    def generate_model_sat(self, tool_type="minimize_logic", mode = 0, count_active=True):
+    def generate_model_sat(self, tool_type="minimize_logic", mode = 0):
         if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
             return self._gen_model_sat_diff_pr(tool_type, mode)
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF":
-            return self._gen_model_sat_diff(tool_type, mode, count_active)
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)):
-            return self._gen_model_sat_diff_word_truncated(count_active)            
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
+            return self._gen_model_sat_diff(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A"] and (not isinstance(self.input_vars[0], list)):
+            return self._gen_model_sat_diff_word_truncated()            
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
     
     def _gen_model_sat_diff_pr(self, tool_type, mode): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
@@ -244,19 +244,21 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = var_p
         return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
     
-    def _gen_model_sat_diff(self, tool_type, mode, count_active): # modeling all possible (input difference, output difference)
+    def _gen_model_sat_diff(self, tool_type, mode): # modeling all possible (input difference, output difference)
+        if self.model_version == self.__class__.__name__ + "_XORDIFF_A":
+            self.model_filename = os.path.join(base_path, f'constraints_sat_{self.model_version.replace("_A", "")}_{tool_type}_{mode}.txt')
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
-        if count_active: # to calculate the minimum number of active S-boxes
+        if self.model_version == self.__class__.__name__ + "_XORDIFF_A": # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']    
             model_list += self._model_count_active_sbox_sat(var_in, var_At[0])
             self.weight = var_At         
         return model_list
     
-    def _gen_model_sat_diff_word_truncated(self, count_active): # word-wise difference propagations, the input difference equals the ouput difference
+    def _gen_model_sat_diff_word_truncated(self): # word-wise difference propagations, the input difference equals the ouput difference
         var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-        if count_active: 
+        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A": 
             self.weight = var_in               
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
 
@@ -279,7 +281,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     def _gen_model_ttable_sat(self):
         if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
             return self.ddt_to_truthtable_sat()
-        elif self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
             return self.star_ddt_to_truthtable()
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
     
@@ -298,17 +300,17 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return [f"-{var} {var_At}" for var in var_in] + [" ".join(var_in) + ' -' + var_At]
 
     # ---------------- MILP Model Generation ---------------- #
-    def generate_model_milp(self, tool_type="polyhedron", mode = 0, count_active=True):
+    def generate_model_milp(self, tool_type="polyhedron", mode = 0):
         if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
             return self._generate_model_milp_diff_pr(tool_type, mode)
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF":
-            return self._generate_model_milp_diff(tool_type, mode, count_active)
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
+            return self._generate_model_milp_diff(tool_type, mode)
         elif self.model_version == self.__class__.__name__ + "_XORDIFF_P":
             return self._generate_model_milp_diff_p(tool_type, mode)
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED" and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
-            return self._generate_model_milp_diff_word_truncated(count_active)            
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1": #  bit-wise truncated difference propagations
-            return self._generate_model_milp_diff_bit_truncated(count_active)
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A"] and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
+            return self._generate_model_milp_diff_word_truncated()            
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDDIFF_A1"]: #  bit-wise truncated difference propagations
+            return self._generate_model_milp_diff_bit_truncated()
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
     
     def _generate_model_milp_diff_pr(self, tool_type, mode): # modeling all possible (input difference, output difference, probablity)
@@ -320,12 +322,14 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = [self._trans_template_weight(sbox_weight, var_p)]   
         return model_list  
 
-    def _generate_model_milp_diff(self, tool_type, mode, count_active):  # modeling all possible (input difference, output difference)
+    def _generate_model_milp_diff(self, tool_type, mode):  # modeling all possible (input difference, output difference)
+        if self.model_version == self.__class__.__name__ + "_XORDIFF_A":
+            self.model_filename = os.path.join(base_path, f'constraints_milp_{self.model_version.replace("_A", "")}_{tool_type}_{mode}.txt')
         sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0)) 
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         all_vars = var_in + var_out
-        if count_active: # to calculate the minimum number of active S-boxes
+        if self.model_version == self.__class__.__name__ + "_XORDIFF_A": # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']   
             model_list += self._model_count_active_sbox_milp(var_in, var_At[0]) 
             all_vars += var_At
@@ -359,15 +363,15 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = [weight]
         return model_list
     
-    def _generate_model_milp_diff_word_truncated(self, count_active): # word-wise truncated difference propagations, the input difference equals the ouput difference
+    def _generate_model_milp_diff_word_truncated(self): # word-wise truncated difference propagations, the input difference equals the ouput difference
         var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
         model_list = [f'{var_in[0]} - {var_out[0]} = 0']
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out)
-        if count_active: # to calculate the minimum number of active S-boxes
+        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A": # to calculate the minimum number of active S-boxes
             self.weight = var_in           
         return model_list
     
-    def _generate_model_milp_diff_bit_truncated(self, count_active): #  bit-wise truncated difference propagations
+    def _generate_model_milp_diff_bit_truncated(self): #  bit-wise truncated difference propagations
         branch_num = self.differential_branch_number()
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         all_vars = var_in + var_out
@@ -378,7 +382,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             all_vars += var_d
         if self.is_bijective(): # for bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
             model_list += self._model_bijective_milp(var_in, var_out)       
-        if count_active: # to calculate the minimum number of differentially active s-boxes
+        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A1": # to calculate the minimum number of differentially active s-boxes
             var_At = [self.ID + '_At'] 
             model_list += self._model_count_active_sbox_milp(var_in, var_At[0])
             self.weight = var_At  
@@ -418,7 +422,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
         
     def _gen_model_ttable_milp(self):
-        if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
             return self.star_ddt_to_truthtable()
         elif self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
             return self.ddt_to_truthtable_milp()

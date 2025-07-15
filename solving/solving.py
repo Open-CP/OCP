@@ -60,9 +60,10 @@ def solve_milp(filename, solving_args=None):
     Args:
         filename (str): Path to the MILP model file.
         solving_args (dict): 
-            - solving_goal: The optimization goal:
-                - "Optimal": Find the optimal solution.
-                - "All": Find all feasible solutions.
+            - target: The optimization target:
+                - "OPTIMAL": Find the optimal solution.
+                - "SATISFIABLE": Find a feasible solution.
+                - "ALL": Find All feasible solutions.
             - solver: solver name (e.g, "Gurobi", "SCIP")
     
     Returns: 
@@ -70,110 +71,149 @@ def solve_milp(filename, solving_args=None):
     """
 
     solving_args = solving_args or {}
-    solver = solving_args.get("solver", "Default")
+    solver = solving_args.get("solver", "DEFAULT")
 
     print(f"Solving the MILP model: solving_args = {solving_args}")
-    if solver == "Gurobi" or solver == "Default":
+    if solver == "Gurobi" or solver == "DEFAULT":
         return solve_milp_gurobi(filename, solving_args)
     
     elif solver == "SCIP":
         return solve_milp_scip(filename, solving_args)
 
-    print("No MILP Solver Support!") 
-    return None, None
+    raise ValueError(f"Unsupported solver: {solver}. Supported solvers are: 'Gurobi'(DEFAULT), 'SCIP'.")
 
 
 def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi.
     if gurobipy_import == False: 
         print("gurobipy module can't be loaded ... skipping test\n")
-        return None, None
+        return None
     
-    solving_goal = solving_args.get("solving_goal", "Default")
-    
-    model = gp.read(filename)
+    # Load the model
+    try:
+        model = gp.read(filename)
+    except gp.GurobiError as e:
+        print(f"Error reading model from {filename}: {e}")
+        return None
     
     # Set Parameters provided by Gurobi. TO DO MORE 
-    if "timeLimit" in solving_args: model.Params.timeLimit = solving_args["timeLimit"]
+    if "time_limit" in solving_args: 
+        model.Params.timeLimit = solving_args["time_limit"]
+    if "OutputFlag" in solving_args:
+        model.Params.OutputFlag = solving_args["OutputFlag"]
 
-    if solving_goal in ["Optimal", "Default"]:
+    # Solve the model
+    target = solving_args.get("target", "DEFAULT")
+    
+    if target in ["OPTIMAL", "DEFAULT"]:
         try:            
             model.optimize()
         except gp.GurobiError:
             print("Error: check your gurobi license, visit https://gurobi.com/unrestricted for more information\n")
-            return None, None
-        if model.status == gp.GRB.Status.OPTIMAL or model.status == gp.GRB.TIME_LIMIT:
+            return None
+        if model.status in [gp.GRB.Status.OPTIMAL, gp.GRB.Status.TIME_LIMIT, gp.GRB.Status.SUBOPTIMAL, gp.GRB.Status.INTERRUPTED]:
             sol_dic = {}
             for v in model.getVars():
-                sol_dic[str(v.VarName)] = int(round(v.Xn))          
-            return sol_dic, model.ObjVal
+                sol_dic[str(v.VarName)] = int(round(v.Xn))   
+            sol_dic["obj_fun_value"] = int(round(model.ObjVal))  # Add the objective value to the solution dictionary
+            return sol_dic
         else:
-            return None, None
-            
-    elif solving_goal == "All":
+            return None
+        
+    elif target in ["SATISFIABLE"]:
+        try:            
+            model.Params.MIPFocus = 1
+            model.Params.SolutionLimit = 1 
+            model.optimize()
+        except gp.GurobiError:
+            print("Error: check your gurobi license, visit https://gurobi.com/unrestricted for more information\n")
+            return None
+        # Accept any feasible solution (not necessarily optimal)
+        if model.status in [gp.GRB.Status.OPTIMAL, gp.GRB.Status.TIME_LIMIT, gp.GRB.Status.SUBOPTIMAL, gp.GRB.Status.INTERRUPTED]:
+            sol_dic = {}
+            for v in model.getVars():
+                sol_dic[str(v.VarName)] = int(round(v.Xn))
+            sol_dic["obj_fun_value"] = int(round(model.ObjVal))
+            return sol_dic
+        else:
+            return None
+
+    elif target == "ALL":
         model.Params.PoolSearchMode = 2   # Enable searching for multiple solutions
         model.Params.PoolSolutions = 1000000  # Set the maximum limit for the number of solutions
         try:
             model.optimize()
         except gp.GurobiError:
             print("Error: check your gurobi license. Visit https://gurobi.com/unrestricted for more information\n")
-            return None, None
+            return None
         print("Number of solutions by solving the MILP model: ", model.SolCount)
-        sol_list, obj_list = [], []
+        sol_list = []
         for i in range(model.SolCount):
             sol_dic = {}
             model.Params.SolutionNumber = i  
             for v in model.getVars():
                 sol_dic[str(v.VarName)] = v.Xn   
+            sol_dic["obj_fun_value"] = int(round(model.PoolObjVal))
             sol_list.append(sol_dic)
-            obj_list.append(model.ObjVal)
-        return sol_list, obj_list
+        return sol_list
     
-    return None, None
+    return None
 
 
 def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
     if not scip_import:
         print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
-        return None, None
+        return None
     
-    solving_goal = solving_args.get("solving_goal", "Default")
+    target = solving_args.get("target", "DEFAULT")
     model = Model()
-    model.readProblem(filename)        
-    if solving_goal in ["Optimal", "Default"]:
+    model.readProblem(filename)     
+
+    # Set Parameters provided by SCIP. TO DO MORE 
+    if "time_limit" in solving_args: 
+        model.setRealParam("limits/time", solving_args["time_limit"])
+   
+    # Solve the model
+    if target in ["OPTIMAL", "DEFAULT"]:
         model.optimize()
-        if model.getStatus() == "optimal":
+        if model.getStatus() in ["optimal", "feasible", "solution limit", "time limit", "userinterrupt"]:
             sol_dic = {}
             for v in model.getVars():
                 sol_dic[str(v.name)] = int(round(model.getVal(v)))
-            return sol_dic, model.getObjVal()
+            sol_dic["obj_fun_value"] = int(round(model.getObjVal()))
+            return sol_dic
         else:
-            return None, None
+            return None
+
+    elif target == "SATISFIABLE":
+        model.setIntParam("limits/solutions", 1)
+        if model.getStatus() in ["optimal", "feasible", "solution limit", "time limit", "userinterrupt"]:
+            sol_dic = {}
+            for v in model.getVars():
+                sol_dic[str(v.name)] = int(round(model.getVal(v)))
+            sol_dic["obj_fun_value"] = int(round(model.getObjVal()))
+            return sol_dic
+        return None
         
-    elif solving_goal == "All":
-        sol_list, obj_list = [], []
+    elif target == "ALL":
+        sol_list = []
         while model.getStatus() != "infeasible":
             model.optimize()
             if model.getStatus() == "optimal":
                 sol_dic = {}
                 for v in model.getVars():
                     sol_dic[str(v.name)] = int(round(model.getVal(v)))
+                sol_dic["obj_fun_value"] = int(round(model.getObjVal()))
                 sol_list.append(sol_dic)
-                obj_list.append(model.getObjVal())
-                # Extend the time limit to find next solution
-                model.setSolvingLimit(model.getSolvingTimeLimit() + 1)  # Increasing the time limit for the next solution
             else:
                 break
-        return sol_list, obj_list
+        return sol_list
         
-    return None, None
+    return None
 
 
 def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write the MILP model in standard .lp format, based on the given constraints and objective function.
     # === Step 1: Define the MILP Model Structure === #
-    content = ""
-    if obj_fun:
-        content += "Minimize\nobj\n"
-    content += "Subject To\n"
+    content = "Minimize\nobj\nSubject To\n"
 
     # === Step 2: Process Constraints === #
     bin_vars, in_vars = [], []
@@ -190,7 +230,11 @@ def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write
     
     # === Step 3: Define the Objective Function === #
     if obj_fun:
-        content += " + ".join(obj_fun) + ' - obj = 0\n'
+        if isinstance(obj_fun[0], list):
+            obj_fun_flatten = [obj for row in obj_fun for obj in row]
+            content += " + ".join(obj_fun_flatten) + ' - obj = 0\n'
+        elif isinstance(obj_fun[0], str):
+            content += " + ".join(obj_fun) + ' - obj = 0\n'        
 
     # === Step 4: Declare Binary and Integer Variables === #
     if bin_vars: 
@@ -206,7 +250,7 @@ def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write
         with open(filename, "w") as myfile:
             myfile.write(content + "End\n")    
     
-    return content
+    return {"content": content}  # Return the model content and objective function
 
 
 def solve_sat(filename, variable_map, solving_args=None):
@@ -216,8 +260,8 @@ def solve_sat(filename, variable_map, solving_args=None):
     Args:
         filename (str): Path to the CNF file.
         solving_args (dict): 
-            - solving_goal: The optimization goal:
-                - "Feasible": Find a feasible solution.
+            - target: The optimization target:
+                - "SATISFIABLE": Find a feasible solution.
                 - "All": Find all feasible solutions.
             - solver: solver name (e.g, "Gurobi", "SCIP")
     
@@ -226,11 +270,11 @@ def solve_sat(filename, variable_map, solving_args=None):
     """
     
     solving_args = solving_args or {}
-    solver = solving_args.get("solver", "Default")
+    solver = solving_args.get("solver", "DEFAULT")
 
     print(f"Solving the SAT model: solving_args = {solving_args}")
 
-    if solver in ["Default", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
+    if solver in ["DEFAULT", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
         return solve_sat_pysat(filename, variable_map, solving_args)
     
     elif solver == "ORTools":
@@ -245,17 +289,17 @@ def solve_sat_pysat(filename, variable_map, solving_args):
         print("pysat module can't be loaded ... skipping test\n")
         return None
     
-    solver = solving_args.get("solver", "Default")
-    solving_goal = solving_args.get("solving_goal", "Default")
+    solver = solving_args.get("solver", "DEFAULT")
+    target = solving_args.get("target", "DEFAULT")
     cnf = CNF(filename)
-    if solver == "Default":
+    if solver == "DEFAULT":
         solver = Solver()
     else:
         solver = Solver(name=solver)
     
     solver.append_formula(cnf.clauses)
 
-    if solving_goal in ["Feasible", "Default"]:
+    if target in ["SATISFIABLE", "DEFAULT"]:
         if solver.solve():
             model = solver.get_model()
             sol_dic = {}
@@ -271,7 +315,7 @@ def solve_sat_pysat(filename, variable_map, solving_args):
             print("No solution exists.")
             return None
         
-    elif solving_goal == "All":
+    elif target == "ALL":
         sol_list = []
         while solver.solve():
             model = solver.get_model()
@@ -330,5 +374,4 @@ def gen_sat_model(constraints=[], filename=""): # Generate and write the SAT mod
         with open(filename, "w") as myfile:
             myfile.write(content)    
 
-    return content, variable_map
-
+    return {"content": content, "variable_map": variable_map}

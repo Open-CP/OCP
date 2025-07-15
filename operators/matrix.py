@@ -227,7 +227,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         cons = n_xor.generate_model(model_type)
                         model_list += cons
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED":
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
                 var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
@@ -235,7 +235,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_XORDIFF_TRUNCATED_1":
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1":
                 var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 

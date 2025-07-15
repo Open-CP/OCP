@@ -55,7 +55,7 @@ class DifferentialTrail(Trail):
                 for l in range(self.primitive.states[s].nbr_layers + 1):
                     value = ""
                     for var in self.trail_vars[s][r][l]:
-                        value += str(self.solution.get(var, "-"))  # Get the value of the variable from the solution
+                        value += str(self.solution.get(var, "0"))  # Get the value of the variable from the solution
                     trail_values[s][r][l] = value
         return trail_values
 
