@@ -153,93 +153,123 @@ Procedure:
 
 def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
-    cipher = SPECK_PERMUTATION(r=3, version = 32) 
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    cipher = SPECK_PERMUTATION(r=5, version = 32) 
     
+    trail = dif.search_diff_trail(cipher)
+
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8")
+
+    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 8")
+
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", show_mode=1)
+
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp"}, config_solver={"solver": "Gurobi", "time_limit": 2, "OutputFlag": False})
+
+    
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "milp"}, config_solver={"solver": "SCIP"})
+
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
+
+    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 8", config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
+
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", show_mode=1, config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
+    
+
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp", "matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5], "matsui_milp_cons_type": "UPPER"}})
+
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp", "rounds": {s: [3,4,5] for s in cipher.states}}, config_solver={"solver": "GUROBI"})
+
+
     # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat", solving_args={"solver":"Cadical103"})
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
+
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", config_model={"model_type": "sat"})
+
+    trail = dif.search_diff_trail(cipher, show_mode=2, objective_target="AT MOST 9", config_model={"model_type": "sat"})
+
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5]}}, config_solver={"solver":"Cadical103"})
     
 
     # TEST 3: Search for the best related-key differential trail of r-round SPECK by solving MILP models
-    cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64]) 
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    cipher = SPECK_BLOCKCIPHER(r=6, version=[32,64])
+    trail = dif.search_diff_trail(cipher)
 
 
     # TEST 4: Search for the best related-key differential trail of r-round SPECK by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat")
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
 
 
 def TEST_DIFF_ATTACK_SIMON():
     # TEST 1: Search for the best differential trail of r-round SIMON by solving MILP models
-    cipher = SIMON_PERMUTATION(r=3, version = 32)
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    cipher = SIMON_PERMUTATION(r=5, version = 32)
+    trail = dif.search_diff_trail(cipher)
 
 
     # TEST 2: Search for the best differential trail of r-round SIMON by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat")
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
 
 
     # TEST 3: Search for the best related-key differential trail of r-round SIMON by solving MILP models
-    cipher = SIMON_BLOCKCIPHER(r=6, version=[32,64]) 
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    cipher = SIMON_BLOCKCIPHER(r=7, version=[32,64]) 
+    trail = dif.search_diff_trail(cipher)
 
 
-    # # TEST 4: Search for the best related-key differential trail of r-round SIMON by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat")
+    # TEST 4: Search for the best related-key differential trail of r-round SIMON by solving SAT models
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
 
 
 def TEST_DIFF_ATTACK_ASCON():
     # TEST 1: Search for the best differential trail of r-round ASCON by solving MILP models
     cipher = ASCON_PERMUTATION(r=2) 
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    # trail = dif.search_diff_trail(cipher)
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "milp", "model_params": {"ASCON_Sbox": {"tool_type": "polyhedron"}}})
 
 
     # TEST 2: Search for the best differential trail of r-round ASCON by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat")
-
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
     
     # TEST 3: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving MILP models
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT")
     
 
     # TEST 4: Search for the minimal number of active differentially S-boxes of r-round ASCON by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT", config_model={"model_type": "sat"})
 
 
 def TEST_DIFF_ATTACK_GIFT():
     # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP models
     cipher = GIFT_PERMUTATION(r=3, version = 64)
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    trail = dif.search_diff_trail(cipher)
 
 
     # TEST 2: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving MILP models
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT")
     
 
     # TEST 3: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT", config_model={"model_type": "sat"})
 
     
     # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP models
     cipher = GIFT_BLOCKCIPHER(r=7, version = [64, 128])
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp")
+    trail = dif.search_diff_trail(cipher)
 
     # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT")
 
     # TEST 6: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving SAT models
-    sol, obj = dif.search_diff_trail(cipher, model_type="sat", goal = "calculate_min_diff_active_sbox")
+    trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT", config_model={"model_type": "sat"})
 
 
 def TEST_DIFF_ATTACK_AES():
     # TEST 1: Search for the best truncated differential trail of r-round AES by solving MILP models
     cipher = AES_PERMUTATION(r=5)
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", goal="search_best_truncated_diff_trail")
+    trail = dif.search_diff_trail(cipher, goal="TRUNCATEDDIFF_SBOXCOUNT")
     
 
     # TEST 2: Search for the best truncated related-key differential trail of r-round AES
     cipher = AES_BLOCKCIPHER(r=5, version = [128, 128])
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", goal="search_best_truncated_diff_trail")
+    trail = dif.search_diff_trail(cipher, goal="TRUNCATEDDIFF_SBOXCOUNT")
 
 
 def TEST_DIFF_ATTACK_ROCCA_AD():
@@ -250,9 +280,9 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
     # (3) difference of the data block is not 0 (default in diff_attacks);
     cipher = ROCCA_AD(r=7)
     add_constraints = ["INPUT_NOT_ZERO"]
-    add_constraints += attacks.gen_predefined_constraints(cipher, model_type="milp", cons_type="EQUAL", cons_args={"cons_vars": cipher.states["STATE"].vars[1][0][:128], "cons_value":0, "bitwise":False})
-    add_constraints += attacks.gen_predefined_constraints(cipher, model_type="milp", cons_type="EQUAL", cons_args={"cons_vars": cipher.states["STATE"].vars[cipher.nbr_rounds][4][:128], "cons_value":0, "bitwise":False})
-    sol, obj = dif.search_diff_trail(cipher, model_type="milp", add_constraints=add_constraints, goal="search_best_truncated_diff_trail")
+    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EQUAL", cons_vars=cipher.states["STATE"].vars[1][0][:128], cons_value=0, bitwise=False)
+    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EQUAL", cons_vars=cipher.states["STATE"].vars[cipher.nbr_rounds][4][:128], cons_value=0, bitwise=False)
+    trail = dif.search_diff_trail(cipher, constraints=add_constraints, goal="TRUNCATEDDIFF_SBOXCOUNT")
 
 
 if __name__ == '__main__':
