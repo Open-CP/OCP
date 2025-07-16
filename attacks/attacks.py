@@ -1,6 +1,14 @@
 import os
 import sys
 import time
+try:
+    from pysat.card import CardEnc
+    from pysat.formula import IDPool
+    vpool = IDPool(start_from=1000)
+    pysat_import = True
+except ImportError:
+    print("pysat module can't be loaded \n")
+    pysat_import = False
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 import attacks.linear_cryptanalysis as lin
 import attacks.differential_cryptanalysis as dif
@@ -373,11 +381,21 @@ def gen_constraints_equal(model_type, cons_value, cons_vars):
         raise ValueError(f"Unsupported model_type '{model_type}' for EQUAL constraint.")
 
 
-def gen_constraints_sum_equal(model_type, cons_value, cons_vars):
+def gen_constraints_sum_equal(model_type, cons_value, cons_vars, encoding=1):
     if model_type == "milp": 
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
     elif model_type == "sat" and cons_value == 0:
         return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and pysat_import:
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_EQUAL constraint.")
 
@@ -389,11 +407,21 @@ def gen_constraints_less_equal(model_type, cons_value, cons_vars):
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for LESS_EQUAL constraint.")
 
-def gen_constraints_sum_less_equal(model_type, cons_value, cons_vars):     
+def gen_constraints_sum_less_equal(model_type, cons_value, cons_vars, encoding=1):     
     if model_type == "milp": 
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
     elif model_type == "sat" and cons_value == 0:
         return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and pysat_import:
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_LESS_EQUAL constraint.")   
     
@@ -403,11 +431,21 @@ def gen_constraints_greater_equal(model_type, cons_value, cons_vars):
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for GREATER_EQUAL constraint.")
 
-def gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars):     
+def gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars, encoding=1):     
     if model_type == "milp": 
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
     elif model_type == "sat" and cons_value == 1: 
         return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
+    elif model_type == "sat" and pysat_import:
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_GREATER_EQUAL constraint.")
 
