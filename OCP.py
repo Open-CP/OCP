@@ -155,48 +155,62 @@ def TEST_DIFF_ATTACK_SPECK():
     # TEST 1: Search for the best differential trail of r-round SPECK by solving MILP models
     cipher = SPECK_PERMUTATION(r=5, version = 32) 
     
-    trail = dif.search_diff_trail(cipher)
+    trail = dif.search_diff_trail(cipher) # Default parameters setting: goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model={"model_type": "milp"}, config_solver={"solver": "DEFAULT"}
 
+    # Adjust 'objective_target'.
     trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8")
-
     trail = dif.search_diff_trail(cipher, objective_target="AT MOST 8")
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10")
 
-    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", show_mode=1)
-
-    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp"}, config_solver={"solver": "Gurobi", "time_limit": 2, "OutputFlag": False})
-
+    # Adjust ‘config_solver’, 'show_mode'
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp"}, config_solver={"solver": "Gurobi", "time_limit": 1, "OutputFlag": False})
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_solver={"solver": "SCIP"})
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", show_mode=1, config_solver={"solver": "SCIP", "time_limit": 2})
+    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 8", show_mode=1, config_solver={"solver": "SCIP", "time_limit": 2})
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", show_mode=1, config_solver={"solver": "SCIP", "time_limit": 2})
     
-    trail = dif.search_diff_trail(cipher, config_model={"model_type": "milp"}, config_solver={"solver": "SCIP"})
-
-    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
-
-    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 8", config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
-
-    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", show_mode=1, config_model={"model_type": "milp"}, config_solver={"solver": "SCIP", "time_limit": 2})
+    # Adjust 'config_model': add matsui's constraints
+    trail = dif.search_diff_trail(cipher, config_model={"matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5]}})
+    trail = dif.search_diff_trail(cipher, config_model={"matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5], "matsui_milp_cons_type": "UPPER"}})
+    trail = dif.search_diff_trail(cipher, config_model={"matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5], "matsui_milp_cons_type": "LOWER"}})
     
-
-    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp", "matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5], "matsui_milp_cons_type": "UPPER"}})
-
-    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "milp", "rounds": {s: [3,4,5] for s in cipher.states}}, config_solver={"solver": "GUROBI"})
+    # Adjust 'config_model': select search rounds  
+    trail = dif.search_diff_trail(cipher, config_model={"rounds": {s: [3,4,5] for s in cipher.states}})
 
 
     # TEST 2: Search for the best differential trail of r-round SPECK by solving SAT models
     trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
-
-    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", config_model={"model_type": "sat"})
-
-    trail = dif.search_diff_trail(cipher, show_mode=2, objective_target="AT MOST 9", config_model={"model_type": "sat"})
-
-    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5]}}, config_solver={"solver":"Cadical103"})
     
+    # Adjust 'objective_target'.
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 8", config_model={"model_type": "sat"})
+    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 9", config_model={"model_type": "sat"})
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 10", config_model={"model_type": "sat"})
+    
+    # Adjust config_model - "optimal_search_strategy_sat": "AT_MOST" (Default), "EXACTLY".
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "AT_MOST"})
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "EXACTLY"})
+
+    # Adjust config_model - "atmost_encoding_sat": "SEQUENTIAL" (Default), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "AT_MOST", "atmost_encoding_sat": 1})
+    
+    # Adjust config_model - "exact_encoding_sat": 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "EXACTLY", "exact_encoding_sat": 1})
+
+    # Adjust config_model - "atleast_encoding_sat": "SEQUENTIAL" (Default), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "atleast_encoding_sat": 2})
+    
+    # Adjust 'config_model': add matsui's constraints
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "matsui_constraint": {"Round": 5, "best_obj": [0,1,3,5]}})
+    
+    # Adjust ‘config_solver’
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"}, config_solver={"solver":"Cadical103"})
 
     # TEST 3: Search for the best related-key differential trail of r-round SPECK by solving MILP models
-    cipher = SPECK_BLOCKCIPHER(r=6, version=[32,64])
-    trail = dif.search_diff_trail(cipher)
-
+    cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
+    trail = dif.search_diff_trail(cipher, show_mode=2)
 
     # TEST 4: Search for the best related-key differential trail of r-round SPECK by solving SAT models
-    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
+    trail = dif.search_diff_trail(cipher, show_mode=2, config_model={"model_type": "sat"})
 
 
 def TEST_DIFF_ATTACK_SIMON():
@@ -220,9 +234,12 @@ def TEST_DIFF_ATTACK_SIMON():
 
 def TEST_DIFF_ATTACK_ASCON():
     # TEST 1: Search for the best differential trail of r-round ASCON by solving MILP models
-    cipher = ASCON_PERMUTATION(r=2) 
-    # trail = dif.search_diff_trail(cipher)
+    cipher = ASCON_PERMUTATION(r=1) 
+    trail = dif.search_diff_trail(cipher)
+
+    # Adjust 'config_model' - 'model_params' for Sbox
     trail = dif.search_diff_trail(cipher, config_model={"model_type": "milp", "model_params": {"ASCON_Sbox": {"tool_type": "polyhedron"}}})
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "milp", "model_params": {"ASCON_Sbox": {"tool_type": "minimize_logic", "mode": 1}}})
 
 
     # TEST 2: Search for the best differential trail of r-round ASCON by solving SAT models
@@ -237,9 +254,35 @@ def TEST_DIFF_ATTACK_ASCON():
 
 
 def TEST_DIFF_ATTACK_GIFT():
-    # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP models
-    cipher = GIFT_PERMUTATION(r=3, version = 64)
+    # TEST 1: Search for the best differential trail of r-round GIFT by solving MILP/SAT models
+    cipher = GIFT_PERMUTATION(r=4, version = 64)
     trail = dif.search_diff_trail(cipher)
+
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
+    
+    # Adjust 'objective_target'.
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 11", config_model={"model_type": "sat"})
+    trail = dif.search_diff_trail(cipher, objective_target="AT MOST 12", config_model={"model_type": "sat"})
+    trail = dif.search_diff_trail(cipher, objective_target="EXACTLY 14", config_model={"model_type": "sat"})
+    
+    # Adjust config_model - "optimal_search_strategy_sat": "AT_MOST" (Default), "EXACTLY".
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "AT_MOST"})
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "EXACTLY"})
+
+    # Adjust config_model - "atmost_encoding_sat": "SEQUENTIAL" (Default), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "AT_MOST", "atmost_encoding_sat": 1})
+    
+    # Adjust config_model - "exact_encoding_sat": 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "optimal_search_strategy_sat": "EXACTLY", "exact_encoding_sat": 1})
+
+    # Adjust config_model - "atleast_encoding_sat": "SEQUENTIAL" (Default), 0, 1, 2, 3, 4, 5, 6, 7, 8, 9.
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat", "atleast_encoding_sat": 2})
+    
+    # Adjust config_model - "decimal_encoding_sat": "INTEGER_DECIMAL", "BOOLEAN".
+    trail = dif.search_diff_trail(cipher, objective_target="OPTIMAL STARTING FROM 11", config_model={"model_type": "sat", "decimal_encoding_sat":  "BOOLEAN"})
+    
+    # Adjust ‘config_solver’
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"}, config_solver={"solver":"Cadical103"})
 
 
     # TEST 2: Search for the minimal number of active differentially S-boxes of r-round GIFT by solving MILP models
@@ -250,9 +293,10 @@ def TEST_DIFF_ATTACK_GIFT():
     trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT", config_model={"model_type": "sat"})
 
     
-    # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP models
-    cipher = GIFT_BLOCKCIPHER(r=7, version = [64, 128])
+    # TEST 4: Search for the best related-key differential trail of r-round GIFT by solving MILP/SAT models
+    cipher = GIFT_BLOCKCIPHER(r=6, version = [64, 128])
     trail = dif.search_diff_trail(cipher)
+    trail = dif.search_diff_trail(cipher, config_model={"model_type": "sat"})
 
     # TEST 5: Search for the minimal number of active related-key differentially S-boxes of r-round GIFT by solving MILP models
     trail = dif.search_diff_trail(cipher, goal = "DIFFERENTIAL_SBOXCOUNT")
@@ -280,8 +324,8 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
     # (3) difference of the data block is not 0 (default in diff_attacks);
     cipher = ROCCA_AD(r=7)
     add_constraints = ["INPUT_NOT_ZERO"]
-    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EQUAL", cons_vars=cipher.states["STATE"].vars[1][0][:128], cons_value=0, bitwise=False)
-    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EQUAL", cons_vars=cipher.states["STATE"].vars[cipher.nbr_rounds][4][:128], cons_value=0, bitwise=False)
+    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EXACTLY", cons_vars=cipher.states["STATE"].vars[1][0][:128], cons_value=0, bitwise=False)
+    add_constraints += attacks.gen_predefined_constraints(model_type="milp", cons_type="EXACTLY", cons_vars=cipher.states["STATE"].vars[cipher.nbr_rounds][4][:128], cons_value=0, bitwise=False)
     trail = dif.search_diff_trail(cipher, constraints=add_constraints, goal="TRUNCATEDDIFF_SBOXCOUNT")
 
 
