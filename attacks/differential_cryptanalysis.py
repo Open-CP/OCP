@@ -8,6 +8,14 @@ base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files
 
 
 # ---------- Configuration Functions ----------
+def set_default_configs(config_model, config_solver):
+    config_model = config_model or {}
+    config_solver = config_solver or {}
+    config_model.setdefault("model_type", "milp") # Default to 'milp' if not specified
+    config_solver.setdefault("solver", "DEFAULT") # Default to 'DEFAULT' if not specified
+    return config_model, config_solver
+    
+
 def configure_start_end_round(cipher, config_model):
     start_round, end_round = {}, {}
     for state in cipher.states:
@@ -20,12 +28,12 @@ def configure_start_end_round(cipher, config_model):
     return start_round, end_round
 
 
-def gen_input_non_zero_constraints(cipher, model_type, goal, start_round): # Generate a standard input non-zero constraint list according to the attack goal.
+def gen_input_non_zero_constraints(cipher, model_type, goal, start_round, atleast_encoding): # Generate a standard input non-zero constraint list according to the attack goal.
     cons_vars = cipher.states["STATE"].vars[start_round["STATE"]][0][:cipher.states["STATE"].nbr_words]
     if "KEY_STATE" in cipher.states:
         cons_vars += cipher.states["KEY_STATE"].vars[start_round["KEY_STATE"]][0][:cipher.states["KEY_STATE"].nbr_words]
     bitwise = False if "TRUNCATEDDIFF" in goal else True
-    return attacks.gen_predefined_constraints(model_type=model_type, cons_type="SUM_GREATER_EQUAL", cons_value=1, cons_vars=cons_vars, bitwise=bitwise)   
+    return attacks.gen_predefined_constraints(model_type=model_type, cons_type="SUM_AT_LEAST", cons_vars=cons_vars, cons_value=1, bitwise=bitwise, encoding=atleast_encoding) 
 
 
 # ---------- Differential Attack Interface ----------
@@ -68,28 +76,25 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
     assert isinstance(config_model, dict) or config_model is None, f"Invalid config_model: {config_model}. Expected a dictionary or None."
     assert isinstance(config_solver, dict) or config_solver is None, f"Invalid config_solver: {config_solver}. Expected a dictionary or None."
     
-
-    config_model = config_model or {}
-    config_solver = config_solver or {}
-
-    config_model.setdefault("model_type", "milp")
-    model_type = config_model.get("model_type")  # Default to 'milp' if not specified
-
-    # Step 1: Configure start and end round
+        
+    # Step 1: Configures
+    config_model, config_solver = set_default_configs(config_model, config_solver)
     start_round, end_round = configure_start_end_round(cipher, config_model)
-    
+    model_type = config_model.get("model_type")
+    solver = config_solver.get('solver')    
 
     # Step 2: Add additional constraints.
     additional_constraints = copy.deepcopy(constraints)
     if "INPUT_NOT_ZERO" in additional_constraints: # Add input non-zero constraints if not disabled by user
-        non_zero_cons = gen_input_non_zero_constraints(cipher, model_type, goal, start_round)
+        atleast_encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL")
+        non_zero_cons = gen_input_non_zero_constraints(cipher, model_type, goal, start_round, atleast_encoding)
         idx = additional_constraints.index("INPUT_NOT_ZERO")
         additional_constraints = (additional_constraints[:idx] + non_zero_cons + additional_constraints[idx+1:]) # Replace 'INPUT_NOT_ZERO' with the generated non-zero constraints.
     
     # Step 3: Generate the model and solve the optimal solution
-    filename = os.path.join(base_path, f"{cipher.name}_{goal}_{objective_target}_{model_type}_{config_solver.get('solver', 'DEFAULT')}_model.{'lp' if model_type == 'milp' else 'cnf'}")
+    filename = os.path.join(base_path, f"{cipher.name}_{goal}_{objective_target}_{model_type}_{solver}_model.{'lp' if model_type == 'milp' else 'cnf'}")
     config_model["filename"] = filename  # Set the filename in the model configuration.
-    sol = attacks.modeling_solving_model(cipher, goal, additional_constraints, objective_target, config_model, config_solver) # Call the core modeling and solving function.
+    sol = attacks.modeling_and_solving(cipher, goal, objective_target, additional_constraints, config_model, config_solver) # Call the core modeling and solving function.
     
     # Step 4: Generate and visualize the trail. TO DO.
     if sol is not None:

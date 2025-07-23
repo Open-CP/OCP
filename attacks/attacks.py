@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import heapq
 try:
     from pysat.card import CardEnc
     from pysat.formula import IDPool
@@ -74,8 +75,6 @@ def set_model_versions(cipher, version, states=None, rounds=None, layers=None, p
 
 
 def configure_model_version_from_goal(cipher, goal): # Configure the model version for all operators in the cipher based on the attack goal.
-    goal = goal.upper()
-
     if goal == 'DIFFERENTIAL_SBOXCOUNT':
         set_model_versions(cipher, "XORDIFF") # Set model_version = "XORDIFF" for all operators
         set_model_versions(cipher, "XORDIFF_A", operator_name="Sbox") # Set model_version = "XORDIFF_A" for all Sbox operators
@@ -119,19 +118,19 @@ def gen_round_model_constraint_obj_fun(cipher, model_type, config_model): # Gene
 
 
 # =================== Modeling and Solving for Attacks ===================
-def modeling_solving_model(cipher, goal, constraints, objective_target, config_model, config_solver):
+def modeling_and_solving(cipher, goal, objective_target, constraints, config_model, config_solver): # Main interface for modeling and solving based on the given objective_target
     time_start = time.time()
 
     configure_model_version_from_goal(cipher, goal)
-    model_type = config_model.get("model_type")     
-    
+    model_type = config_model.get("model_type")
+
     if objective_target == "OPTIMAL":
         if model_type == "milp":
             sol = modeling_solving_optimal_milp(cipher, constraints, config_model, config_solver)
         elif model_type == "sat":
-            sol = modeling_solving_optimal_sat(cipher, constraints, config_model, config_solver) 
+            sol = modeling_solving_optimal_sat(cipher, goal, constraints, config_model, config_solver) 
         else:
-            ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
+            raise ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
 
     elif objective_target.startswith("OPTIMAL STARTING FROM"):
         try:
@@ -141,9 +140,9 @@ def modeling_solving_model(cipher, goal, constraints, objective_target, config_m
         if model_type == "milp":
             sol =  modeling_solving_optimal_start_from_milp(cipher, constraints, config_model, config_solver, start_value)
         elif model_type == "sat":
-            sol = modeling_solving_optimal_start_from_sat(cipher, constraints, config_model, config_solver, start_value)
+            sol = modeling_solving_optimal_start_from_sat(cipher, goal, constraints, config_model, config_solver, start_value)
         else:
-            ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
+            raise ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
 
     elif objective_target.startswith("AT MOST"):
         try:
@@ -153,9 +152,9 @@ def modeling_solving_model(cipher, goal, constraints, objective_target, config_m
         if model_type == "milp":
             sol = modeling_solving_at_most_milp(cipher, constraints, config_model, config_solver, max_val)
         elif model_type == "sat":
-            sol = modeling_solving_at_most_sat(cipher, constraints, config_model, config_solver, max_val)
+            sol = modeling_solving_at_most_sat(cipher, goal, constraints, config_model, config_solver, max_val)
         else:
-            ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
+            raise ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
 
     elif objective_target.startswith("EXACTLY"):
         try:
@@ -163,11 +162,11 @@ def modeling_solving_model(cipher, goal, constraints, objective_target, config_m
         except ValueError:
             raise ValueError(f"Invalid format: '{objective_target}'. Expected 'EXACTLY X'.")
         if model_type == "milp":
-            sol = modeling_solving_exact_milp(cipher, constraints, config_model, config_solver, exact_val)
+            sol = modeling_solving_exactly_milp(cipher, constraints, config_model, config_solver, exact_val)
         elif model_type == "sat":
-            sol = modeling_solving_exact_sat(cipher, constraints, config_model, config_solver, exact_val)
+            sol = modeling_solving_exactly_sat(cipher, goal, constraints, config_model, config_solver, exact_val)
         else:
-            ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
+            raise ValueError(f"Invalid objective_target: {objective_target}, model_type = {model_type}.")
 
     else:
         raise ValueError(f"Invalid objective_target: {objective_target}. Expected one of ['OPTIMAL', 'OPTIMAL STARTING FROM X', 'AT MOST X', 'EXACTLY X']")
@@ -179,92 +178,107 @@ def modeling_solving_model(cipher, goal, constraints, objective_target, config_m
 
     return sol
 
-    
-def modeling_solving_optimal_milp(cipher, add_constraints, config_model, config_solver): # Generate an MILP model and solve the optimal solution. 
-    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "milp", config_model) # Generate round constraints and objective function.
+
+# =================== Modeling and Solving MILP ===================
+def modeling_solving_optimal_milp(cipher, add_constraints, config_model, config_solver): # Generate and Solve MILP to find the optimal (minimal) objective function value.
+    config_solver["target"] = "OPTIMAL"
+    return modeling_solving_milp(cipher, add_constraints, config_model, config_solver)
+
+def modeling_solving_optimal_start_from_milp(cipher, add_constraints, config_model, config_solver, start_value):      
+    constraints = (add_constraints or [])
+    constraints += gen_predefined_constraints("milp", "AT_LEAST", ["obj"], start_value) # Generate the constraint for the objective function value >= start_value.      
+    config_solver["target"] = "OPTIMAL"
+    return modeling_solving_milp(cipher, constraints, config_model, config_solver)
+
+def modeling_solving_at_most_milp(cipher, add_constraints, config_model, config_solver, atmost_val):
+    constraints = (add_constraints or [])
+    constraints += gen_predefined_constraints("milp", "AT_MOST", ["obj"], atmost_val) # Generate the constraint for the objective function value <= atmost_val.
+    config_solver["target"] = "SATISFIABLE"
+    return modeling_solving_milp(cipher, constraints, config_model, config_solver)
+
+def modeling_solving_exactly_milp(cipher, add_constraints, config_model, config_solver, exact_val):
+    constraints = (add_constraints or [])
+    constraints += gen_predefined_constraints("milp", "EXACTLY", ["obj"], exact_val) # Generate the constraint for the objective function value = exact_val.      
+    config_solver["target"] = "SATISFIABLE"
+    return modeling_solving_milp(cipher, constraints, config_model, config_solver)
+
+def modeling_solving_milp(cipher, add_constraints, config_model, config_solver):
+    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "milp", config_model)
 
     if "matsui_constraint" in config_model:
         Round = config_model.get("matsui_constraint").get("Round")
         best_obj = config_model.get("matsui_constraint").get("best_obj")
         cons_type = config_model["matsui_constraint"].get("matsui_milp_cons_type", "ALL")
-        
         if Round is None or best_obj is None:
             raise ValueError("Must provide 'Round' and 'best_obj' for Matsui strategy.")
-        
         constraints += gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type)
     
-    constraints += (add_constraints or []) # Add additional constraints
-    
-    filename = config_model.get("filename", f"{cipher.name}_optimal_model.lp") # Get the filename from the model configuration or use a default name.
-    model = solving.gen_milp_model(constraints, obj_fun, filename) # Generate an MILP model without the objective function in standard format
-    
+    constraints += (add_constraints or [])
+    filename = config_model.get("filename", f"{cipher.name}_milp_model.lp")
+    model = solving.gen_milp_model(constraints, obj_fun, filename)    
     sol = solving.solve_milp(filename, config_solver)
-
     if sol is not None:
-        sol["status"] = "OPTIMAL"
-        sol["obj_fun"] = obj_fun      
-
-    return sol
-
-
-def modeling_solving_optimal_start_from_milp(cipher, add_constraints, config_model, config_solver, start_value):      
-    constraints = (add_constraints or []) # Add additional constraints
-    constraints += gen_predefined_constraints("milp", "GREATER_EQUAL", start_value, ["obj"]) # Generate the constraint for the objective function value to be equal to start_value.      
-    return modeling_solving_optimal_milp(cipher, constraints, config_model, config_solver)
-
-
-def modeling_solving_satisfy_milp(cipher, add_constraints, config_model, config_solver):
-    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "milp", config_model) # Generate round constraints and objective function.
-
-    constraints += (add_constraints or []) # Add additional constraints
-    
-    filename = config_model.get("filename", f"{cipher.name}_satisfy_model.lp") # Get the filename from the model configuration or use a default name.
-    model = solving.gen_milp_model(constraints, obj_fun, filename) # Generate an MILP model without the objective function in standard format
-    
-    config_solver["target"] = "SATISFIABLE"
-    sol = solving.solve_milp(filename, config_solver)
-    
-    if sol is not None:
-        sol["status"] = "SATISFIABLE"
         sol["obj_fun"] = obj_fun
-
     return sol
 
 
-def modeling_solving_at_most_milp(cipher, add_constraints, config_model, config_solver, atmost_val):
-    constraints = (add_constraints or []) # Add additional constraints
+# =================== Modeling and Solving SAT ===================
+def modeling_solving_optimal_sat(cipher, goal, constraints, config_model, config_solver): # Find the optimal solution starting from objective value = 0
+    return modeling_solving_optimal_start_from_sat(cipher, goal, constraints, config_model, config_solver, 0)
 
-    constraints += gen_predefined_constraints("milp", "LESS_EQUAL", atmost_val, ["obj"]) # Generate the constraint for the objective function value to be equal to start_value.      
-    
-    return modeling_solving_satisfy_milp(cipher, add_constraints, config_model, config_solver)
-
-
-def modeling_solving_exact_milp(cipher, add_constraints, config_model, config_solver, exact_val):
-    constraints = (add_constraints or []) # Add additional constraints
-
-    constraints += gen_predefined_constraints("milp", "EQUAL", exact_val, ["obj"]) # Generate the constraint for the objective function value to be equal to start_value.      
-    
-    return modeling_solving_satisfy_milp(cipher, add_constraints, config_model, config_solver)
-
-
-def modeling_solving_optimal_sat(cipher, constraints, config_model, config_solver):
-    return modeling_solving_optimal_start_from_sat(cipher, constraints, config_model, config_solver, 0) # Start from 0 to find the optimal solution.
-
-
-def modeling_solving_optimal_start_from_sat(cipher, add_constraints, config_model, config_solver, start_value):
-    obj_sat = start_value
+def modeling_solving_optimal_start_from_sat(cipher, goal, add_constraints, config_model, config_solver, start_value): # Incrementally solve SAT from a starting objective value until a feasible solution/maximum limit is found.
     sol = {}
-    while not sol:
-        print("Current SAT objective value: ", obj_sat)
-        sol = modeling_solving_at_most_sat(cipher, add_constraints, config_model, config_solver, obj_sat)
-        obj_sat += 1
-    sol["obj_fun_value"] = obj_sat - 1  # Add the objective value to the solution dictionary
-    return sol
+    obj_val = start_value
+    max_val = config_model.get("max_obj_sat", 100)
+    strategy = config_model.get("optimal_search_strategy_sat", "AT_MOST")
+    
+    if has_Sbox_with_decimal_weights(cipher, goal):
+        while not sol and obj_val <= max_val:
+            print("Current SAT objective value: ", obj_val)
+            decimal_encoding = config_model.get("decimal_encoding_sat", "INTEGER_DECIMAL")
+            obj_list, obj_encodings_list = generate_obj_encodings_sat(cipher, goal, obj_val, obj_val-1, encoding=decimal_encoding)
+            for i in range(len(obj_list)):
+                if strategy == "AT_MOST":
+                    sol = modeling_solving_at_most_decimal_sat(cipher, add_constraints, config_model, config_solver, obj_encodings_list[i])
+                elif strategy == "EXACTLY":
+                    sol = modeling_solving_exactly_decimal_sat(cipher, add_constraints, config_model, config_solver, obj_encodings_list[i])
+                if sol:
+                    sol.update({"obj_fun_value": obj_list[i], "status": "OPTIMAL"})
+                    return sol
+            obj_val += 1
+
+    else:
+        while not sol and obj_val <= max_val:
+            print("Current SAT objective value: ", obj_val)
+            if strategy == "AT_MOST":
+                sol = modeling_solving_at_most_integer_sat(cipher, add_constraints, config_model, config_solver, obj_val)
+            elif strategy == "EXACTLY":
+                sol = modeling_solving_exactly_integer_sat(cipher, add_constraints, config_model, config_solver, obj_val)
+            if sol:
+                sol.update({"obj_fun_value": obj_val, "status": "OPTIMAL"})
+                return sol
+            obj_val += 1
 
 
-def modeling_solving_at_most_sat(cipher, add_constraints, config_model, config_solver, max_val):
+def modeling_solving_at_most_decimal_sat(cipher, add_constraints, config_model, config_solver, max_val_encoding):
     constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "sat", config_model) # Generate round constraints and objective function.
+    
+    decimal_encoding = config_model.get("decimal_encoding_sat", "INTEGER_DECIMAL")
+    atmost_encoding = config_model.get("atmost_encoding_sat", "SEQUENTIAL")
+    obj_fun_list = gen_obj_fun_encoding_sat(obj_fun, len(max_val_encoding), decimal_encoding)
 
+    for i in range(len(max_val_encoding)):
+        constraints += gen_predefined_constraints("sat", "SUM_AT_MOST", obj_fun_list[i], max_val_encoding[i], encoding=atmost_encoding)
+    
+    constraints += (add_constraints or []) 
+    return modeling_solving_sat_model(cipher, constraints, config_model, config_solver, obj_fun)
+
+
+def modeling_solving_at_most_integer_sat(cipher, add_constraints, config_model, config_solver, max_val):
+    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "sat", config_model) # Generate round constraints and objective function.
+    obj_fun_vars = gen_obj_fun_variables(obj_fun)
+    atmost_encoding = config_model.get("atmost_encoding_sat", "SEQUENTIAL")
+        
     if "matsui_constraint" in config_model:
         Round = config_model.get("matsui_constraint").get("Round")
         best_obj = config_model.get("matsui_constraint").get("best_obj")
@@ -272,27 +286,324 @@ def modeling_solving_at_most_sat(cipher, add_constraints, config_model, config_s
         GroupNumForChoice = config_model["matsui_constraint"].get("GroupNumForChoice", 1)
         if Round is None or best_obj is None:
             raise ValueError("Must provide 'Round' and 'best_obj' for Matsui strategy.")
-        constraints += gen_matsui_constraints_sat(Round, best_obj, max_val, obj_fun, GroupConstraintChoice, GroupNumForChoice)
+        constraints += gen_matsui_constraints_sat(Round, best_obj, max_val, obj_fun_vars, GroupConstraintChoice, GroupNumForChoice)
     
     else:
-        hw_list = [obj for row in obj_fun for obj in row]
-        constraints += gen_sequential_encoding_sat(hw_list, max_val)
+        hw_list = [obj for row in obj_fun_vars for obj in row]
+        constraints += gen_predefined_constraints("sat", "SUM_AT_MOST", hw_list, max_val, encoding=atmost_encoding)
+            
+    constraints += (add_constraints or [])
+    return modeling_solving_sat_model(cipher, constraints, config_model, config_solver, obj_fun)
+
+
+def modeling_solving_at_most_sat(cipher, goal, add_constraints, config_model, config_solver, max_val):
+    if has_Sbox_with_decimal_weights(cipher, goal):
+        decimal_encoding = config_model.get("decimal_encoding_sat", "INTEGER_DECIMAL")
+        obj_list, obj_encodings_list = generate_obj_encodings_sat(cipher, goal, max_val, -1, encoding=decimal_encoding)
+        for i in reversed(range(len(obj_list))):
+            sol = modeling_solving_at_most_decimal_sat(cipher, add_constraints, config_model, config_solver, obj_encodings_list[-1])
+            if sol:
+                sol.update({"obj_fun_value": obj_list[i], "status": "SATISFIABLE"})
+                return sol
+    else:
+        sol = modeling_solving_at_most_integer_sat(cipher, add_constraints, config_model, config_solver, max_val)
+        if sol:
+            sol.update({"obj_fun_value": max_val, "status": "SATISFIABLE"})
+            return sol
+
+
+def modeling_solving_exactly_decimal_sat(cipher, add_constraints, config_model, config_solver, exact_val_encoding):
+    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "sat", config_model) # Generate round constraints and objective function.
     
-    constraints += (add_constraints or []) # Add additional constraints
+    decimal_encoding = config_model.get("decimal_encoding_sat", "INTEGER_DECIMAL")
+    exact_encoding = config_model.get("exact_encoding_sat", 1)
+    obj_fun_list = gen_obj_fun_encoding_sat(obj_fun, len(exact_val_encoding), decimal_encoding)
     
-    filename = config_model.get("filename", f"{cipher.name}_satisfy_at_most_model.cnf") # Get the filename from the model configuration or use a default name.
-    
-    model = solving.gen_sat_model(constraints=constraints, filename=filename) # Generate an SAT model in standard format
-    
+    for i in range(len(exact_val_encoding)):
+        constraints += gen_predefined_constraints("sat", "SUM_EXACTLY", obj_fun_list[i], exact_val_encoding[i], encoding=exact_encoding)
+
+    constraints += (add_constraints or [])
+    return modeling_solving_sat_model(cipher, constraints, config_model, config_solver, obj_fun)
+
+def modeling_solving_exactly_integer_sat(cipher, add_constraints, config_model, config_solver, exact_val):
+    constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, "sat", config_model)
+    obj_fun_vars = gen_obj_fun_variables(obj_fun)    
+    hw_list = [obj for row in obj_fun_vars for obj in row]
+    exact_encoding = config_model.get("exact_encoding_sat", 1)
+    constraints += gen_predefined_constraints("sat", "SUM_EXACTLY", hw_list, exact_val, encoding=exact_encoding)
+
+    constraints += (add_constraints or [])
+    return modeling_solving_sat_model(cipher, constraints, config_model, config_solver, obj_fun)
+
+
+def modeling_solving_exactly_sat(cipher, goal, add_constraints, config_model, config_solver, exact_val):
+    if has_Sbox_with_decimal_weights(cipher, goal):
+        decimal_encoding = config_model.get("decimal_encoding_sat", "INTEGER_DECIMAL")
+        obj_list, obj_encodings_list = generate_obj_encodings_sat(cipher, goal, exact_val, exact_val-0.1, encoding=decimal_encoding)
+        for i in reversed(range(len(obj_list))):
+            if obj_list[i] == exact_val:
+                sol = modeling_solving_exactly_decimal_sat(cipher, add_constraints, config_model, config_solver, obj_encodings_list[-1])
+                if sol:
+                    sol.update({"obj_fun_value": obj_list[i], "status": "SATISFIABLE"})
+                    return sol    
+    else:
+        sol = modeling_solving_exactly_integer_sat(cipher, add_constraints, config_model, config_solver, exact_val)
+        if sol:
+            sol.update({"obj_fun_value": exact_val, "status": "SATISFIABLE"})
+            return sol
+
+def modeling_solving_sat_model(cipher, constraints, config_model, config_solver, obj_fun):
+    filename = config_model.get("filename", f"{cipher.name}_sat_model.cnf")
+    model = solving.gen_sat_model(constraints=constraints, filename=filename)
     sol = solving.solve_sat(filename, model["variable_map"], config_solver)
+    if sol:
+        sol.update({"obj_fun": obj_fun, "status": "SATISFIABLE"})
+    return sol
 
-    if sol is not None:
-        sol["obj_fun_value"] = max_val
+# =================== Utilities for S-box-based ciphers with float weights ===================
+def detect_Sbox(cipher): # Detect and return the first Sbox operator in the cipher
+    states, rounds, layers, positions = fill_states_rounds_layers_positions(cipher)
+    for s in states:  
+        for r in rounds[s]:
+            for l in layers[s][r]:
+                for cons in cipher.states[s].constraints[r][l]:
+                    if "Sbox" in cons.__class__.__name__:
+                        return cons
+    return None
+
+
+def has_Sbox_with_decimal_weights(cipher, goal):
+    Sbox = detect_Sbox(cipher)
+    if Sbox and goal in {'DIFFERENTIALPATH_PROB', 'DIFFERENTIAL_PROB'}:
+        if goal in {'DIFFERENTIALPATH_PROB', 'DIFFERENTIAL_PROB'}:
+            table = Sbox.computeDDT()
+        weights = Sbox.gen_weights(table)
+        return any(not float(w).is_integer() for w in weights)
+    return False
+
+
+def linear_combinations_bounds(weights, upper_bound, lower_bound=-1): # Enumerate all integer linear combinations of weights such that the sum is within (lower_bound, upper_bound].
+    n = len(weights)
+    seen = set()
+    result = []
+    # Each state is (sum, coeffs), Start with zero combination
+    initial = (0.0, (0,) * n)
+    heap = [initial]
+    seen.add(initial[1])
+    while heap:
+        total, coeffs = heapq.heappop(heap)
+        if lower_bound < total <= upper_bound:
+            result.append((total, coeffs))
+        # Try to increment each coefficient
+        for i in range(n):
+            new_coeffs = list(coeffs)
+            new_coeffs[i] += 1
+            new_coeffs = tuple(new_coeffs)
+            if new_coeffs not in seen:
+                new_sum = total + weights[i]
+                if new_sum <= upper_bound:
+                    heapq.heappush(heap, (new_sum, new_coeffs))
+                    seen.add(new_coeffs)
+    return result
+
+
+def generate_obj_encodings_sat(cipher, goal, obj_ub, obj_lb=-1, encoding="INTEGER_DECIMAL"):
+    Sbox = detect_Sbox(cipher)
+    if goal in {'DIFFERENTIALPATH_PROB', 'DIFFERENTIAL_PROB'}:
+        table = Sbox.computeDDT()
+    weights = Sbox.gen_weights(table)
+    integers_weight, floats_weight = Sbox.gen_integer_float_weight(table)
+    obj_list, obj_encoding_list = [], []
+    combs = linear_combinations_bounds(weights, obj_ub, obj_lb)
+    weight_pattern_map = {str(w): Sbox.gen_weight_pattern_sat(integers_weight, floats_weight, w) for w in weights}
+
+    for total, coeffs in combs:
+        print(f"Sum: {total:.4f}, Coeffs: {coeffs}")
+        obj = [0 for _ in range(max(integers_weight)+len(floats_weight))]
+        for i in range(len(coeffs)):
+            if coeffs[i] > 0:
+                w = weights[i]
+                pattern = weight_pattern_map[str(w)]
+                for j in range(len(obj)):
+                    obj[j] += coeffs[i] * pattern[j]
+        if encoding == "BOOLEAN":
+            obj_list.append(total)
+            obj_encoding_list.append(obj)
+        elif encoding == "INTEGER_DECIMAL":
+            new_obj = [sum(obj[:max(integers_weight)])] + obj[max(integers_weight):]
+            if total not in obj_list and new_obj not in obj_encoding_list:
+                obj_list.append(total)
+                obj_encoding_list.append(new_obj)
+    return obj_list, obj_encoding_list
+
+
+def gen_obj_fun_variables(obj_fun):
+    obj_fun_var = []
+    for obj_fun_r in obj_fun:
+        obj_fun_var_r = []
+        for obj in obj_fun_r:
+            obj_fun_var_r.extend([item.strip().split()[1] if len(item.split()) > 1 else item.strip() for item in obj.split('+')])
+        obj_fun_var.append(obj_fun_var_r)
+    return obj_fun_var
+
+
+def gen_obj_fun_encoding_sat(obj_fun, dim, encoding="INTEGER_DECIMAL"): # In the case of a decimal-weighted objective function, parse objective function variables and group them into separate components for SAT modeling 
+    hw_list = [[] for _ in range(dim)]
+    total_dim = len(obj_fun[0][0].split('+'))
+    obj_fun_vars = gen_obj_fun_variables(obj_fun)
+    for obj_fun_vars_r in obj_fun_vars:
+        n_vars = len(obj_fun_vars_r)
+        group_size = n_vars // total_dim
+        if encoding == "INTEGER_DECIMAL": # Decompose obj_fun into integer and fractional parts.
+            for i in range(group_size):
+                hw_list[0].extend(obj_fun_vars_r[i*total_dim: i*total_dim+total_dim-dim+1])
+                for j in range(1, dim):
+                    hw_list[j].append(obj_fun_vars_r[i*total_dim+total_dim-dim+j])
+
+        elif encoding == "BOOLEAN": # Decompose obj_fun into individual Boolean variables
+            assert total_dim == dim, f"Error total_dim = {total_dim}, dim = {dim}"
+            for i in range(group_size):
+                for j in range(dim):
+                    hw_list[j].append(obj_fun_vars_r[i * dim + j])
     
-    return sol  
-     
+    return hw_list
 
-def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_or_equal=False): # reference: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
+# =================== Additional Constraints and Advanced Strategies ===================
+def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bitwise=True, encoding=None): 
+    """
+    Generate commonly used, predefined model constraints based on type and parameters.
+
+    Args:
+        cons_type (str): The constraint type, must be one of the predefined types:
+            - "EXACTLY": All selected variables == a target value.
+            - "AT_LEAST": All selected variables >= target value.
+            - "AT_MOST": All selected variables <= target value.
+            - "SUM_EXACTLY": Sum of selected variables == target value.
+            - "SUM_AT_LEAST": Sum of selected variables >= target value.
+            - "SUM_AT_MOST": Sum of selected variables <= target value.
+        cons_args (dict): Parameters for constraint generation, including:
+            - cons_value (int): Target value for the constraint.
+            - cons_vars (list[str]): Additional variable names to include.
+            - bitwise (bool): If True, expand variables by bit.
+
+    Returns:
+        list[str]: List of generated model constraint strings.
+
+    """
+    if cons_type in ["EXACTLY", "SUM_EXACTLY", "AT_LEAST", "SUM_AT_LEAST", "AT_MOST", "SUM_AT_MOST"]:
+        cons_vars_name = []
+        for var in cons_vars:
+            if isinstance(var, str):
+                cons_vars_name.append(var) 
+            else:
+                if bitwise and var.bitsize > 1:
+                    cons_vars_name.extend([f"{var.ID}_{j}" for j in range(var.bitsize)])
+                else:
+                    cons_vars_name.append(var.ID)
+        if cons_type == "EXACTLY":
+            return gen_constraints_exactly(model_type, cons_vars_name, cons_value)
+        elif cons_type == "SUM_EXACTLY":
+            return gen_constraints_sum_exactly(model_type, cons_vars_name, cons_value, encoding)
+        elif cons_type == "AT_MOST":
+            return gen_constraints_at_most(model_type, cons_vars_name, cons_value)
+        elif cons_type == "SUM_AT_MOST":
+            return gen_constraints_sum_at_most(model_type, cons_vars_name, cons_value, encoding)
+        elif cons_type == "AT_LEAST":
+            return gen_constraints_at_least(model_type, cons_vars_name, cons_value)
+        elif cons_type == "SUM_AT_LEAST":
+            return gen_constraints_sum_at_least(model_type, cons_vars_name, cons_value, encoding)
+    raise ValueError(f"Unsupported cons_type '{cons_type}'.")
+        
+def gen_constraints_exactly(model_type, cons_vars, cons_value):
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} = {cons_value}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 0: 
+        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 1: 
+        return [f"{cons_vars[i]}" for i in range(len(cons_vars))]
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for EXACTLY constraint.")
+
+def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
+    elif model_type == "sat" and cons_value == 0:
+        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and pysat_import:
+        assert encoding in [0,1,2,3,4,5,6,7,8,9], f"[ERROR] Invalid encoding = {encoding}, refer https://pysathq.github.io/docs/html/api/card.html"
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_EXACTLY constraint.")
+
+def gen_constraints_at_most(model_type, cons_vars, cons_value):
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} <= {cons_value}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 0:
+        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 1:
+        return []
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for AT_MOST constraint.")
+
+def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):     
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
+    elif model_type == "sat" and encoding == "SEQUENTIAL":
+        return gen_sequential_encoding_sat(cons_vars, cons_value)
+    elif model_type == "sat" and pysat_import:
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_AT_MOST constraint.")   
+    
+def gen_constraints_at_least(model_type, cons_vars, cons_value): 
+    if model_type == "milp": 
+        return [f"{cons_vars[i]} >= {cons_value}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 1: 
+        return [f"{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_value == 0: 
+        return []
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for GREATER_EQUAL constraint.")
+
+def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):     
+    if model_type == "milp": 
+        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
+    elif model_type == "sat" and cons_value == 1: 
+        return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
+    elif model_type == "sat" and encoding == "SEQUENTIAL":
+        return gen_sequential_encoding_sat(cons_vars, cons_value, greater_or_equal=True)
+    elif model_type == "sat" and pysat_import:
+        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+        reverse_map = {v: k for k, v in variable_map.items()}
+        lits = [variable_map[name] for name in cons_vars]
+        cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        readable_clauses = []
+        for clause in cnf.clauses:
+            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
+            readable_clauses.append(readable)
+        return readable_clauses
+    else:
+        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_GREATER_EQUAL constraint.")
+
+def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_or_equal=False): # Generate SAT constraints for a sequential counter encoding of a cardinality constraint. reference: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
+    if not hasattr(gen_sequential_encoding_sat, "_counter"): # Use function attribute to set global counter
+        gen_sequential_encoding_sat._counter = 0
     n = len(hw_list)
     # === Special case: require all variables to be False ===
     if (not greater_or_equal and weight == 0) or (greater_or_equal and weight == n):
@@ -305,7 +616,9 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_o
     else:
         minus = '-'
     if dummy_variables is None:
-        dummy_variables = [[f'dummy_hw_{i}_{j}' for j in range(weight)] for i in range(n - 1)]
+        gen_sequential_encoding_sat._counter += 1
+        prefix = f'dummy_seq_{gen_sequential_encoding_sat._counter}'
+        dummy_variables = [[f'{prefix}_{i}_{j}' for j in range(weight)] for i in range(n - 1)]
     constraints = [f'{minus}{hw_list[0]} {dummy_variables[0][0]}']
     constraints.extend([f'-{dummy_variables[0][j]}' for j in range(1, weight)])
     for i in range(1, n - 1):
@@ -320,136 +633,6 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_o
     return constraints
 
 
-def modeling_solving_exact_sat(cipher, constraints, config_model, config_solver, exact_val): # TO DO
-    pass
-    
-
-# =================== Additional Constraints and Advanced Strategies ===================
-def gen_predefined_constraints(model_type, cons_type, cons_value, cons_vars, bitwise=True): 
-    """
-    Generate commonly used, predefined model constraints based on type and parameters.
-
-    Args:
-        cons_type (str): The constraint type, must be one of the predefined types:
-            - "EQUAL": All selected variables equal a target value.
-            - "GREATER_EQUAL": All selected variables >= target value.
-            - "LESS_EQUAL": All selected variables <= target value.
-            - "SUM_EQUAL": Sum of selected variables == target value.
-            - "SUM_GREATER_EQUAL": Sum of selected variables >= target value.
-            - "SUM_LESS_EQUAL": Sum of selected variables <= target value.
-        cons_args (dict): Parameters for constraint generation, including:
-            - cons_value (int): Target value for the constraint.
-            - cons_vars (list[str]): Additional variable names to include.
-            - bitwise (bool): If True, expand variables by bit.
-
-    Returns:
-        list[str]: List of generated model constraint strings.
-
-    """
-    if cons_type in ["EQUAL", "SUM_EQUAL", "GREATER_EQUAL", "SUM_GREATER_EQUAL", "LESS_EQUAL", "SUM_LESS_EQUAL"]:
-        cons_vars_name = []
-        for var in cons_vars:
-            if isinstance(var, str):
-                cons_vars_name.append(var) 
-            else:
-                if bitwise and var.bitsize > 1:
-                    cons_vars_name.extend([f"{var.ID}_{j}" for j in range(var.bitsize)])
-                else:
-                    cons_vars_name.append(var.ID)
-        if cons_type == "EQUAL":
-            return gen_constraints_equal(model_type, cons_value, cons_vars_name)
-        elif cons_type == "GREATER_EQUAL":
-            return gen_constraints_greater_equal(model_type, cons_value, cons_vars_name)
-        elif cons_type == "LESS_EQUAL":
-            return gen_constraints_less_equal(model_type, cons_value, cons_vars_name)
-        elif cons_type == "SUM_EQUAL":
-            return gen_constraints_sum_equal(model_type, cons_value, cons_vars_name)
-        elif cons_type == "SUM_GREATER_EQUAL":
-            return gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars_name)
-        elif cons_type == "SUM_LESS_EQUAL":
-            return gen_constraints_sum_less_equal(model_type, cons_value, cons_vars_name)
-    
-
-def gen_constraints_equal(model_type, cons_value, cons_vars):
-    if model_type == "milp": 
-        return [f"{cons_vars[i]} = {cons_value}" for i in range(len(cons_vars))]
-    elif model_type == "sat" and cons_value == 0: 
-        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
-    elif model_type == "sat" and cons_value == 1: 
-        return [f"{cons_vars[i]}" for i in range(len(cons_vars))]
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for EQUAL constraint.")
-
-
-def gen_constraints_sum_equal(model_type, cons_value, cons_vars, encoding=1):
-    if model_type == "milp": 
-        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
-    elif model_type == "sat" and cons_value == 0:
-        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
-    elif model_type == "sat" and pysat_import:
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
-            readable_clauses.append(readable)
-        return readable_clauses
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_EQUAL constraint.")
-
-def gen_constraints_less_equal(model_type, cons_value, cons_vars):
-    if model_type == "milp": 
-        return [f"{cons_vars[i]} <= {cons_value}" for i in range(len(cons_vars))]
-    elif model_type == "sat" and cons_value == 0:
-        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for LESS_EQUAL constraint.")
-
-def gen_constraints_sum_less_equal(model_type, cons_value, cons_vars, encoding=1):     
-    if model_type == "milp": 
-        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
-    elif model_type == "sat" and cons_value == 0:
-        return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
-    elif model_type == "sat" and pysat_import:
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
-            readable_clauses.append(readable)
-        return readable_clauses
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_LESS_EQUAL constraint.")   
-    
-def gen_constraints_greater_equal(model_type, cons_value, cons_vars): 
-    if model_type == "milp": 
-        return [f"{cons_vars[i]} >= {cons_value}" for i in range(len(cons_vars))]
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for GREATER_EQUAL constraint.")
-
-def gen_constraints_sum_greater_equal(model_type, cons_value, cons_vars, encoding=1):     
-    if model_type == "milp": 
-        return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
-    elif model_type == "sat" and cons_value == 1: 
-        return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
-    elif model_type == "sat" and pysat_import:
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)   
-            readable_clauses.append(readable)
-        return readable_clauses
-    else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_GREATER_EQUAL constraint.")
-
-
 # Adding Matsui's branch-and-bound constraints in differential and linear cryptanalysis
 def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
     add_cons = []
@@ -458,23 +641,26 @@ def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Ge
             if cons_type == "ALL" or cons_type == "UPPER":
                 w_vars = [var for r in range(i + 1, Round + 1) for var in obj_fun[r - 1]]
                 all_vars = [" + ".join(w_vars) + " - obj"]
-                add_cons += gen_predefined_constraints(model_type="milp", cons_type="LESS_EQUAL", cons_value=-best_obj[i-1], cons_vars=all_vars)  
+                add_cons += gen_predefined_constraints(model_type="milp", cons_type="AT_MOST", cons_value=-best_obj[i-1], cons_vars=all_vars)  
             if cons_type == "ALL" or cons_type == "LOWER":
                 w_vars = [var for r in range(1, Round - i + 1) for var in obj_fun[r - 1]]
                 all_vars = [" + ".join(w_vars) + " - obj"]
-                add_cons += gen_predefined_constraints(model_type="milp", cons_type="LESS_EQUAL", cons_value=-best_obj[i-1], cons_vars=all_vars)                        
+                add_cons += gen_predefined_constraints(model_type="milp", cons_type="AT_MOST", cons_value=-best_obj[i-1], cons_vars=all_vars)                        
     return add_cons
 
 
 def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstraintChoice=1, GroupNumForChoice=1): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
+    if not hasattr(gen_matsui_constraints_sat, "_counter"): # Use function attribute to set global counter
+        gen_matsui_constraints_sat._counter = 0
     if len(best_obj) == Round-1:
         best_obj = [0] + best_obj
     Main_Vars = list([])
     for r in range(Round):
         for i in range(len(obj_var[Round - 1 - r])):
             Main_Vars += [obj_var[Round - 1 - r][i]]
-    dummy_var = [[f'dummy_hw_{i}_{j}' for j in range(obj_sat)] for i in range(len(Main_Vars) - 1)]
-    constraints = gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var) #  # Generate the constraint of "objective Function Value Greater or Equal to the Given obj" Using the Sequential Encoding Method
+    gen_matsui_constraints_sat._counter += 1
+    dummy_var = [[f'dummy_matsui_{gen_matsui_constraints_sat._counter}_{i}_{j}' for j in range(obj_sat)] for i in range(len(Main_Vars) - 1)]
+    constraints = gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var) # Generate the constraint of "the objective function value is at most obj" using the sequential encoding method
     
     MatsuiRoundIndex = []
     if GroupConstraintChoice == 1:

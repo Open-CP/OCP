@@ -88,44 +88,50 @@ class DifferentialTrail(Trail):
                         print(f"(Layer {l}): {value_str}")
 
             elif show_mode == 1:
+                total_w = 0
                 for r in list(range(self.start_round[s], self.end_round[s]+1)):
                     print(f"Round {r}:")
-                    self._print_round_objective_function(r)
+                    total_w += self.gen_round_objective_function_value(r)
                     layers = [0 if s in ["STATE", "KEY_STATE"] else 1]
                     for l in layers:
                         value_str = self.trail[s][r][l]
                         if hex_format:
                             value_str = "0x" + hex(int(value_str, 2))[2:].zfill(len(value_str) // 4)
                         print(f"(Layer {l}): {value_str}")
+                print(f"Total objective function value = {total_w}")
     
             elif show_mode == 2:
+                total_w = 0
                 for r in list(range(self.start_round[s], self.end_round[s]+1)):
                     print(f"Round {r}:")
-                    self._print_round_objective_function(r)
+                    total_w += self.gen_round_objective_function_value(r)
                     layers = list(range(self.primitive.states[s].nbr_layers + 1))
                     for l in layers:                        
                         value_str = self.trail[s][r][l]
                         if hex_format:
                             value_str = "0x" + hex(int(value_str, 2))[2:].zfill(len(value_str) // 4)
                         print(f"(Layer {l}): {value_str}")
+                print(f"Total objective function value = {total_w}")
                 
 
-    def _print_round_objective_function(self, r):
+    def gen_round_objective_function_value(self, r):
         obj_fun = self.solution.get("obj_fun", None)
-        if obj_fun is not None and r <= len(obj_fun): # Print the objective value
+        if obj_fun is not None and r <= len(obj_fun):  # Print the objective value
             obj_fun_r = obj_fun[r-1]
-            if isinstance(obj_fun_r, list) and len(obj_fun_r) == 1 and '+' in obj_fun_r[0]:
-                obj_fun_r = obj_fun_r[0].split('+')
-            w = 0
-            for obj in obj_fun_r:
-                match = re.match(r'(\d*\.*\d+|\d*)\s*(\w+)', obj.strip())
+
+        w = 0
+        for obj in obj_fun_r:
+            terms = obj.split('+')
+            for term in terms:
+                match = re.match(r'(\d*\.?\d*)\s*(\w+)', term.strip())
                 if match:
-                    coefficient = float(match.group(1)) if match.group(1) != '' else 1
-                    variable = match.group(2)                
+                    coefficient = float(match.group(1)) if match.group(1) != '' else 1  # Default coefficient is 1 if not found
+                    variable = match.group(2)
                     if variable in self.solution:
                         w += coefficient * self.solution[variable]
                 else:
-                    print(f"Warning: Unable to parse '{obj}'")
+                    print(f"Warning: Unable to parse '{term.strip()}'")
                     w = "-"
                     break
-            print(f"Objective Function Value: {w}")
+        print(f"Objective Function Value: {w}")
+        return w
