@@ -110,8 +110,8 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     
     def gen_integer_float_weight(self, table):
         weights = self.gen_weights(table)
-        integers = sorted([int(x) for x in weights if x == int(x)])
-        floats = sorted([x-int(x) for x in weights if x != int(x)])
+        integers = sorted(set([int(x) for x in weights]))
+        floats = sorted(set([x-int(x) for x in weights if x != int(x)]))
         return integers, floats
         
     def gen_weight_pattern_sat(self, integers_weight, floats_weight, w):
@@ -166,6 +166,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             
     # ---------------- Modeling Interface ---------------- #
     def generate_model(self, model_type='sat', tool_type="minimize_logic", mode = 0, filename_load=True):
+        if self.model_version == "DEFAULT": self.model_version = self.__class__.__name__ + "_XORDIFF_PR"
         self.model_filename = os.path.join(base_path, f'constraints_{model_type}_{self.model_version}_{tool_type}_{mode}.txt')
         self.filename_load = filename_load
         if model_type == 'sat': 
@@ -241,7 +242,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
-        self.weight = var_p
+        self.weight = [self._trans_template_weight(sbox_weight, var_p)] 
         return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
     
     def _gen_model_sat_diff(self, tool_type, mode): # modeling all possible (input difference, output difference)
@@ -263,7 +264,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
 
     def _gen_model_constraints_sat(self, tool_type, mode):
-        if self.filename_load is not None and os.path.exists(self.model_filename):
+        if self.filename_load and os.path.exists(self.model_filename):
             return self._reload_constraints_objfun_from_file()        
         ttable = self._gen_model_ttable_sat()
         input_variables, output_variables = self._gen_model_input_output_variables()
@@ -291,7 +292,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             integers_weight, floats_weight = self.gen_integer_float_weight(ddt)
             pr_variables = [f'p{i}' for i in range(max(integers_weight)+len(floats_weight))] 
             objective_fun = " + ".join(pr_variables[:max(integers_weight)])
-            if floats_weight is not []:
+            if floats_weight:
                 objective_fun += " + " + " + ".join(f"{w:.4f} {v}" for w, v in zip(floats_weight, pr_variables[max(integers_weight):]))
             return pr_variables, objective_fun
         return [], ""
@@ -391,7 +392,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         return model_list
 
     def _gen_model_constraints_milp(self, tool_type="polyhedron", mode=0):
-        if self.filename_load is not None and os.path.exists(self.model_filename):
+        if self.filename_load and os.path.exists(self.model_filename):
             return self._reload_constraints_objfun_from_file()        
         ttable = self._gen_model_ttable_milp()
         input_variables, output_variables = self._gen_model_input_output_variables()
