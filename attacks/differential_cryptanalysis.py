@@ -8,11 +8,20 @@ base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files
 
 
 # ---------- Configuration Functions ----------
-def set_default_configs(config_model, config_solver):
+def set_default_configs(config_model, config_solver): # Apply default values for configurable modeling and solving parameters if not specified
     config_model = config_model or {}
     config_solver = config_solver or {}
-    config_model.setdefault("model_type", "milp") # Default to 'milp' if not specified
-    config_solver.setdefault("solver", "DEFAULT") # Default to 'DEFAULT' if not specified
+
+    config_model.setdefault("model_type", "milp")
+    config_model.setdefault("model_params", {})
+    config_solver.setdefault("solver", "DEFAULT")
+    if config_model["model_type"] == "sat":
+        config_model.setdefault("max_obj_sat", 100)
+        config_model.setdefault("optimal_search_strategy_sat", "AT_MOST")
+        config_model.setdefault("decimal_encoding_sat", "INTEGER_DECIMAL")
+        config_model.setdefault("atmost_encoding_sat", "SEQUENTIAL")
+        config_model.setdefault("exact_encoding_sat", 1)
+        config_model.setdefault("atleast_encoding_sat", "SEQUENTIAL")
     return config_model, config_solver
     
 
@@ -86,7 +95,7 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
     # Step 2: Add additional constraints.
     additional_constraints = copy.deepcopy(constraints)
     if "INPUT_NOT_ZERO" in additional_constraints: # Add input non-zero constraints if not disabled by user
-        atleast_encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL")
+        atleast_encoding = config_model.get("atleast_encoding_sat")
         non_zero_cons = gen_input_non_zero_constraints(cipher, model_type, goal, start_round, atleast_encoding)
         idx = additional_constraints.index("INPUT_NOT_ZERO")
         additional_constraints = (additional_constraints[:idx] + non_zero_cons + additional_constraints[idx+1:]) # Replace 'INPUT_NOT_ZERO' with the generated non-zero constraints.
