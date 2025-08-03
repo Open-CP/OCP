@@ -207,22 +207,25 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                     bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):
                     bin_matrix = self.mat
-                for i in range(len(self.mat)):
-                    for j in range(self.input_vars[0].bitsize):
+                n_words = len(self.input_vars)
+                bits_per_word = self.input_vars[0].bitsize
+                for i in range(n_words):  # Loop over the ith output word
+                    for j in range(bits_per_word):  # Loop over the jth bit in the ith word
                         var_in = []
-                        var_out = []
-                        for k in range(len(self.mat)):
-                            for l in range(self.input_vars[0].bitsize):
-                                if bin_matrix[self.input_vars[0].bitsize*i+j][self.input_vars[0].bitsize*k+l] == 1:
-                                    vi = copy.deepcopy(self.input_vars[i])
+                        for k in range(n_words): # Loop over the kth input word
+                            for l in range(bits_per_word): # Loop over the lth bit in the kth word
+                                if bin_matrix[bits_per_word*i+j][bits_per_word*k+l] == 1:
+                                    vi = copy.deepcopy(self.input_vars[k])
                                     vi.bitsize = 1
-                                    vi.ID = self.input_vars[k].ID + '_' + str(l)
+                                    if bits_per_word > 1: 
+                                        vi.ID = self.input_vars[k].ID + '_' + str(l)
                                     var_in.append(vi)
                         vo = copy.deepcopy(self.output_vars[i])
                         vo.bitsize = 1
-                        vo.ID = self.output_vars[i].ID + '_' + str(j)
-                        var_out.append(vo)
-                        n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(self.input_vars[0].bitsize*i+j))
+                        if bits_per_word > 1:
+                            vo.ID = self.output_vars[i].ID + '_' + str(j)
+                        var_out = [vo]
+                        n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_word*i+j))
                         n_xor.model_version = self.model_version.replace(self.__class__.__name__, n_xor.__class__.__name__)
                         cons = n_xor.generate_model(model_type)
                         model_list += cons
