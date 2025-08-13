@@ -91,6 +91,10 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
         model.Params.timeLimit = solving_args["time_limit"]
     if "OutputFlag" in solving_args:
         model.Params.OutputFlag = solving_args["OutputFlag"]
+    if "MIPFocus" in solving_args:
+        model.Params.MIPFocus = solving_args["MIPFocus"]
+    if "SolutionLimit" in solving_args:
+        model.Params.SolutionLimit = solving_args["SolutionLimit"]
 
     # Solve the model
     target = solving_args.get("target", "DEFAULT")
@@ -99,8 +103,10 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
             model.Params.PoolSearchMode = 2
             model.Params.PoolSolutions = 1000000
         elif target == "SATISFIABLE":
-            model.Params.MIPFocus = 1
-            model.Params.SolutionLimit = 1
+            if "MIPFocus" not in solving_args: 
+                model.Params.MIPFocus = 1
+            if "SolutionLimit" not in solving_args:
+                model.Params.SolutionLimit = 1
         model.optimize()
         print("[INFO] Solving status:", model.status)
     except gp.GurobiError:
