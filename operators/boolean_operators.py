@@ -177,7 +177,7 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                 model_list = [f'{var_in1[0]} {var_in2[0]} -{var_out[0]}', f'{var_in1[0]} -{var_in2[0]} {var_out[0]}', f'-{var_in1[0]} {var_in2[0]} {var_out[0]}']
                 return model_list
             # Modeling for linear cryptanalysis
-            elif self.model_version in ["DEFAULT", self.__class__.__name__ + "_LINEAR"]:
+            elif self.model_version == self.__class__.__name__ + "_LINEAR":
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 for i in range(len(var_in1)):
                     i1, i2, o = var_in1[i],var_in2[i],var_out[i]
@@ -303,7 +303,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                             clause += [f"-{v}" if v in comb else f"{v}" for v in current_var_in]
                             model_list.append(" ".join(clause))
                 return model_list
-            elif self.model_version in [self.__class__.__name__ + "_LINEAR"]: 
+            elif self.model_version == self.__class__.__name__ + "_LINEAR": 
                 var_in, var_out = ([self.get_var_model("in", i) for i in range(len(self.input_vars))], self.get_var_model("out", 0))
                 for i in range(self.input_vars[0].bitsize):
                     for j in range(len(var_in)):
