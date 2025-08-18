@@ -23,10 +23,9 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
+        model_list = []
         if model_type == 'sat': 
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:
-                # reference: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
-                model_list = []
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: # Reference: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)]
                 for i in range(self.input_vars[0].bitsize-1):
@@ -46,11 +45,47 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     model_list += [f'-{alpha} {gamma} {w}', f'{beta} -{gamma} {w}', f'{alpha} -{beta} {w}', f'{alpha} {beta} {gamma} -{w}', f'-{alpha} -{beta} -{gamma} -{w}']
                 self.weight = var_p
                 return model_list
+            # Modeling for linear cryptanalysis
+            elif self.model_version == self.__class__.__name__ + "_LINEAR": # Reference: Yunwen Liu, Qingju Wang, and Vincent Rijmen. Automatic Search of Linear Trails in ARX with Applications to SPECK and Chaskey.
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                model_list = [f'-{var_p[0]}']
+                if self.input_vars[0].bitsize > 1:
+                    a, b, c, d = var_in1[0], var_in2[0], var_out[0], var_p[1]
+                    model_list += [f'{a} {b} {c} -{d}', 
+                                f'{a} {b} -{c} {d}', 
+                                f'{a} -{b} {c} {d}', 
+                                f'-{a} {b} {c} {d}', 
+                                f'-{a} -{b} -{c} {d}', 
+                                f'-{a} {b} -{c} -{d}', 
+                                f'-{a} -{b} {c} -{d}', 
+                                f'{a} -{b} -{c} -{d}']
+                for i in range(self.input_vars[0].bitsize-2):
+                    a, b, c, d, e = var_in1[i+1], var_in2[i+1], var_out[i+1], var_p[i+1], var_p[i+2]
+                    model_list += [f'-{a} {b} {c} {d} {e}', 
+                                   f'{a} -{b} {c} {d} {e}',
+                                   f'{a} {b} -{c} {d} {e}',
+                                   f'{a} {b} {c} -{d} {e}',
+                                   f'{a} {b} {c} {d} -{e}', 
+                                   f'-{a} -{b} -{c} {d} {e}',
+                                   f'-{a} -{b} {c} -{d} {e}',
+                                   f'-{a} -{b} {c} {d} -{e}',
+                                   f'-{a} {b} -{c} -{d} {e}',
+                                   f'-{a} {b} -{c} {d} -{e}', 
+                                   f'-{a} {b} {c} -{d} -{e}',
+                                   f'{a} -{b} -{c} -{d} {e}',
+                                   f'{a} -{b} -{c} {d} -{e}',
+                                   f'{a} -{b} {c} -{d} -{e}',
+                                   f'{a} {b} -{c} -{d} -{e}',
+                                   f'-{a} -{b} -{c} -{d} -{e}']
+                for i in range(self.input_vars[0].bitsize):
+                    a, b, c, d = var_in1[i], var_in2[i], var_out[i], var_p[i]
+                    model_list += [f'{a} -{c} {d}', f'-{a} {c} {d}', f'{b} -{c} {d}', f'-{b} {c} {d}']
+                self.weight = var_p
+                return model_list            
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp': 
-            model_list = []
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
-                # reference: Fu, K., Wang, M., Guo, Y., Sun, S., Hu, L. (2016). MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck 
+        elif model_type == 'milp':
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: # Reference: Kai Fu, Meiqin Wang, Yinghua Guo, Siwei Sun, Lei Hu. MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck 
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 var_p, var_d = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize-1)], [self.ID + '_d']
                 for i in range(self.input_vars[0].bitsize-1) :
@@ -138,6 +173,24 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            # Modeling for linear cryptanalysis
+            elif self.model_version == self.__class__.__name__ + "_LINEAR": # Reference: Kai Fu, Meiqin Wang, Yinghua Guo, Siwei Sun, Lei Hu. MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize+1)]
+                model_list = [f'{var_p[0]} = 0']
+                for i in range(self.input_vars[0].bitsize) :
+                    a = [var_out[i],var_in1[i],var_in2[i]]
+                    model_list += [var_p[i]+' - '+a[0]+' - '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' + '+a[0]+' + '+a[1]+' - '+a[2]+' - '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' + '+a[0]+' - '+a[1]+' - '+a[2]+' + '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' - '+a[0]+' + '+a[1]+' - '+a[2]+' + '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' + '+a[0]+' - '+a[1]+' + '+a[2]+' - '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' - '+a[0]+' + '+a[1]+' + '+a[2]+' - '+var_p[i+1]+' >= 0']
+                    model_list += [a[0]+' - '+var_p[i]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' >= 0']
+                    model_list += [var_p[i]+' + '+a[0]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' <= 4']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             else:

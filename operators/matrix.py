@@ -1,7 +1,7 @@
 import numpy as np
 import copy
-from operators.operators import Operator, RaiseExceptionVersionNotExisting
-from operators.boolean_operators import N_XOR
+from operators.operators import Operator, Equal, RaiseExceptionVersionNotExisting
+from operators.boolean_operators import XOR, N_XOR
 
 
 def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
@@ -199,35 +199,72 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             return model_list
             
     def generate_model(self, model_type='sat', branch_num=None):
+        model_list = []
+        input_words = len(self.input_vars)
+        output_words = len(self.output_vars)
+        bits_per_input = self.input_vars[0].bitsize
+        bits_per_output = self.output_vars[0].bitsize                
         if model_type == 'milp' or model_type == 'sat': 
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
-                model_list = []
-                if self.polynomial: bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_LINEAR"]:
+                if self.polynomial: 
+                    bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) > len(self.mat):
                     bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):
                     bin_matrix = self.mat
-                n_words = len(self.input_vars)
-                bits_per_word = self.input_vars[0].bitsize
-                for i in range(n_words):  # Loop over the ith output word
-                    for j in range(bits_per_word):  # Loop over the jth bit in the ith word
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
+                for i in range(output_words):  # Loop over the ith output word
+                    for j in range(bits_per_output):  # Loop over the jth bit in the ith word
                         var_in = []
-                        for k in range(n_words): # Loop over the kth input word
-                            for l in range(bits_per_word): # Loop over the lth bit in the kth word
-                                if bin_matrix[bits_per_word*i+j][bits_per_word*k+l] == 1:
+                        for k in range(input_words): # Loop over the kth input word
+                            for l in range(bits_per_input): # Loop over the lth bit in the kth word
+                                if bin_matrix[bits_per_output*i+j][bits_per_input*k+l] == 1:
                                     vi = copy.deepcopy(self.input_vars[k])
                                     vi.bitsize = 1
-                                    if bits_per_word > 1: 
+                                    if bits_per_output > 1: 
                                         vi.ID = self.input_vars[k].ID + '_' + str(l)
                                     var_in.append(vi)
                         vo = copy.deepcopy(self.output_vars[i])
                         vo.bitsize = 1
-                        if bits_per_word > 1:
+                        if bits_per_output > 1:
                             vo.ID = self.output_vars[i].ID + '_' + str(j)
                         var_out = [vo]
-                        n_xor = N_XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_word*i+j))
-                        n_xor.model_version = self.model_version.replace(self.__class__.__name__, n_xor.__class__.__name__)
-                        cons = n_xor.generate_model(model_type)
+                        if len(var_in) == 1:
+                            trans_op = Equal(var_in, var_out, ID=self.ID+"_"+str(bits_per_output*i+j))
+                        elif len(var_in) == 2:
+                            trans_op = XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_output*i+j))
+                        elif len(var_in) >= 3:
+                            trans_op = N_XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_output*i+j))
+                        trans_op.model_version = self.model_version.replace(self.__class__.__name__, trans_op.__class__.__name__)
+                        cons = trans_op.generate_model(model_type)
+                        model_list += cons
+                return model_list
+            elif self.model_version in [self.__class__.__name__ + "_LINEAR"]:
+                bin_matrix = np.transpose(bin_matrix)
+                for i in range(input_words):  # Loop over the ith input word
+                    for j in range(bits_per_input):  # Loop over the jth bit in the ith word
+                        var_in = []
+                        for k in range(output_words): # Loop over the kth output word
+                            for l in range(bits_per_output): # Loop over the lth bit in the kth word
+                                if bin_matrix[bits_per_input*i+j][bits_per_output*k+l] == 1:
+                                    vi = copy.deepcopy(self.output_vars[k])
+                                    vi.bitsize = 1
+                                    if bits_per_output > 1: 
+                                        vi.ID = self.output_vars[k].ID + '_' + str(l)
+                                    var_in.append(vi)
+                        vo = copy.deepcopy(self.input_vars[i])
+                        vo.bitsize = 1
+                        if bits_per_output > 1:
+                            vo.ID = self.input_vars[i].ID + '_' + str(j)
+                        var_out = [vo]
+                        if len(var_in) == 1:
+                            trans_op = Equal(var_in, var_out, ID=self.ID+"_"+str(bits_per_input*i+j))
+                        elif len(var_in) == 2:
+                            trans_op = XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_input*i+j))
+                        elif len(var_in) >= 3:
+                            trans_op = N_XOR(var_in, var_out, ID=self.ID+"_"+str(bits_per_input*i+j))
+                        trans_op.model_version = self.model_version.replace(self.__class__.__name__+ "_LINEAR", trans_op.__class__.__name__+ "_XORDIFF")
+                        cons = trans_op.generate_model(model_type)
                         model_list += cons
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
