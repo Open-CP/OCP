@@ -310,6 +310,5 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
 
 class CustomOP(Operator):   # generic custom operator (to be defined by the user)
     def __init__(self, input_vars, output_vars, ID = None):
-        super().__init__(input_vars, output_vars, ID)
-        pass # TODO
-        
+        super().__init__(input_vars, output_vars, ID=ID)
+        pass # TODO       

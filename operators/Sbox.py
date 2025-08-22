@@ -21,7 +21,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.table = None
         self.table_inv = None
         
-    def computeDDT(self):  # method computing the DDT of the Sbox
+    def computeDDT(self): # Compute the differential Distribution Table (DDT) of the Sbox
         ddt = [[0]*(2**self.output_bitsize) for _ in range(2**self.input_bitsize)] 
         for in_diff in range(2**self.input_bitsize):
             for j in range(2**self.input_bitsize):
@@ -29,6 +29,38 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 ddt[in_diff][out_diff] += 1 
         return ddt
     
+    def computeLAT(self): # Compute the Linear Approximation Table (LAT) of the S-box.
+        lat = [[0] * 2**self.output_bitsize for _ in range(2**self.input_bitsize)]
+        for a in range(2**self.input_bitsize):
+            for b in range(2**self.output_bitsize):
+                acc = 0
+                for x in range(2**self.input_bitsize):
+                    ax = bin(a & x).count("1") & 1
+                    bs = bin(b & self.table[x]).count("1") & 1
+                    acc += 1 if (ax ^ bs) == 0 else -1
+                lat[a][b] = acc
+        return lat
+
+    def linearDistributionTable(self):
+        # storing the correlation (correlation = bias * 2)
+        input_size = self.input_bitsize
+        output_size = self.output_bitsize
+        ldt = [[0 for i in range(2 ** output_size)] for j in range(2 ** input_size)]
+        for output_mask in range(2 ** output_size):
+            for input_mask in range(2 ** input_size):
+                sum = 0
+                for input in range(2 ** input_size):
+                    output_mul = 0
+                    for i in range(output_size):
+                        output_mul = output_mul + int(bin(output_mask).replace("0b","").zfill(4)[i]) * int(bin(self.table[input]).replace("0b","").zfill(4)[i])
+                    input_mul = 0
+                    for i in range(input_size):
+                        input_mul = input_mul + int(bin(input_mask).replace("0b","").zfill(4)[i]) * int(bin(input).replace("0b","").zfill(4)[i])
+                    sum = sum + math.pow(-1, output_mul%2) * math.pow(-1, input_mul%2)
+                ldt[input_mask][output_mask] = int(sum)
+        return ldt
+    
+
     def differential_branch_number(self): # Return differential branch number of the S-Box.
         ret = (1 << self.input_bitsize) + (1 << self.output_bitsize)
         for a in range(1 << self.input_bitsize):
@@ -38,6 +70,18 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     y = self.table[a] ^ self.table[b]
                     w = bin(x).count('1') + bin(y).count('1')
                     if w < ret: ret = w
+        return ret
+    
+    def linear_branch_number(self):
+        m, n = self.input_bitsize, self.output_bitsize
+        lat = self.computeLAT()
+        ret = (1 << m) + (1 << n)
+        for a in range(1 << m):
+            for b in range(1, 1 << n):
+                if lat[a][b] != 0:
+                    w = bin(a).count("1") + bin(b).count("1")
+                    if w < ret:
+                        ret = w
         return ret
     
     def is_bijective(self): # Check if the length of the set of s_box is equal to the length of s_box. The set will contain only unique elements
@@ -98,9 +142,64 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                 else: ttable += '0'
             else: ttable += '0'
         return ttable
+
+    def star_lat_to_truthtable(self): # Convert star-LAT into a truthtable, which encode the linear mask propagations without correlations.
+        lat = self.computeLAT()
+        ttable = ''
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            lx = n >> self.output_bitsize
+            ly = n & ((1 << self.output_bitsize) - 1)
+            if lat[lx][ly] != 0: ttable += '1'
+            else: ttable += '0'
+        return ttable
+
+    def plat_to_truthtable(self, p): # Convert p-LAT into a truthtable, which encode the linear mask propagations with the item in lat equal to p.  
+        lat = self.computeLAT()
+        ttable = ''    
+        for n in range(2**(self.input_bitsize+self.output_bitsize)):
+            lx = n >> self.output_bitsize
+            ly = n & ((1 << self.output_bitsize) - 1)
+            if lat[lx][ly] == p: ttable += '1'
+            else: ttable += '0'
+        return ttable
+
+    def lat_to_truthtable_milp(self): # Convert the LAT into a truthtable, which encode the linear mask propagations with correlations.  
+        lat = self.computeLAT()
+        ttable = ''
+        linear_weights = self.gen_weights(lat)
+        len_linear_weights = len(linear_weights)
+        for n in range(2**(self.input_bitsize+self.output_bitsize+len_linear_weights)):
+            lx = n >> (self.output_bitsize + len_linear_weights)
+            ly = (n >> len_linear_weights) & ((1 << self.output_bitsize) - 1)
+            if lat[lx][ly] != 0:
+                p = bin(n & ((1 << (len_linear_weights)) - 1))[2:].zfill(len_linear_weights)
+                w = 0
+                for i in range(len_linear_weights): 
+                    w += linear_weights[i] * int(p[i])
+                if abs(float(math.log(abs(lat[lx][ly])/(2**self.input_bitsize), 2))) == w: ttable += '1'
+                else: ttable += '0'
+            else: ttable += '0'
+        return ttable
+
+    def lat_to_truthtable_sat(self): # Convert the LAT, which encode the linear mask propagations with correlations into a truthtable in sat.
+        lat = self.computeLAT()
+        ttable = ''
+        integers_weight, floats_weight = self.gen_integer_float_weight(lat)
+        len_linear_weights = int(max(integers_weight)+len(floats_weight))
+        for n in range(2**(self.input_bitsize+self.output_bitsize+len_linear_weights)):
+            lx = n >> (self.output_bitsize + len_linear_weights)
+            ly = (n >> len_linear_weights) & ((1 << self.output_bitsize) - 1)
+            if lat[lx][ly] != 0:
+                p = tuple(int(x) for x in bin(n & ((1 << len_linear_weights) - 1))[2:].zfill(len_linear_weights))
+                w = abs(float(math.log(abs(lat[lx][ly])/(2**self.input_bitsize), 2)))
+                pattern = self.gen_weight_pattern_sat(integers_weight, floats_weight, w)
+                if p == tuple(pattern):  ttable += '1'
+                else: ttable += '0'
+            else: ttable += '0'
+        return ttable
     
     def gen_spectrum(self, table):
-        spectrum = sorted(list(set([table[i][j] for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
+        spectrum = sorted(list(set([abs(table[i][j]) for i in range(2**self.input_bitsize) for j in range(2**self.output_bitsize)]) - {0, 2**self.input_bitsize}))
         return spectrum
     
     def gen_weights(self, table):
@@ -230,37 +329,37 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
     
     # ---------------- SAT Model Generation ---------------- #
     def generate_model_sat(self, tool_type="minimize_logic", mode = 0):
-        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
-            return self._gen_model_sat_diff_pr(tool_type, mode)
-        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
-            return self._gen_model_sat_diff(tool_type, mode)
-        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A"] and (not isinstance(self.input_vars[0], list)):
-            return self._gen_model_sat_diff_word_truncated()            
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR", self.__class__.__name__ + "_LINEAR_PR"]:
+            return self._gen_model_sat_diff_linear_pr(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_A"]:
+            return self._gen_model_sat_diff_linear(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_A"] and (not isinstance(self.input_vars[0], list)):
+            return self._gen_model_sat_diff_linear_word_truncated()            
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
     
-    def _gen_model_sat_diff_pr(self, tool_type, mode): # model all possible (input difference, output difference, probablity) to search for the best differential characteristic
+    def _gen_model_sat_diff_linear_pr(self, tool_type, mode): # model all possible (input difference, output difference, probablity) to search for the best differential/linear characteristic
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
         self.weight = [self._trans_template_weight(sbox_weight, var_p)] 
         return self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out, var_p)   
     
-    def _gen_model_sat_diff(self, tool_type, mode): # modeling all possible (input difference, output difference)
-        if self.model_version == self.__class__.__name__ + "_XORDIFF_A":
+    def _gen_model_sat_diff_linear(self, tool_type, mode): # modeling all possible (input difference, output difference)
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]:
             self.model_filename = os.path.join(base_path, f'constraints_sat_{self.model_version.replace("_A", "")}_{tool_type}_{mode}.txt')
         sbox_inequalities, sbox_weight = self._gen_model_constraints_sat(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
-        if self.model_version == self.__class__.__name__ + "_XORDIFF_A": # to calculate the minimum number of active S-boxes
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]: # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']    
             model_list += self._model_count_active_sbox_sat(var_in, var_At[0])
             self.weight = var_At         
         return model_list
     
-    def _gen_model_sat_diff_word_truncated(self): # word-wise difference propagations, the input difference equals the ouput difference
+    def _gen_model_sat_diff_linear_word_truncated(self): # word-wise difference/linear propagations, the input difference equals the ouput difference
         var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A": 
-            self.weight = var_in               
+        if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_A", self.__class__.__name__ + "_TRUNCATEDLINEAR_A"]:
+            self.weight = var_in
         return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
 
     def _gen_model_constraints_sat(self, tool_type, mode):
@@ -284,13 +383,20 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             return self.ddt_to_truthtable_sat()
         elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
             return self.star_ddt_to_truthtable()
+        elif self.model_version in [self.__class__.__name__ + "_LINEAR_PR"]:
+            return self.lat_to_truthtable_sat()
+        elif self.model_version in [self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_A"]:
+            return self.star_lat_to_truthtable()
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "sat")
     
     def _gen_model_pr_variables_objective_fun_sat(self):
-        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
-            ddt = self.computeDDT()
-            integers_weight, floats_weight = self.gen_integer_float_weight(ddt)
-            pr_variables = [f'p{i}' for i in range(max(integers_weight)+len(floats_weight))] 
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR", self.__class__.__name__ + "_LINEAR_PR"]:
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+                table = self.computeDDT()
+            elif self.model_version in [self.__class__.__name__ + "_LINEAR_PR"]:
+                table = self.computeLAT()
+            integers_weight, floats_weight = self.gen_integer_float_weight(table)
+            pr_variables = [f'p{i}' for i in range(max(integers_weight)+len(floats_weight))]
             objective_fun = " + ".join(pr_variables[:max(integers_weight)])
             if floats_weight:
                 objective_fun += " + " + " + ".join(f"{w:.4f} {v}" for w, v in zip(floats_weight, pr_variables[max(integers_weight):]))
@@ -302,19 +408,19 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
 
     # ---------------- MILP Model Generation ---------------- #
     def generate_model_milp(self, tool_type="polyhedron", mode = 0):
-        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
-            return self._generate_model_milp_diff_pr(tool_type, mode)
-        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
-            return self._generate_model_milp_diff(tool_type, mode)
-        elif self.model_version == self.__class__.__name__ + "_XORDIFF_P":
-            return self._generate_model_milp_diff_p(tool_type, mode)
-        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A"] and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
-            return self._generate_model_milp_diff_word_truncated()            
-        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDDIFF_A1"]: #  bit-wise truncated difference propagations
-            return self._generate_model_milp_diff_bit_truncated()
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR", self.__class__.__name__ + "_LINEAR_PR"]:
+            return self._generate_model_milp_diff_linear_pr(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_A"]:
+            return self._generate_model_milp_diff_linear(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_XORDIFF_P", self.__class__.__name__ + "_LINEAR_P"]:
+            return self._generate_model_milp_diff_linear_p(tool_type, mode)
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_A"] and (not isinstance(self.input_vars[0], list)): # word-wise difference propagations, the input difference equals the ouput difference
+            return self._generate_model_milp_diff_linear_word_truncated()            
+        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDDIFF_A_1", self.__class__.__name__ + "_TRUNCATEDLINEAR_1", self.__class__.__name__ + "_TRUNCATEDLINEAR_A_1"]: #  bit-wise truncated difference propagations
+            return self._generate_model_milp_diff_linear_bit_truncated()
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
     
-    def _generate_model_milp_diff_pr(self, tool_type, mode): # modeling all possible (input difference, output difference, probablity)
+    def _generate_model_milp_diff_linear_pr(self, tool_type, mode): # modeling all possible (input difference, output difference, probablity)
         sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         var_p = [f"{self.ID}_p{i}" for i in range(sbox_weight.count('+') + 1)]
@@ -323,14 +429,14 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = [self._trans_template_weight(sbox_weight, var_p)]   
         return model_list  
 
-    def _generate_model_milp_diff(self, tool_type, mode):  # modeling all possible (input difference, output difference)
-        if self.model_version == self.__class__.__name__ + "_XORDIFF_A":
+    def _generate_model_milp_diff_linear(self, tool_type, mode):  # modeling all possible (input difference, output difference)
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]:
             self.model_filename = os.path.join(base_path, f'constraints_milp_{self.model_version.replace("_A", "")}_{tool_type}_{mode}.txt')
         sbox_inequalities, sbox_weight = self._gen_model_constraints_milp(tool_type, mode)
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0)) 
         model_list = self._trans_template_ineq(sbox_inequalities, sbox_weight, var_in, var_out)
         all_vars = var_in + var_out
-        if self.model_version == self.__class__.__name__ + "_XORDIFF_A": # to calculate the minimum number of active S-boxes
+        if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]: # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']   
             model_list += self._model_count_active_sbox_milp(var_in, var_At[0]) 
             all_vars += var_At
@@ -338,7 +444,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         model_list += self._declare_vars_type_milp('Binary', all_vars)
         return model_list   
     
-    def _generate_model_milp_diff_p(self, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
+    def _generate_model_milp_diff_linear_p(self, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, cite from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         ddt = self.computeDDT()
         diff_spectrum = self.gen_spectrum(ddt) + [2**self.input_bitsize]
@@ -364,26 +470,29 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
         self.weight = [weight]
         return model_list
     
-    def _generate_model_milp_diff_word_truncated(self): # word-wise truncated difference propagations, the input difference equals the ouput difference
+    def _generate_model_milp_diff_linear_word_truncated(self): # word-wise truncated difference propagations, the input difference equals the ouput difference
         var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
         model_list = [f'{var_in[0]} - {var_out[0]} = 0']
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out)
-        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A": # to calculate the minimum number of active S-boxes
+        if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_A", self.__class__.__name__ + "_TRUNCATEDLINEAR_A"]: # to calculate the minimum number of active S-boxes
             self.weight = var_in           
         return model_list
     
-    def _generate_model_milp_diff_bit_truncated(self): #  bit-wise truncated difference propagations
-        branch_num = self.differential_branch_number()
+    def _generate_model_milp_diff_linear_bit_truncated(self): #  bit-wise truncated difference propagations
+        if "DIFF" in self.model_version: 
+            branch_num = self.differential_branch_number()
+        elif "LINEAR" in self.model_version: 
+            branch_num = self.linear_branch_number()
         var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
         all_vars = var_in + var_out
         model_list = []
-        if branch_num >= 3: # model the differential branch number of sbox
+        if branch_num >= 3: # model the differential/linear branch number of sbox
             var_d = [self.ID + '_d'] 
             model_list += self._model_branch_num_milp(var_in, var_out, var_d[0], branch_num)
             all_vars += var_d
         if self.is_bijective(): # for bijective S-boxes, nonzero input difference must result in nonzero output difference and vice versa
             model_list += self._model_bijective_milp(var_in, var_out)       
-        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_A1": # to calculate the minimum number of differentially active s-boxes
+        if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_A_1", self.__class__.__name__ + "_TRUNCATEDLINEAR_A_1"]: # to calculate the minimum number of differentially active s-boxes
             var_At = [self.ID + '_At'] 
             model_list += self._model_count_active_sbox_milp(var_in, var_At[0])
             self.weight = var_At  
@@ -429,12 +538,21 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
             return self.ddt_to_truthtable_milp()
         elif self.model_version[:len(self.__class__.__name__ + "_XORDIFF_P")] == self.__class__.__name__ + "_XORDIFF_P" and self.model_version[len(self.__class__.__name__ + "_XORDIFF_P"):].isdigit():
             return self.pddt_to_truthtable(int(self.model_version[len(self.__class__.__name__ + "_XORDIFF_P"):]))   
+        elif self.model_version in [self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_A"]:
+            return self.star_lat_to_truthtable()
+        elif self.model_version in [self.__class__.__name__ + "_LINEAR_PR"]:
+            return self.lat_to_truthtable_milp()
+        elif self.model_version[:len(self.__class__.__name__ + "_LINEAR_P")] == self.__class__.__name__ + "_LINEAR_P" and self.model_version[len(self.__class__.__name__ + "_LINEAR_P"):].isdigit():
+            return self.plat_to_truthtable(int(self.model_version[len(self.__class__.__name__ + "_LINEAR_P"):]))    
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp")
 
     def _gen_model_pr_variables_objective_fun_milp(self):
-        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]: 
-            ddt = self.computeDDT()
-            weights = self.gen_weights(ddt)
+        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR", self.__class__.__name__ + "_LINEAR_PR"]:
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF_PR"]:
+                table = self.computeDDT()
+            elif self.model_version in [self.__class__.__name__ + "_LINEAR_PR"]:
+                table = self.computeLAT()
+            weights = self.gen_weights(table)
             pr_variables = [f'p{i}' for i in range(len(weights))]
             objective_fun = " + ".join(f"{w:.4f} {v}" for w, v in zip(weights, pr_variables))
             return pr_variables, objective_fun

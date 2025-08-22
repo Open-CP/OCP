@@ -268,7 +268,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         model_list += cons
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
-                var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
+                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
@@ -276,12 +276,33 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1":
-                var_in, var_out = [self.get_var_ID('in', i, unroll=True) for i in range(len(self.input_vars))], [self.get_var_ID('out', i, unroll=True)for i in range (len(self.output_vars))]
+                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
                 var_d = [f"{self.ID}_d"] 
                 if branch_num == None: branch_num =self.differential_branch_number() 
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
+                return model_list
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_2":
+                assert output_words == len(self.mat) and input_words == len(self.mat[0]), "Matrix size does not match input and output variable sizes."
+                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
+                for i in range(output_words):  # Loop over the ith output word
+                    var_in = []
+                    for k in range(input_words): # Loop over the kth input word
+                        if self.mat[i][k] == 1:
+                            vi = copy.deepcopy(self.input_vars[k])
+                            var_in.append(vi)
+                    vo = copy.deepcopy(self.output_vars[i])
+                    var_out = [vo]
+                    if len(var_in) == 1:
+                        trans_op = Equal(var_in, var_out, ID=self.ID+"_"+str(i))
+                    elif len(var_in) == 2:
+                        trans_op = XOR(var_in, var_out, ID=self.ID+"_"+str(i))
+                    elif len(var_in) >= 3:
+                        trans_op = N_XOR(var_in, var_out, ID=self.ID+"_"+str(i))
+                    trans_op.model_version = self.model_version.replace(self.__class__.__name__ + "_TRUNCATEDDIFF_2", trans_op.__class__.__name__ + "_TRUNCATEDDIFF")
+                    cons = trans_op.generate_model(model_type)
+                    model_list += cons
                 return model_list
             else:  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
