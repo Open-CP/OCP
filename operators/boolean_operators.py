@@ -11,6 +11,8 @@ class AND(BinaryOperator):  # Operator for the bitwise AND operation: compute th
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll)]
         elif implementation_type == 'c': 
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
+        elif implementation_type == 'verilog': 
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
         
     def generate_model(self, model_type='sat'):
@@ -66,6 +68,8 @@ class OR(BinaryOperator):  # Operator for the bitwise OR operation: compute the 
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll)]
         elif implementation_type == 'c': 
            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
+        elif implementation_type == 'verilog': 
+           return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
     def generate_model(self, model_type='sat'):
@@ -145,6 +149,20 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                 s = s.rstrip(' | ') + ';'
                 return [s]
             else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
+        elif implementation_type == 'verilog': 
+            if self.mat:
+                n = len(self.mat)
+                s = "assign " + self.get_var_ID('out', 0, unroll) + ' = '
+                for i in range(n):
+                    s += "("
+                    if self.mat[i][0] != None:
+                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
+                    if self.mat[i][1] != None:
+                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
+                    s += f") << {n-i-1} | "
+                s = s.rstrip(' | ') + ';'
+                return [s]
+            else: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
@@ -284,6 +302,12 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 expression_parts.append(self.get_var_ID('in', i, unroll))
             expression = ' ^ '.join(expression_parts)
             return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
+        elif implementation_type == 'verilog': 
+            expression_parts = []
+            for i in range(len(self.input_vars)):
+                expression_parts.append(self.get_var_ID('in', i, unroll))
+            expression = ' ^ '.join(expression_parts)
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
@@ -372,6 +396,8 @@ class NOT(UnaryOperator): # Operator for the bitwise NOT operation: compute the 
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1)] 
         elif implementation_type == 'c': 
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
+        elif implementation_type == 'verilog': 
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ~' + self.get_var_ID('in', 0, unroll) + ';']
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
             
     def generate_model(self, model_type='sat'):
@@ -400,6 +426,8 @@ class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute t
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll)]
         elif implementation_type == 'c': 
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
+        elif implementation_type == 'verilog': 
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
     
         
     def generate_model(self, model_type='sat'):
@@ -442,6 +470,8 @@ class COPY(Operator): # Operator that duplicates one input into multiple outputs
             return [f"{self.get_var_ID('out', j, unroll)} = {in_id}" for j in range(len(self.output_vars))]
         elif implementation_type == 'c':
             return [f"{self.get_var_ID('out', j, unroll)} = {in_id};" for j in range(len(self.output_vars))]
+        elif implementation_type == 'verilog':
+            return [f"{"assign " + self.get_var_ID('out', j, unroll)} = {in_id};" for j in range(len(self.output_vars))]
         else:
             raise Exception(f"{self.__class__.__name__}: unknown implementation type '{implementation_type}'")
     

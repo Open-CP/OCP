@@ -178,7 +178,7 @@ class Primitive(ABC):
      
 class Permutation(Primitive):
     def __init__(self, name, s_input, s_output, nbr_rounds, config):
-        super().__init__(name, {"IN":s_input}, {"OUT":s_output})
+        super().__init__(name, {"IN_":s_input}, {"OUT_":s_output})
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = config[0], config[1], config[2], config[3]
         self.nbr_rounds = nbr_rounds
         self.states = {"STATE": State("STATE", "", nbr_rounds, nbr_layers, nbr_words, nbr_temp_words, word_bitsize)}

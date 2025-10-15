@@ -24,7 +24,9 @@ def generate_codes(cipher):
     imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
     imp.generate_implementation(cipher,"files/" + cipher.name + ".c", "c")
     imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.c", "c", True)
-    # vis.generate_figure(cipher,"files/" + cipher.name + ".pdf")
+    imp.generate_implementation(cipher,"files/" + cipher.name + ".sv", "verilog")
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.sv", "verilog", True)
+    vis.generate_figure(cipher,"files/" + cipher.name + ".pdf")
     
 
 def test_vectors(cipher):
@@ -331,13 +333,14 @@ def TEST_DIFF_ATTACK_ROCCA_AD():
 
 if __name__ == '__main__':
     # generate_codes(SPECK_PERMUTATION(r=3, version = 32)) # version = 32, 48, 64, 96, 128
-    # generate_codes(SIMON_PERMUTATION(r=3, version = 32)) # version = 32, 48, 64, 96, 128
+    # generate_codes(SIMON_PERMUTATION(r=3, version = 64)) # version = 32, 48, 64, 96, 128
     # generate_codes(AES_PERMUTATION(r=3))
     # generate_codes(ASCON_PERMUTATION(r=3, represent_mode=0)) # r=3, 12; mode=0,1
     # test_vectors(ASCON_PERMUTATION(r=3, represent_mode=0))
     # generate_codes(SKINNY_PERMUTATION(r=None, version = 64)) # version = 64, 128
     # generate_codes(GIFT_PERMUTATION(r=None, version = 64)) # version = 64, 128
-    # generate_codes(SIPHASH_PERMUTATION(r=2))
+    
+    generate_codes(SIPHASH_PERMUTATION(r=2))
     # test_vectors(SIPHASH_PERMUTATION(r=2))
     # generate_codes(ROCCA_AD(r=5, represent_mode=0)) # represent_mode = 0, 1
     # test_vectors(ROCCA_AD(r=5, represent_mode=0))
@@ -355,7 +358,7 @@ if __name__ == '__main__':
     # generate_codes(PRESENT_BLOCKCIPHER(r=None, version=[64, 80])) # [64, 80], [64, 128]
     # test_vectors(PRESENT_BLOCKCIPHER(r=None, version=[64, 80]))
 
-    TEST_DIFF_ATTACK_SPECK()
+    # TEST_DIFF_ATTACK_SPECK()
     # TEST_DIFF_ATTACK_SIMON()
     # TEST_DIFF_ATTACK_ASCON()
     # TEST_DIFF_ATTACK_GIFT()
