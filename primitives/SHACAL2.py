@@ -1,7 +1,7 @@
 from primitives.primitives import Block_cipher
 from operators.modular_operators import ModAdd
 from operators.SHACAL2BooleanFunctions import SHACAL2_Sigma0, SHACAL2_Sigma1, SHACAL2_Sum0, SHACAL2_Sum1, SHACAL2_Maj, SHACAL2_Ch
-
+import variables.variables as var
 
 class SHACAL2_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
@@ -30,9 +30,9 @@ class SHACAL2_block_cipher(Block_cipher):
 
             super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
             
-            S = self.states["STATE"]
-            KS = self.states["KEY_STATE"]
-            SK = self.states["SUBKEYS"] 
+            S = self.functions["FUNCTION"]
+            KS = self.functions["KEY_SCHEDULE"]
+            SK = self.functions["SUBKEYS"]
 
             constant_table = self.gen_rounds_constant_table(version=version)
 
@@ -97,3 +97,7 @@ class SHACAL2_block_cipher(Block_cipher):
         OUT = [0x361AB632, 0x2FA9E7A7, 0xBB23818D, 0x839E01BD, 0xDAFDF473, 0x05426EDD, 0x297AEDB9, 0xF6202BAE]
         
         return [[IN, KEY], OUT]
+    
+
+def SHACAL2_BLOCK_CIPHER(r=None, version=[256, 512], represent_mode=0): # TO DO
+    pass

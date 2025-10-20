@@ -1,9 +1,9 @@
 import os, os.path
-import sys
 import subprocess
 import ctypes
 import numpy as np
 import importlib
+from contextlib import redirect_stdout
 
 # function that selects the variable bitsize when generating C code
 def get_var_def_c(word_bitsize):   
@@ -24,15 +24,15 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
         
         header_set = []
         matrix_seen = rot_seen = False
-        nbr_rounds_table = [my_prim.states[s].nbr_rounds for s in my_prim.states]
-        nbr_layers_table = [my_prim.states[s].nbr_layers for s in my_prim.states]
-        constraints_table = [my_prim.states[s].constraints for s in my_prim.states]
-        for i in range(len(my_prim.states)):
+        nbr_rounds_table = [my_prim.functions[s].nbr_rounds for s in my_prim.functions]
+        nbr_layers_table = [my_prim.functions[s].nbr_layers for s in my_prim.functions]
+        constraints_table = [my_prim.functions[s].constraints for s in my_prim.functions]
+        for i in range(len(my_prim.functions)):
            for r in range(1,nbr_rounds_table[i]+1):
                for l in range(nbr_layers_table[i]+1):
                    for cons in constraints_table[i][r][l]:
                        # generate the unique header for certain types of operators
-                       if cons.__class__.__name__ == 'Matrix' and not matrix_seen: 
+                       if cons.__class__.__name__ in ['Matrix', 'AESround'] and not matrix_seen: 
                           header = cons.generate_implementation_header_unique(language)
                           for line in header: myfile.write(line + '\n')
                           myfile.write('\n')
@@ -65,10 +65,10 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
             
             cpt, cptw = 0, 0
             my_input_name = sum([[i]*len(my_prim.inputs[i]) for i in my_prim.inputs], [])
-            for s in my_prim.states: 
-                for w in range(my_prim.states[s].nbr_words): 
-                    if unroll: myfile.write("\t" + my_prim.states[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(cptw) + "] \n")
-                    else: myfile.write("\t" + my_prim.states[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(cptw) + "] \n")
+            for s in my_prim.functions: 
+                for w in range(my_prim.functions[s].nbr_words): 
+                    if unroll: myfile.write("\t" + my_prim.functions[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(cptw) + "] \n")
+                    else: myfile.write("\t" + my_prim.functions[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(cptw) + "] \n")
                     cptw = cptw+1
                     if cptw>=len(my_prim.inputs[my_input_name[cpt]]): cptw=0
                     cpt = cpt+1
@@ -78,39 +78,39 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
 
             
             
-            for s in my_prim.states: 
-                if my_prim.states[s].nbr_temp_words!=0: myfile.write("\t")
-                for w in range(my_prim.states[s].nbr_words, my_prim.states[s].nbr_words + my_prim.states[s].nbr_temp_words): 
-                    if unroll: myfile.write(my_prim.states[s].vars[1][0][w].ID + " = ")
-                    else: myfile.write(my_prim.states[s].vars[1][0][w].remove_round_from_ID() + " = ")
-                if my_prim.states[s].nbr_temp_words!=0: myfile.write("0 \n")    
-           
+            for s in my_prim.functions: 
+                if my_prim.functions[s].nbr_temp_words!=0: myfile.write("\t")
+                for w in range(my_prim.functions[s].nbr_words, my_prim.functions[s].nbr_words + my_prim.functions[s].nbr_temp_words): 
+                    if unroll: myfile.write(my_prim.functions[s].vars[1][0][w].ID + " = ")
+                    else: myfile.write(my_prim.functions[s].vars[1][0][w].remove_round_from_ID() + " = ")
+                if my_prim.functions[s].nbr_temp_words!=0: myfile.write("0 \n")    
+            
             
             if unroll: 
                 for r in range(1,max(nbr_rounds_table)+1):
                     myfile.write("\n\t# Round " + str(r) + "\n")
-                    for s in my_prim.states_implementation_order: 
-                        if r <= my_prim.states[s].nbr_rounds:
-                            for l in range(my_prim.states[s].nbr_layers+1):                        
-                                for cons in my_prim.states[s].constraints[r][l]: 
+                    for s in my_prim.functions_implementation_order: 
+                        if r <= my_prim.functions[s].nbr_rounds:
+                            for l in range(my_prim.functions[s].nbr_layers+1):                        
+                                for cons in my_prim.functions[s].constraints[r][l]:
                                     for line in cons.generate_implementation("python", unroll=True): myfile.write("\t" + line + "\n")      
                             myfile.write("\n")
             else: 
                 myfile.write("\n\t# Round function \n")
                 myfile.write("\tfor i in range(" + str(nbr_rounds) + "):\n")  
-                for s in my_prim.states_implementation_order: 
-                    for l in range(my_prim.states[s].nbr_layers+1):                        
-                        for cons in my_prim.states[s].constraints[1][l]: 
+                for s in my_prim.functions_implementation_order: 
+                    for l in range(my_prim.functions[s].nbr_layers+1):                        
+                        for cons in my_prim.functions[s].constraints[1][l]:
                             for line in cons.generate_implementation("python"): myfile.write("\t\t" + line + "\n")      
                     myfile.write("\n")
                     
             myfile.write("\t# Output \n")
             cpt, cptw = 0, 0
             my_output_name = sum([[i]*len(my_prim.outputs[i]) for i in my_prim.outputs], [])
-            for s in my_prim.states: 
-                for w in range(my_prim.states[s].nbr_words):
-                    if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].ID + "\n")
-                    else: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].remove_round_from_ID() + "\n")
+            for s in my_prim.functions: 
+                for w in range(my_prim.functions[s].nbr_words):
+                    if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].ID + "\n")
+                    else: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].remove_round_from_ID() + "\n")
                     cptw = cptw+1
                     if cptw>=len(my_prim.outputs[my_output_name[cpt]]): cptw=0
                     cpt = cpt+1
@@ -136,17 +136,17 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              myfile.write("void " + my_prim.name + "(" + ", ".join([get_var_def_c(my_prim.inputs[i][0].bitsize) + "* " + i for i in my_prim.inputs]) + ", " +  ", ".join([get_var_def_c(my_prim.outputs[i][0].bitsize) + "* " + i for i in my_prim.outputs]) + "){ \n")
              
              
-             for s in my_prim.states_implementation_order: 
-                 if unroll:  myfile.write("\t" + get_var_def_c(my_prim.states[s].word_bitsize) + " " + ', '.join([my_prim.states[s].vars[i][j][k].ID for i in range(my_prim.states[s].nbr_rounds+1) for j in range(my_prim.states[s].nbr_layers+1) for k in range(my_prim.states[s].nbr_words + + my_prim.states[s].nbr_temp_words)]  ) + ";\n")
-                 else: myfile.write("\t" + get_var_def_c(my_prim.states[s].word_bitsize) + " " + ', '.join([my_prim.states[s].vars[1][j][k].remove_round_from_ID() for j in range(my_prim.states[s].nbr_layers+1) for k in range(my_prim.states[s].nbr_words + + my_prim.states[s].nbr_temp_words)]  ) + ";\n")
+             for s in my_prim.functions_implementation_order: 
+                 if unroll:  myfile.write("\t" + get_var_def_c(my_prim.functions[s].word_bitsize) + " " + ', '.join([my_prim.functions[s].vars[i][j][k].ID for i in range(my_prim.functions[s].nbr_rounds+1) for j in range(my_prim.functions[s].nbr_layers+1) for k in range(my_prim.functions[s].nbr_words + + my_prim.functions[s].nbr_temp_words)]  ) + ";\n")
+                 else: myfile.write("\t" + get_var_def_c(my_prim.functions[s].word_bitsize) + " " + ', '.join([my_prim.functions[s].vars[1][j][k].remove_round_from_ID() for j in range(my_prim.functions[s].nbr_layers+1) for k in range(my_prim.functions[s].nbr_words + + my_prim.functions[s].nbr_temp_words)]  ) + ";\n")
              myfile.write("\n\t// Input \n")
              
              cpt, cptw = 0, 0
              my_input_name = sum([[i]*len(my_prim.inputs[i]) for i in my_prim.inputs], [])
-             for s in my_prim.states: 
-                 for w in range(my_prim.states[s].nbr_words): 
-                     if unroll: myfile.write("\t" + my_prim.states[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(cptw) + "]; \n")
-                     else: myfile.write("\t" + my_prim.states[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(cptw) + "]; \n")
+             for s in my_prim.functions: 
+                 for w in range(my_prim.functions[s].nbr_words): 
+                     if unroll: myfile.write("\t" + my_prim.functions[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(cptw) + "]; \n")
+                     else: myfile.write("\t" + my_prim.functions[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(cptw) + "]; \n")
                      cptw = cptw+1
                      if cptw>=len(my_prim.inputs[my_input_name[cpt]]): cptw=0
                      cpt = cpt+1
@@ -157,18 +157,18 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              if unroll:  
                 for r in range(1,max(nbr_rounds_table)+1):
                      myfile.write("\n\t// Round " + str(r) + "\n")
-                     for s in my_prim.states_implementation_order:
-                         if  r <= my_prim.states[s].nbr_rounds:
-                            for l in range(my_prim.states[s].nbr_layers+1):
-                                for cons in my_prim.states[s].constraints[r][l]: 
+                     for s in my_prim.functions_implementation_order:
+                         if  r <= my_prim.functions[s].nbr_rounds:
+                            for l in range(my_prim.functions[s].nbr_layers+1):
+                                for cons in my_prim.functions[s].constraints[r][l]:
                                     for line in cons.generate_implementation('c', unroll=True): myfile.write("\t" + line + "\n")
                             myfile.write("\n")
              else:
                  myfile.write("\n\t// Round function \n")
                  myfile.write("\tfor (int i=0; i<" + str(nbr_rounds) + "; i++) {\n")                     
-                 for s in my_prim.states_implementation_order:
-                    for l in range(my_prim.states[s].nbr_layers+1):
-                        for cons in my_prim.states[s].constraints[1][l]: 
+                 for s in my_prim.functions_implementation_order:
+                    for l in range(my_prim.functions[s].nbr_layers+1):
+                        for cons in my_prim.functions[s].constraints[1][l]: 
                             for line in cons.generate_implementation('c'): myfile.write("\t\t" + line + "\n")
                     myfile.write("\n")
                  myfile.write("\t}\n")     
@@ -176,10 +176,10 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              myfile.write("\n\t// Output \n")
              cpt, cptw = 0, 0
              my_output_name = sum([[i]*len(my_prim.outputs[i]) for i in my_prim.outputs], [])
-             for s in my_prim.states: 
-                 for w in range(my_prim.states[s].nbr_words): 
-                     if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].ID + "; \n")
-                     else: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].remove_round_from_ID() + "; \n")
+             for s in my_prim.functions: 
+                 for w in range(my_prim.functions[s].nbr_words): 
+                     if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].ID + "; \n")
+                     else: myfile.write("\t" + my_output_name[cpt] + "[" + str(cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].remove_round_from_ID() + "; \n")
                      cptw = cptw+1
                      if cptw>=len(my_prim.outputs[my_output_name[cpt]]): cptw=0
                      cpt = cpt + 1
@@ -221,17 +221,17 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              for s in my_prim.inputs:  myfile.write("\n\tinput[" + str(len(s)*my_prim.inputs[s][0].bitsize-1) + ":0] " + s + "; \n")
              for s in my_prim.outputs: myfile.write("\toutput[" + str(len(my_prim.outputs[s])*my_prim.outputs[s][0].bitsize-1) + ":0] " + s + "; \n")
 
-             for s in my_prim.states_implementation_order: 
-                 if unroll:  myfile.write("\tlogic [" + str(my_prim.states[s].word_bitsize-1) + ":0] " + ', '.join([my_prim.states[s].vars[i][j][k].ID for i in range(my_prim.states[s].nbr_rounds+1) for j in range(my_prim.states[s].nbr_layers+1) for k in range(my_prim.states[s].nbr_words + + my_prim.states[s].nbr_temp_words)]  ) + ";")
-                 else: myfile.write("\tlogic [" + str(my_prim.states[s].word_bitsize-1) + ":0] " + ', '.join([my_prim.states[s].vars[1][j][k].remove_round_from_ID() for j in range(my_prim.states[s].nbr_layers+1) for k in range(my_prim.states[s].nbr_words + + my_prim.states[s].nbr_temp_words)]  ) + ";\n")
+             for s in my_prim.functions_implementation_order: 
+                 if unroll:  myfile.write("\tlogic [" + str(my_prim.functions[s].word_bitsize-1) + ":0] " + ', '.join([my_prim.functions[s].vars[i][j][k].ID for i in range(my_prim.functions[s].nbr_rounds+1) for j in range(my_prim.functions[s].nbr_layers+1) for k in range(my_prim.functions[s].nbr_words + + my_prim.functions[s].nbr_temp_words)]  ) + ";")
+                 else: myfile.write("\tlogic [" + str(my_prim.functions[s].word_bitsize-1) + ":0] " + ', '.join([my_prim.functions[s].vars[1][j][k].remove_round_from_ID() for j in range(my_prim.functions[s].nbr_layers+1) for k in range(my_prim.functions[s].nbr_words + + my_prim.functions[s].nbr_temp_words)]  ) + ";\n")
              myfile.write("\n\n\t// Input \n")
              
              cpt, cptw = 0, 0
              my_input_name = sum([[i]*len(my_prim.inputs[i]) for i in my_prim.inputs], [])
-             for s in my_prim.states: 
-                 for w in range(my_prim.states[s].nbr_words): 
-                     if unroll: myfile.write("\tassign " + my_prim.states[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(my_prim.states[s].word_bitsize-1 + my_prim.states[s].word_bitsize*cptw) + ":" + str(my_prim.states[s].word_bitsize*cptw) + "]; \n")
-                     else: myfile.write("\tassign " + my_prim.states[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(my_prim.states[s].word_bitsize-1 + my_prim.states[s].word_bitsize*cptw) + ":" + str(my_prim.states[s].word_bitsize*cptw) + "]; \n")
+             for s in my_prim.functions: 
+                 for w in range(my_prim.functions[s].nbr_words): 
+                     if unroll: myfile.write("\tassign " + my_prim.functions[s].vars[1][0][w].ID + " = " + my_input_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "]; \n")
+                     else: myfile.write("\tassign " + my_prim.functions[s].vars[1][0][w].remove_round_from_ID() + " = " + my_input_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "]; \n")
                      cptw = cptw+1
                      if cptw>=len(my_prim.inputs[my_input_name[cpt]]): cptw=0
                      cpt = cpt+1
@@ -242,18 +242,18 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              if unroll:  
                 for r in range(1,max(nbr_rounds_table)+1):
                      myfile.write("\n\t// Round " + str(r) + "\n")
-                     for s in my_prim.states_implementation_order:
-                         if  r <= my_prim.states[s].nbr_rounds:
-                            for l in range(my_prim.states[s].nbr_layers+1):
-                                for cons in my_prim.states[s].constraints[r][l]: 
+                     for s in my_prim.functions_implementation_order:
+                         if  r <= my_prim.functions[s].nbr_rounds:
+                            for l in range(my_prim.functions[s].nbr_layers+1):
+                                for cons in my_prim.functions[s].constraints[r][l]: 
                                     for line in cons.generate_implementation('verilog', unroll=True): myfile.write("\t" + line + "\n")
                             myfile.write("\n")
              else:
                  myfile.write("\n\t// Round function \n")
                  myfile.write("\tfor (int i=0; i<" + str(nbr_rounds) + "; i++) {\n")                     
-                 for s in my_prim.states_implementation_order:
-                    for l in range(my_prim.states[s].nbr_layers+1):
-                        for cons in my_prim.states[s].constraints[1][l]: 
+                 for s in my_prim.functions_implementation_order:
+                    for l in range(my_prim.functions[s].nbr_layers+1):
+                        for cons in my_prim.functions[s].constraints[1][l]: 
                             for line in cons.generate_implementation('verilog'): myfile.write("\t\t" + line + "\n")
                     myfile.write("\n")
                  myfile.write("\t}\n")     
@@ -261,10 +261,10 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              myfile.write("\n\t// Output \n")
              cpt, cptw = 0, 0
              my_output_name = sum([[i]*len(my_prim.outputs[i]) for i in my_prim.outputs], [])
-             for s in my_prim.states: 
-                 for w in range(my_prim.states[s].nbr_words): 
-                     if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.states[s].word_bitsize-1 + my_prim.states[s].word_bitsize*cptw) + ":" + str(my_prim.states[s].word_bitsize*cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].ID + "; \n")
-                     else: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.states[s].word_bitsize-1 + my_prim.states[s].word_bitsize*cptw) + ":" + str(my_prim.states[s].word_bitsize*cptw) + "] = " + my_prim.states[s].vars[nbr_rounds][my_prim.states[s].nbr_layers][w].remove_round_from_ID() + "; \n")
+             for s in my_prim.functions: 
+                 for w in range(my_prim.functions[s].nbr_words): 
+                     if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].ID + "; \n")
+                     else: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].remove_round_from_ID() + "; \n")
                      cptw = cptw+1
                      if cptw>=len(my_prim.outputs[my_output_name[cpt]]): cptw=0
                      cpt = cpt + 1
@@ -296,18 +296,23 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
 
 def test_implementation_python(cipher, cipher_name, input, output):
     print(f"****************TEST PYTHON IMPLEMENTATION of {cipher_name}****************")
+    print("Test input = ", [hex(i2) for i1 in input for i2 in i1])
+    print("Test output = ", [hex(i) for i in output])
     try:
-        imp_cipher = importlib.import_module(f"files.{cipher_name}")
-        importlib.reload(imp_cipher)
+        with open(os.devnull, "w") as f, redirect_stdout(f):
+            imp_cipher = importlib.import_module(f"files.{cipher_name}")
+            importlib.reload(imp_cipher)
         func = getattr(imp_cipher, f"{cipher.name}")
         result = [0 for _ in range(len(output))]
 
         func(*input, result)
+        print("Test result = ", [hex(i) for i in result])
 
         if result == output:
             print("Test passed.")
+            return True
         else:
-            print(f'!!!!!!!!!!!!!!!!!Wrong!!!!!!!!!!!!!!!!!\nresult = {[hex(i) for i in result]}\nexpected output = {output}')
+            print(f'!!!!!!!!!!!!!!!!!Wrong!!!!!!!!!!!!!!!!!\nTest result is not equal to expected Test output')
             return False
     except ImportError:
         print(f"Implementation module files.{cipher_name} version cannot be loaded.\n")
@@ -319,6 +324,8 @@ def test_implementation_python(cipher, cipher_name, input, output):
 
 def test_implementation_c(cipher, cipher_name, input, output):
     print(f"****************TEST C IMPLEMENTATION of {cipher_name}****************")
+    print("Test input = ", [hex(i2) for i1 in input for i2 in i1])
+    print("Test output = ", [hex(i) for i in output])
     first_var = next(iter(cipher.inputs.values()))[0]
     if first_var.bitsize <= 8:
         dtype_np = np.uint8
@@ -350,11 +357,13 @@ def test_implementation_c(cipher, cipher_name, input, output):
         func_args.append(result.ctypes.data_as(ctypes.POINTER(dtype_ct)))
 
         func(*func_args)
+        print("Test result = ", [hex(i) for i in result])
 
         if np.array_equal(result, output):
             print("Test passed.")
+            return True
         else:
-            print(f'Wrong! result = {[hex(i) for i in result]}, expected = {[hex(i) for i in output]}')
+            print(f'!!!!!!!!!!!!!!!!!Wrong!!!!!!!!!!!!!!!!!\nTest result is not equal to expected Test output')
             return False
     except Exception as e:
         print(f"Failed to load or execute the C function: {e}")

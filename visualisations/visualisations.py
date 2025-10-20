@@ -33,20 +33,20 @@ def generate_figure(my_prim, filename):
     in_color = "orange"                             # controls the displayed colors for the input variables
     out_color = "orange"                            # controls the displayed colors for the output variables
     
-    nbr_rounds_table = [my_prim.states[s].nbr_rounds for s in my_prim.states_display_order]
-    nbr_layers_table = [my_prim.states[s].nbr_layers for s in my_prim.states_display_order]
-    nbr_words_table = [my_prim.states[s].nbr_words for s in my_prim.states_display_order]
-    constraints_table = [my_prim.states[s].constraints for s in my_prim.states_display_order]
-    vars_table = [my_prim.states[s].vars for s in my_prim.states_display_order]
+    nbr_rounds_table = [my_prim.functions[s].nbr_rounds for s in my_prim.functions_display_order]
+    nbr_layers_table = [my_prim.functions[s].nbr_layers for s in my_prim.functions_display_order]
+    nbr_words_table = [my_prim.functions[s].nbr_words for s in my_prim.functions_display_order]
+    constraints_table = [my_prim.functions[s].constraints for s in my_prim.functions_display_order]
+    vars_table = [my_prim.functions[s].vars for s in my_prim.functions_display_order]
     vars_coord = []
     
     ax = plt.gca()
     
     ax.annotate(my_prim.name, xy=(-op_length, 4*elements_height), fontsize=3*var_font_size, ha="center")
     
-    # computation of the maximum x-lenghth for each state
-    max_length = [0]*len(my_prim.states)
-    for i in range(len(my_prim.states)):
+    # computation of the maximum x-lenghth for each function
+    max_length = [0]*len(my_prim.functions)
+    for i in range(len(my_prim.functions)):
        for r in range(1,nbr_rounds_table[i]+1):
            for l in range(nbr_layers_table[i]+1):
                temp = x_space*(len(vars_table[i][r][l])-1) + var_length*len(vars_table[i][r][l])
@@ -57,7 +57,7 @@ def generate_figure(my_prim, filename):
     # display of the round delimitation lines
     for r in range(0,max(nbr_rounds_table)): 
         y_coord = 2*elements_height-r*(y_space_rounds + 2*(max(nbr_layers_table)+1)*(y_space_layer + elements_height))
-        plt.plot([-op_length-40, sum(max_length)+x_space_state*(len(my_prim.states)-1)], [y_coord, y_coord], linewidth=0.1, linestyle='dashed', color='gray')
+        plt.plot([-op_length-40, sum(max_length)+x_space_state*(len(my_prim.functions)-1)], [y_coord, y_coord], linewidth=0.1, linestyle='dashed', color='gray')
         ax.annotate("Round " + str(r+1), xy=(-op_length,y_coord-8), fontsize=2*var_font_size, ha="center")
                 
     # display the input variables
@@ -76,7 +76,7 @@ def generate_figure(my_prim, filename):
     # diplay the variables  
     max_y_space = 0
     x_shift_state = 0
-    for i in range(len(my_prim.states)):
+    for i in range(len(my_prim.functions)):
        y_shift_round = 0
        for r in range(1,nbr_rounds_table[i]+1):
            for l in range(nbr_layers_table[i]+1):
@@ -110,7 +110,7 @@ def generate_figure(my_prim, filename):
     # diplay the operators and links to the variables 
     vars_coord = dict(vars_coord)
     x_shift_state = 0
-    for i in range(len(my_prim.states)):
+    for i in range(len(my_prim.functions)):
        y_shift_round = 0
        for r in range(1,nbr_rounds_table[i]+1):
            for l in range(nbr_layers_table[i]+1):
@@ -179,45 +179,4 @@ def generate_figure(my_prim, filename):
     my_fig = plt.gcf()
     my_fig.set_size_inches(0.02*(x_shift_state+max(op_length,op_length)),0.02*(2*elements_height+y_space_in_out+y_out_coord))
     my_fig.savefig(filename, bbox_inches='tight')
-    plt.show()
-
-
-def print_trails(cipher, mode=0):
-    """
-    Print the trail by displaying variable values at different levels of detail.
-
-    Supported modes:
-    - mode = 0: Print only input and output values (minimal detail).
-    - mode = 1: Print values at the start of each round (moderate detail).
-    - mode = 2: Print values at every layer in each round (full detail).
-    """
-    nbr_rounds_table = [cipher.states[s].nbr_rounds for s in cipher.states_display_order]
-    nbr_layers_table = [cipher.states[s].nbr_layers for s in cipher.states_display_order]
-    vars_table = [cipher.states[s].vars for s in cipher.states_display_order]
-    if mode == 0:
-        for i in range(len(cipher.states)):
-            print(f"=========State {cipher.states_display_order[i]}: =========")
-            for r in [1, nbr_rounds_table[i]]:
-                l = 0
-                print(f"Rounds {r}: ")
-                print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
-                
-
-    elif mode == 1:
-        for i in range(len(cipher.states)):
-            print(f"=========State {cipher.states_display_order[i]}: =========")
-            for r in range(1,nbr_rounds_table[i]+1):
-                l = 0
-                print(f"Rounds {r}:")
-                print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
-                
-
-    elif mode == 2:
-        for i in range(len(cipher.states)):
-            print(f"=========State {cipher.states_display_order[i]}: =========")
-            for r in range(1,nbr_rounds_table[i]+1):
-                print(f"Rounds {r}:")
-                for l in range(nbr_layers_table[i]+1):
-                    # print(f"Layers {l}:")                    
-                    print([hex(vars_table[i][r][l][w].value) for w in range(len(vars_table[i][r][l]))])
-                
+    plt.show()            

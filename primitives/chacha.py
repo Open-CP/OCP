@@ -2,6 +2,7 @@ from primitives.primitives import Permutation
 from operators.modular_operators import ModAdd
 from operators.boolean_operators import XOR
 from operators.operators import Equal
+import variables.variables as var
 
 
 # The ChaCha internal permutation
@@ -23,7 +24,7 @@ class ChaCha_permutation(Permutation):
             nbr_temp_words = 0
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.states["STATE"]
+            S = self.functions["FUNCTION"]
         
             for i in range(1,nbr_rounds+1):  
                 if i%2 == 0:
@@ -65,6 +66,12 @@ class ChaCha_permutation(Permutation):
         return [[IN], OUT]
 
 
+def CHACHA_PERMUTATION(r=None): 
+    my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
+    my_cipher = ChaCha_permutation("ChaCha_PERM", my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
 # The ChaCha permutation to generate the key stream
 class ChaCha_keypermutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
@@ -84,7 +91,7 @@ class ChaCha_keypermutation(Permutation):
             nbr_temp_words = 16 # To retain the initial input for adding with final state to obtain the key stream
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.states["STATE"]
+            S = self.functions["FUNCTION"]
         
             for i in range(1,nbr_rounds+1):  
                 if i%2 == 0:
@@ -140,3 +147,9 @@ class ChaCha_keypermutation(Permutation):
         OUT = [0xe4e7f110, 0x15593bd1, 0x1fdd0f50, 0xc47120a3, 0xc7f4d1c7, 0x0368c033, 0x9aaa2204, 0x4e6cd4c3, 0x466482d2, 0x09aa9f07, 0x05d7c214, 0xa2028bd9, 0xd19c12b5, 0xb94e16de, 0xe883d0cb, 0x4e3c50a2]
         
         return [[IN], OUT]
+    
+
+def CHACHA_KEYPERMUTATION(r=None): 
+    my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
+    my_cipher = ChaCha_keypermutation("ChaCha_KEYPERM", my_input, my_output, nbr_rounds=r)
+    return my_cipher

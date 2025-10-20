@@ -1,13 +1,10 @@
 from primitives.primitives import Permutation
 from operators.boolean_operators import XOR
 from operators.modular_operators import ModAdd
+import variables.variables as var
 
 
-# The SipHash internal permutation 
-# Test vector
-# the input 7469686173716475 6b617f6d656e6665 6b7f62616d677361 7c6d6c6a717c6d7b
-# should return 4d07749cdd0858e0 0d52f6f62a4f59a4 634cb3577b01fd3d a5224d6f55c7d9c8 
-# https://www.aumasson.jp/siphash/siphash.pdf
+# The SipHash internal permutation
 class SipHash_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
@@ -23,7 +20,7 @@ class SipHash_permutation(Permutation):
         nbr_temp_words = 0
         word_bitsize = 64
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-        S = self.states["STATE"]
+        S = self.functions["FUNCTION"]
 
         # create constraints
         if represent_mode==0:
@@ -46,3 +43,9 @@ class SipHash_permutation(Permutation):
         IN =[0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
         OUT = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8] 
         return [[IN], OUT]
+    
+    
+def SIPHASH_PERMUTATION(r=None): 
+    my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
+    my_cipher = SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r)
+    return my_cipher

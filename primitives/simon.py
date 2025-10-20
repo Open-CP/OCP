@@ -1,5 +1,6 @@
 from primitives.primitives import Permutation, Block_cipher
 from operators.boolean_operators import XOR, AND, ANDXOR
+import variables.variables as var
 
 
 # The Simon internal permutation  
@@ -20,8 +21,9 @@ class Simon_permutation(Permutation):
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (5, 2, 3, p_bitsize>>1)
         elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 2, 3, p_bitsize>>1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
+        self.test_vectors = self.gen_test_vectors(version)
         
-        S = self.states["STATE"]
+        S = self.functions["FUNCTION"]
 
         # create constraints
         if represent_mode==0:
@@ -40,7 +42,33 @@ class Simon_permutation(Permutation):
                 S.SingleOperatorLayer("XOR", i, 2, XOR, [[1, 4]], [1]) # XOR layer 
                 S.PermutationLayer("PERM", i, 3, [1,0]) # Permutation layer
 
-                
+
+    def gen_test_vectors(self, version):
+        if version == 32:
+            IN = [0x6565, 0x6877] 
+            OUT = [0xdb3c, 0x569b]
+        elif version == 48: 
+            IN = [0x612067, 0x6e696c]
+            OUT = [0x911b84, 0x11c29c]
+        elif version == 64: 
+            IN = [0x6f722067, 0x6e696c63]
+            OUT = [0xb3dbca80, 0x840afe75]
+        elif version == 96: 
+            IN = [0x2072616c6c69, 0x702065687420]
+            OUT = [0x6b6ccce37858, 0x41aa41637590]
+        elif version == 128: 
+            IN = [0x6373656420737265, 0x6c6c657661727420]
+            OUT = [0x10b9a695d8bb2564, 0xcf80a07ebfa62541]
+        return [[IN], OUT]
+    
+
+def SIMON_PERMUTATION(r=None, version=32):
+    p_bitsize, word_size = version, int(version/2)
+    my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
+
 # The Simon block cipher 
 class Simon_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
@@ -60,10 +88,11 @@ class Simon_block_cipher(Block_cipher):
         if k_nbr_words == 4: k_nbr_layers += 1
         k_nbr_rounds = max(1, nbr_rounds - k_nbr_words + 1)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
-        
-        S = self.states["STATE"]
-        KS = self.states["KEY_STATE"]
-        SK = self.states["SUBKEYS"]
+        self.test_vectors = self.gen_test_vectors(version)
+
+        S = self.functions["FUNCTION"]
+        KS = self.functions["KEY_SCHEDULE"]
+        SK = self.functions["SUBKEYS"] 
 
         constant_table = self.gen_rounds_constant_table(version)
 
@@ -103,7 +132,6 @@ class Simon_block_cipher(Block_cipher):
                 S.AddRoundKeyLayer("ARK", i, 4, XOR, SK, [0,1]) # Addroundkey layer 
                 S.PermutationLayer("PERM", i, 5, [1,0]) # Permutation layer
 
-        self.test_vectors = self.gen_test_vectors(version)
 
     def gen_rounds_constant_table(self, version):
         constant_table = []
@@ -115,7 +143,7 @@ class Simon_block_cipher(Block_cipher):
         z4 = 0b11110111001001010011000011101000000100011011010110011110001011
         z=z0 if (version[0],version[1])==(32,64) else z0 if (version[0],version[1])==(48,72) else z1 if (version[0],version[1])==(48,96)  else z2 if (version[0],version[1])==(64,96)  else z3 if (version[0],version[1])==(64,128)  else z2 if (version[0],version[1])==(96,96) else z3 if (version[0],version[1])==(96,144) else z2 if (version[0],version[1])==(128,128) else z3 if (version[0],version[1])==(128,192) else z4 if (version[0],version[1])==(128,256) else None
         round_constant = (2 ** (version[0] >> 1) - 1) ^ 3
-        for i in range(1,self.states["STATE"].nbr_rounds+1):    
+        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):    
             constant_table.append([round_constant ^ ((z >> ((i-1) % 62)) & 1)])
         return constant_table
     
@@ -162,3 +190,10 @@ class Simon_block_cipher(Block_cipher):
             key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100]
             ciphertext = [0x8d2b5579afc8a3a0, 0x3bf72a87efe7b868]
         return [[plaintext, key], ciphertext]
+    
+
+def SIMON_BLOCKCIPHER(r=None, version=[32,64]):
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
+    my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
+    my_cipher = Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher

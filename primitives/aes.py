@@ -1,6 +1,7 @@
 from primitives.primitives import Permutation, Block_cipher
 from operators.Sbox import AES_Sbox
 from operators.boolean_operators import XOR
+import variables.variables as var
 
 
 # The AES internal permutation  
@@ -18,19 +19,41 @@ class AES_permutation(Permutation):
         if nbr_rounds==None: nbr_rounds=10
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, 8)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
+        self.test_vectors = self.gen_test_vectors()
         full_rounds = 10
         
-        S = self.states["STATE"]
-
+        S = self.functions["FUNCTION"]
+        constant_table =self.gen_rounds_constant_table()
+        
         # create constraints
         if represent_mode==0:
-            for i in range(1,nbr_rounds+1):             
+            for i in range(1,nbr_rounds+1):      
                 S.SboxLayer("SB", i, 0, AES_Sbox) # Sbox layer   
-                S.PermutationLayer("SR", i, 1, [0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]) # Shiftrows layer
-                if i != full_rounds: S.MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]], "0x1B")  #Mixcolumns layer
+                S.PermutationLayer("SR", i, 1, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
+                if i != full_rounds: S.MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
                 else: S.AddIdentityLayer("ID", i, 2)     # Identity layer 
-                S.AddConstantLayer("AC", i, 3, "xor", [True]*16, [[0,1,2,3, 5,6,7,4, 10,11,8,9, 15,12,13,14]]*nbr_rounds)  # Constant layer            
-     
+                S.AddConstantLayer("AC", i, 3, "xor", [True]*16, constant_table)  # Constant layer. The constants are derived from the Rcon table
+
+
+    def gen_rounds_constant_table(self):
+        constant_table = []
+        Rcon = [0x01000000, 0x02000000, 0x04000000, 0x08000000, 0x10000000, 0x20000000, 0x40000000, 0x80000000, 0x1B000000, 0x36000000]
+        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1): 
+            constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff] * 4)      
+        return constant_table
+    
+
+    def gen_test_vectors(self): # test vectors
+        IN = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
+        OUT = [0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24]
+        return [[IN], OUT]
+    
+
+def AES_PERMUTATION(r=None):
+    my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
+    my_cipher = AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
+    return my_cipher
+
 
 # The AES block cipher
 class AES_block_cipher(Block_cipher):
@@ -38,7 +61,7 @@ class AES_block_cipher(Block_cipher):
         """
         Initializes the AES block cipher.
         :param name: Cipher name
-        :param version: (p_bitsize, k_bitsize), e.g., (64, 128)
+        :param version: (p_bitsize, k_bitsize), e.g., (128, 128)
         :param p_input: Plaintext input
         :param k_input: Key input
         :param c_output: Ciphertext output
@@ -50,7 +73,6 @@ class AES_block_cipher(Block_cipher):
         if nbr_rounds==None: nbr_rounds=10 if version[1]==128 else 12 if version[1]==192 else 14 if version[1]==256  else None
         nbr_rounds += 1
         if represent_mode==0: 
-            perm_s = [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]
             if k_bitsize==128:
                 (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, 8),  (7, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8) 
                 k_nbr_rounds, k_perm = nbr_rounds, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,13,14,15,12]
@@ -66,9 +88,9 @@ class AES_block_cipher(Block_cipher):
             nk = int(k_bitsize/32)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         
-        S = self.states["STATE"]
-        KS = self.states["KEY_STATE"]
-        SK = self.states["SUBKEYS"]
+        S = self.functions["FUNCTION"]
+        KS = self.functions["KEY_SCHEDULE"]
+        SK = self.functions["SUBKEYS"]
 
         constant_table =self.gen_rounds_constant_table()
 
@@ -114,7 +136,7 @@ class AES_block_cipher(Block_cipher):
             for i in range(1,nbr_rounds):   
                 S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
                 S.SboxLayer("SB", i, 1, AES_Sbox) # Sbox layer   
-                S.PermutationLayer("SR", i, 2, perm_s) # Shiftrows layer
+                S.PermutationLayer("SR", i, 2, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
                 if i != (full_rounds-1): S.MatrixLayer("MC", i, 3, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
                 else: S.AddIdentityLayer("ID", i, 3) # Identity layer     
             S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer   
@@ -127,7 +149,7 @@ class AES_block_cipher(Block_cipher):
     def gen_rounds_constant_table(self):
         constant_table = []
         Rcon = [0x01000000, 0x02000000, 0x04000000, 0x08000000, 0x10000000, 0x20000000, 0x40000000, 0x80000000, 0x1B000000, 0x36000000]
-        for i in range(1,self.states["KEY_STATE"].nbr_rounds): 
+        for i in range(1,self.functions["KEY_SCHEDULE"].nbr_rounds): 
             constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff])      
         return constant_table
     
@@ -146,3 +168,9 @@ class AES_block_cipher(Block_cipher):
             key = [0x60, 0x3D, 0xEB, 0x10, 0x15, 0xCA, 0x71, 0xBE, 0x2B, 0x73, 0xAE, 0xF0,  0x85, 0x7D, 0x77, 0x81, 0x1F, 0x35, 0x2C, 0x07, 0x3B, 0x61, 0x08, 0xD7, 0x2D, 0x98, 0x10, 0xA3, 0x09, 0x14, 0xDF, 0xF4]
             ciphertext = [0xf3, 0xee, 0xd1, 0xbd, 0xb5, 0xd2, 0xa0, 0x3c, 0x6, 0x4b, 0x5a, 0x7e, 0x3d, 0xb1, 0x81, 0xf8]
         return [[plaintext, key], ciphertext]
+    
+
+def AES_BLOCKCIPHER(r=None, version = [128, 128]): 
+    my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
+    my_cipher = AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher

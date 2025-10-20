@@ -471,7 +471,7 @@ class COPY(Operator): # Operator that duplicates one input into multiple outputs
         elif implementation_type == 'c':
             return [f"{self.get_var_ID('out', j, unroll)} = {in_id};" for j in range(len(self.output_vars))]
         elif implementation_type == 'verilog':
-            return [f"{"assign " + self.get_var_ID('out', j, unroll)} = {in_id};" for j in range(len(self.output_vars))]
+            return [f"assign {self.get_var_ID('out', j, unroll)} = {in_id};" for j in range(len(self.output_vars))]
         else:
             raise Exception(f"{self.__class__.__name__}: unknown implementation type '{implementation_type}'")
     

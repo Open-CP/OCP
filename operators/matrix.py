@@ -1,6 +1,6 @@
 import numpy as np
 import copy
-from operators.operators import Operator, Equal, RaiseExceptionVersionNotExisting
+from operators.operators import Operator, UnaryOperator, Equal, RaiseExceptionVersionNotExisting
 from operators.boolean_operators import XOR, N_XOR
 
 
@@ -307,3 +307,98 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             else:  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+
+
+class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation in GF(2^n) defined by a binary matrix: y = M*x
+    def __init__(self, input_vars, output_vars, mat, ID = None, constants=None):
+        super().__init__(input_vars, output_vars, ID = ID)
+        assert len(mat) == len(mat[0]), "The matrix should be a square matrix."
+        self.mat = mat
+        self.constants = constants
+        
+    
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        var_in = self.get_var_ID('in', 0, unroll)
+        var_out = self.get_var_ID('out', 0, unroll)
+        if implementation_type == 'python':
+            n = len(self.mat)
+            s = var_out + ' = '
+            for i in range(n):
+                s += "(("
+                first = True
+                for j in range(n):
+                    if self.mat[i][j] == 1:
+                        if first is False:
+                            s += " ^ "
+                        s += f"(({var_in} >> {n-j-1}) & 1)"
+                        first = False
+                if self.constants is not None and self.constants[i] is not None and self.constants[i] != 0:
+                    s += f" ^ {self.constants[i]}) << {n-i-1}) | "
+                else:
+                    s += f") << {n-i-1}) | "
+            s = s.rstrip(' | ')
+            return [s]                
+        elif implementation_type == 'c':
+            n = len(self.mat)
+            s = var_out + ' = '
+            for i in range(n):
+                s += "("
+                first = True
+                for j in range(n):
+                    if self.mat[i][j] == 1:
+                        if first is False:
+                            s += " ^ "
+                        s += f"(({var_in} >> {n-j-1}) & 1)"
+                        first = False
+                if self.constants is not None and self.constants[i] is not None and self.constants[i] != 0:
+                    s += f" ^ {self.constants[i]}) << {n-i-1} | "
+                else:
+                    s += f") << {n-i-1} | "
+            s = s.rstrip(' | ') + ';'
+            return [s]        
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        
+    def generate_model(self, model_type='SAT'):
+        model_list = []
+        if (model_type == 'SAT' or model_type == 'MILP') and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
+            var_in = []
+            var_out = []
+            for i in range(self.input_vars[0].bitsize):
+                vi = copy.deepcopy(self.input_vars[0])
+                vi.bitsize = 1
+                vi.ID = self.input_vars[0].ID + '_' + str(i)
+                var_in.append(vi)
+                vo = copy.deepcopy(self.output_vars[0])
+                vo.bitsize = 1
+                vo.ID = self.output_vars[0].ID + '_' + str(i)
+                var_out.append(vo)
+            trans_op = Matrix("GF2Linear_Trans", var_in, var_out, self.mat, ID=self.ID)
+            trans_op.model_version = self.model_version.replace(self.__class__.__name__, trans_op.__class__.__name__)
+            cons = trans_op.generate_model(model_type)
+            model_list += cons
+            return model_list
+        elif model_type == 'SAT':
+            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
+                unit_vectors = set()
+                for row in self.mat:
+                    if row.count(1) == 1 and all(x in (0, 1) for x in row):
+                        unit_vectors.add(tuple(row))
+                if len(unit_vectors) >= len(self.mat) - 1:
+                    model_list = [f'{var_in[0]} -{var_out[0]}', f'-{var_in[0]} {var_out[0]}']
+                return model_list            
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'MILP': 
+            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]: 
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
+                unit_vectors = set()
+                for row in self.mat:
+                    if row.count(1) == 1 and all(x in (0, 1) for x in row):
+                        unit_vectors.add(tuple(row))
+                if len(unit_vectors) >= len(self.mat) - 1:
+                    model_list = [f'{var_in[0]} - {var_out[0]} = 0']
+                    model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                return model_list 
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'CP': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")    

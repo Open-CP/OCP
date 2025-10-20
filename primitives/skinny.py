@@ -1,6 +1,7 @@
 from primitives.primitives import Permutation, Block_cipher
 from operators.Sbox import Skinny_4bit_Sbox, Skinny_8bit_Sbox
 from operators.boolean_operators import XOR
+import variables.variables as var
 
 # The Skinny internal permutation       
 class Skinny_permutation(Permutation):
@@ -20,10 +21,11 @@ class Skinny_permutation(Permutation):
         if nbr_rounds==None: nbr_rounds=32 if version==64 else 40 if version==128 else None
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, int(p_bitsize/16))
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
+        self.test_vectors = self.gen_test_vectors(version)
         round_constants = self.gen_rounds_constant_table()
         sbox = Skinny_4bit_Sbox if word_bitsize==4 else Skinny_8bit_Sbox 
 
-        S = self.states["STATE"]
+        S = self.functions["FUNCTION"]
 
         # create constraints
         if represent_mode==0: 
@@ -41,11 +43,26 @@ class Skinny_permutation(Permutation):
                                     0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a,
                                     0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
             
-        for i in range(1,self.states["STATE"].nbr_rounds+1):              
+        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):              
             rc = round_constants[i-1]
             c0, c1, c2 = rc & 0xF, rc >> 4, 0x2     
             constant_table.append([c0,c1,c2])
         return constant_table
+    
+    def gen_test_vectors(self, version):
+        if version == 64:
+            IN = [0x0, 0x6, 0x0, 0x3, 0x4, 0xf, 0x9, 0x5, 0x7, 0x7, 0x2, 0x4, 0xd, 0x1, 0x9, 0xd] 
+            OUT = [0x2, 0xe, 0x4, 0xc, 0xa, 0xa, 0x8, 0x1, 0xa, 0xc, 0xc, 0x4, 0x8, 0x7, 0x5, 0x6]
+        elif version == 128:
+            IN = [0x3a, 0x0c, 0x47, 0x76, 0x7a, 0x26, 0xa6, 0x8d, 0xd3, 0x82, 0xa6, 0x95, 0xe7, 0x02, 0x2e, 0x25]    
+            OUT = [0x34, 0x45, 0x55, 0x36, 0x13, 0xf2, 0xae, 0x5, 0x72, 0xa4, 0x9f, 0xe3, 0x3c, 0x90, 0xbe, 0xf9]
+        return [[IN], OUT]
+
+
+def SKINNY_PERMUTATION(r=None, version=64):
+    my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
+    my_cipher = Skinny_permutation(f"SKINNY{version}_PERM", version, my_input, my_output, nbr_rounds=r)
+    return my_cipher
 
 
 # The Skinny block cipher 
@@ -73,19 +90,20 @@ class Skinny_block_cipher(Block_cipher):
             elif self.tweak_size ==3: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 0, int(p_bitsize/16)), (5, int(16*k_bitsize / p_bitsize), 8, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
             k_perm_T = [i + 16 * j for j in range(self.tweak_size) for i in [9,15,8,13,10,14,12,11,0,1,2,3,4,5,6,7]]    
             if s_word_bitsize == 4:
-                mat1 = [[1,None],[2,None],[3,None],[0,1]]
-                mat2 = [0,3],[0,None],[1,None],[2,None]
+                mat1 = [[0,1,0,0],[0,0,1,0],[0,0,0,1],[1,1,0,0]]
+                mat2 = [[1,0,0,1],[1,0,0,0],[0,1,0,0],[0,0,1,0]]
             elif s_word_bitsize == 8:
-                mat1 = [[1,None],[2,None],[3,None],[4,None],[5,None],[6,None],[7,None],[0,2]]
-                mat2 = [[1,7],[0,None],[1,None],[2,None],[3,None],[4,None],[5,None],[6,None]]                
+                mat1 = [[0,1,0,0,0,0,0,0],[0,0,1,0,0,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,1,0,0,0], [0,0,0,0,0,1,0,0], [0,0,0,0,0,0,1,0], [0,0,0,0,0,0,0,1], [1,0,1,0,0,0,0,0]]
+                mat2 = [[0,1,0,0,0,0,0,1],[1,0,0,0,0,0,0,0], [0,1,0,0,0,0,0,0], [0,0,1,0,0,0,0,0],[0,0,0,1,0,0,0,0],[0,0,0,0,1,0,0,0], [0,0,0,0,0,1,0,0], [0,0,0,0,0,0,1,0]]            
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
+        self.test_vectors = self.gen_test_vectors(version)
         round_constants = self.gen_rounds_constant_table()
         sbox = Skinny_4bit_Sbox if s_word_bitsize == 4 else Skinny_8bit_Sbox
-        if self.tweak_size >= 2: self.states_implementation_order = ["KEY_STATE", "SUBKEYS", "STATE"] 
+        if self.tweak_size >= 2: self.functions_implementation_order = ["KEY_SCHEDULE", "SUBKEYS", "FUNCTION"] 
         
-        S = self.states["STATE"]
-        KS = self.states["KEY_STATE"]
-        SK = self.states["SUBKEYS"] 
+        S = self.functions["FUNCTION"]
+        KS = self.functions["KEY_SCHEDULE"]
+        SK = self.functions["SUBKEYS"]
         
         # create constraints
         if represent_mode==0: 
@@ -108,7 +126,7 @@ class Skinny_block_cipher(Block_cipher):
                         KS.AddIdentityLayer("ID", i, 1)     # Identity layer 
                     else:
                         KS.PermutationLayer("K_P", i, 0, k_perm_T) # Permutation layer
-                        KS.SingleOperatorLayer("K_XOR1", i, 1, XOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
+                        KS.GF2Linear_TransLayer("K_LFSR", i, 1, [j for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
                     KS.SingleOperatorLayer("K_XOR", i, 2, XOR, [[j,16+j] for j in range(8)], [j for j in range(32,40)]) # XOR layer 
             elif self.tweak_size == 3:
                 for i in range(1, k_nbr_rounds): 
@@ -118,8 +136,8 @@ class Skinny_block_cipher(Block_cipher):
                         KS.AddIdentityLayer("ID", i, 2)     # Identity layer 
                     else:
                         KS.PermutationLayer("K_P", i, 0, k_perm_T) # Permutation layer
-                        KS.SingleOperatorLayer("K_XOR1", i, 1, XOR, [[j,j] for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
-                        KS.SingleOperatorLayer("K_XOR2", i, 2, XOR, [[j,j] for j in range(32,40)], [j for j in range(32,40)], mat=mat2)    
+                        KS.GF2Linear_TransLayer("K_LFSR1", i, 1, [j for j in range(16,24)], [j for j in range(16,24)], mat=mat1)
+                        KS.GF2Linear_TransLayer("K_LFSR2", i, 2, [j for j in range(32,40)], [j for j in range(32,40)], mat=mat2)
                     KS.SingleOperatorLayer("K_XOR", i, 3, XOR, [[j,16+j] for j in range(8)], [j for j in range(48,56)]) # XOR layer 
                     KS.SingleOperatorLayer("K_XOR", i, 4, XOR, [[j,16+j] for j in range(32,40)], [j for j in range(48,56)]) # XOR layer 
                     
@@ -131,8 +149,7 @@ class Skinny_block_cipher(Block_cipher):
                 S.PermutationLayer("SR", i, 3, [0,1,2,3, 7,4,5,6, 10,11,8,9, 13,14,15,12]) # Shiftrows layer
                 S.MatrixLayer("MC", i, 4, [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]])  #Mixcolumns layer
 
-        self.test_vectors = self.gen_test_vectors(version)
-
+        
     def gen_rounds_constant_table(self):
         constant_table = []
         round_constants = [0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3E, 0x3D, 0x3B, 0x37, 0x2F, 0x1E, 0x3C, 0x39, 0x33,
@@ -141,7 +158,7 @@ class Skinny_block_cipher(Block_cipher):
                                     0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a,
                                     0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
             
-        for i in range(1,self.states["STATE"].nbr_rounds+1):              
+        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):              
             rc = round_constants[i-1]
             c0, c1, c2 = rc & 0xF, rc >> 4, 0x2     
             constant_table.append([c0,c1,c2])
@@ -174,3 +191,9 @@ class Skinny_block_cipher(Block_cipher):
             key = [0xdf,0x88,0x95,0x48,0xcf,0xc7,0xea,0x52,0xd2,0x96,0x33,0x93,0x01,0x79,0x74,0x49, 0xab,0x58,0x8a,0x34,0xa4,0x7f,0x1a,0xb2,0xdf,0xe9,0xc8,0x29,0x3f,0xbe,0xa9,0xa5, 0xab,0x1a,0xfa,0xc2,0x61,0x10,0x12,0xcd,0x8c,0xef,0x95,0x26,0x18,0xc3,0xeb,0xe8]
             ciphertext = [0x94, 0xec, 0xf5, 0x89, 0xe2, 0x1, 0x7c, 0x60, 0x1b, 0x38, 0xc6, 0x34, 0x6a, 0x10, 0xdc, 0xfa]       
         return [[plaintext, key], ciphertext]
+
+def SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
+    my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
+    my_cipher = Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    return my_cipher

@@ -1,26 +1,17 @@
-"""
-This module provides usage examples for the SPECK primitive and SPECK block cipher, including:
-
-1. Generating software implementations and visualizations
-2. Conducting differential cryptanalysis using MILP and SAT methods
-
-Note:
-For examples of other ciphers, refer to the following folders:
-- test/implementation
-- test/differential_cryptanalysis
-"""
-
+import sys
 from pathlib import Path
-from primitives.speck import SPECK_PERMUTATION, SPECK_BLOCKCIPHER
+from contextlib import redirect_stdout
+ROOT = Path(__file__).resolve().parents[2]  # this file -> implementation -> test -> <ROOT>
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+from primitives.chacha import CHACHA_PERMUTATION, CHACHA_KEYPERMUTATION
 import implementations.implementations as imp
 import visualisations.visualisations as vis
-import attacks.differential_cryptanalysis as dif
 
-FILES_DIR = Path("files")
+FILES_DIR = ROOT / "files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ********************* IMPLEMENTATIONS AND FIGURES ********************* #
 def test_python_imp(cipher): # Generate Python implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.py", "python")
     if not cipher.test_vectors:
@@ -66,27 +57,9 @@ def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementatio
 def test_visualisation(cipher): # Generate visualisation figure
     vis.generate_figure(cipher, FILES_DIR / f"{cipher.name}.pdf")
 
-def test_imp_speck_permutation():
-    # ********************* DEFINE CIPHER ********************* #   
-    cipher = SPECK_PERMUTATION(r=None, version=32)
 
-    test_python_imp(cipher)
-
-    test_python_unrolled_imp(cipher)
-
-    test_c_imp(cipher)
-
-    test_c_unrolled_imp(cipher)
-
-    test_verilog_imp(cipher)
-
-    test_verilog_unrolled_imp(cipher)
-
-    test_visualisation(cipher)
-    
-def test_imp_speck_blockcipher():
-    # ********************* DEFINE CIPHER ********************* #   
-    cipher = SPECK_BLOCKCIPHER(r=None, version=[32, 64])
+def test_imp_chacha_permutation():
+    cipher = CHACHA_PERMUTATION(r=None)
 
     test_python_imp(cipher)
 
@@ -100,51 +73,34 @@ def test_imp_speck_blockcipher():
 
     # test_verilog_unrolled_imp(cipher) # TO DO
 
-    test_visualisation(cipher)
+    # test_visualisation(cipher)
 
 
-# ********************* Differential Cryptanalysis ********************* #
-def test_diff_attack_speck_milp():
-    # Step 1. Define the cipher (permutation or block cipher)    
-    cipher = SPECK_PERMUTATION(r=5, version = 32)
-    # cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
+def test_imp_chacha_keypermutation():
+    cipher = CHACHA_KEYPERMUTATION(r=None)
 
-    # Step 2. Set parameters. 
-    # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
-    goal="DIFFERENTIALPATH_PROB"
-    constraints=["INPUT_NOT_ZERO"]
-    objective_target="OPTIMAL"
-    show_mode=0
-    config_model=None
-    config_solver=None
-    
-    # Step 3. Search for the differential trail
-    trail = dif.search_diff_trail(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+    test_python_imp(cipher)
 
-def test_diff_attack_speck_sat():
-    # Step 1. Define the cipher (permutation or block cipher)    
-    cipher = SPECK_PERMUTATION(r=5, version = 32)
-    # cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
+    test_python_unrolled_imp(cipher)
 
-    # Step 2. Set parameters.
-    # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
-    goal="DIFFERENTIALPATH_PROB"
-    constraints=["INPUT_NOT_ZERO"]
-    objective_target="OPTIMAL"
-    show_mode=0
-    config_model={"model_type": "SAT"}
-    config_solver=None
-    
-    # Step 3. Search for the differential trail
-    trail = dif.search_diff_trail(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+    test_c_imp(cipher)
+
+    test_c_unrolled_imp(cipher)
+
+    # test_verilog_imp(cipher) # TO DO
+
+    # test_verilog_unrolled_imp(cipher) # TO DO
+
+    # test_visualisation(cipher)
 
 
 if __name__ == "__main__":
+    output_file = FILES_DIR / "chacha_implementation_test_results.txt"
+    with open(output_file, "w", encoding="utf-8") as f, redirect_stdout(f):
+        print(f"=== Implementation Test Log ===")
+        
+        test_imp_chacha_permutation()
 
-    test_imp_speck_permutation()
+        test_imp_chacha_keypermutation()
 
-    test_imp_speck_blockcipher()
-
-    test_diff_attack_speck_milp()
-
-    test_diff_attack_speck_sat()
+        print("All implementation tests completed!")

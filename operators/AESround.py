@@ -36,7 +36,13 @@ class AESround(Operator): # Operator for the AES round
         if subkey: # AddRoundKey Layer (only if subkey is provided)
             self.layers.append([XOR([self.vars[3][i], subkey[i]], [self.vars[4][i]], ID + "_AK") for i in range(16)])        
         
-
+    def generate_implementation_header_unique(self, implementation_type='python'):
+        if implementation_type == 'python': 
+            model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
+        elif implementation_type == 'c': 
+            model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
+        return model_list
+    
     def generate_implementation_header(self, implementation_type='python'):
         header_set = []
         code_list = []
