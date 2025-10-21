@@ -1,6 +1,5 @@
 import sys
 from pathlib import Path
-from contextlib import redirect_stdout
 ROOT = Path(__file__).resolve().parents[2]  # this file -> implementation -> test -> <ROOT>
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -72,7 +71,11 @@ def test_imp_simon_permutation():
 
         test_c_unrolled_imp(cipher)
 
-        # test_visualisation(cipher)
+        # test_verilog_imp(cipher) # TO DO
+
+        # test_verilog_unrolled_imp(cipher) # TO DO
+
+        test_visualisation(cipher)
 
 
 def test_imp_simon_blockcipher():
@@ -89,14 +92,18 @@ def test_imp_simon_blockcipher():
 
         test_c_unrolled_imp(cipher)
 
-        # test_visualisation(cipher)
+        # test_verilog_imp(cipher) # TO DO
+
+        # test_verilog_unrolled_imp(cipher) # TO DO
+
+        test_visualisation(cipher)
 
 
 if __name__ == "__main__":
-    output_file = FILES_DIR / "simon_implementation_test_results.txt"
-    with open(output_file, "w", encoding="utf-8") as f, redirect_stdout(f):
-        print(f"=== Implementation Test Log ===")
+    print(f"=== Implementation Test Log ===")
 
-        test_imp_simon_permutation()
-        test_imp_simon_blockcipher()
-        print("All implementation tests completed!", file=f)
+    test_imp_simon_permutation()
+    
+    test_imp_simon_blockcipher()
+
+    print("All implementation tests completed!")

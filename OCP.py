@@ -132,7 +132,7 @@ def test_diff_attack_speck_sat():
     constraints=["INPUT_NOT_ZERO"]
     objective_target="OPTIMAL"
     show_mode=0
-    config_model={"model_type": "SAT"}
+    config_model={"model_type": "sat"}
     config_solver=None
     
     # Step 3. Search for the differential trail

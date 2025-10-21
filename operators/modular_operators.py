@@ -24,7 +24,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
             if self.modulo == None: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ";"]
             else: 
                 raise Exception(str(self.__class__.__name__) + ": addition modulo not a power a 2 is not yet handled for verilog '")
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
         model_list = []
@@ -221,7 +221,7 @@ class ModMul(BinaryOperator):  # Operator for the modular multiplication: multip
             else: 
                 if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
                 else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat', unroll=True):
         if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)

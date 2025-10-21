@@ -165,7 +165,7 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
         elif implementation_type == 'verilog': 
             if self.direction == 'r': return ["assign " + self.get_var_ID('out', 0, unroll) + ' = `ROTR(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
             else: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = `ROTL(' + self.get_var_ID('in', 0, unroll) + ', ' + str(self.amount) + ', ' + str(self.input_vars[0].bitsize) + ');']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def generate_implementation_header_unique(self, implementation_type='python'):
         if implementation_type == 'python': 
@@ -217,7 +217,7 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ") & (2**" + str(self.input_vars[0].bitsize) + " - 1)"]
         elif implementation_type == 'c': 
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + [" >> " if self.direction == 'r' else " << "][0] + str(self.amount) + ') & ((1<<' + str(self.input_vars[0].bitsize) + ') - 1);']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def generate_model(self, model_type='sat'):
         if model_type == 'sat': 
@@ -279,7 +279,7 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_
                 else: 
                     if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
                     else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")  
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")  
             
     def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python': 

@@ -245,7 +245,7 @@ class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship bet
                     y_bits = f'(y >> {x_bits - 1 - i}) & 1'
                     model_list.append(f'{y_vars} = {y_bits};')
                 return model_list
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def get_header_ID(self): 
         return [self.__class__.__name__, self.model_version, self.input_bitsize, self.output_bitsize, self.table]

@@ -5,7 +5,7 @@ Core functionalities:
 2. Solve MILP/SAT models using supported solvers:
     - MILP solvers: Gurobi, SCIP, OR-Tools
     - SAT solvers: PySAT, OR-Tools 
-3. Solve MILP/SAT models under different targets: 'OPTIMAL', 'SATISFIABLE', 'ALL solutions'
+3. Solve MILP/SAT models under different parameters and settings.
 """
 
 import os
@@ -14,7 +14,7 @@ try: # Solve MILP model using Gurobi solver
     import gurobipy as gp
     gurobipy_import = True
 except ImportError:
-    print("gurobipy module can't be loaded \n")
+    print("[WARNING] gurobipy module can't be loaded \n")
     gurobipy_import = False
     pass
 
@@ -22,7 +22,7 @@ try: # Solve MILP model using SCIP solver
     from pyscipopt import Model
     scip_import = True
 except ImportError:
-    print("PySCIPOpt module can't be loaded \n")
+    print("[WARNING] PySCIPOpt module can't be loaded \n")
     scip_import = False
     pass
 
@@ -31,7 +31,7 @@ try: # Solve MILP model using Or-tools solver. TO DO
     import ortoolslpparser
     ortools_import = True
 except ImportError:
-    print("ortools module can't be loaded \n")
+    print("[WARNING] ortools module can't be loaded \n")
     ortools_import = False
     pass
 
@@ -40,150 +40,113 @@ try: # Solve SAT model using a solver from python-sat
     from pysat.formula import CNF
     pysat_import = True
 except ImportError:
-    print("pysat module can't be loaded \n")
+    print("[WARNING] pysat module can't be loaded \n")
     pysat_import = False
     pass
-
 
 def solve_milp(filename, solving_args=None):
     """
     Solve a MILP model.
     
-    Args:
+    Parameters:
         filename (str): Path to the MILP model file.
         solving_args (dict): 
-            - target: The optimization target:
-                - "OPTIMAL": Find the optimal solution.
-                - "SATISFIABLE": Find a feasible solution.
-                - "ALL": Find All feasible solutions.
-            - solver: solver name (e.g, "Gurobi", "SCIP")
+            - solver: solver name (e.g, "GUROBI", "SCIP").
+            - solution_number: The number of solutions to find (default: 1).
     
-    Returns: 
-        - If target is "OPTIMAL" or "SATISFIABLE", returns a dict of variable assignments (a solution).
-        - If target is "ALL", returns a list of such dicts (all solutions).
-        - None if no feasible solution is found or solver fails.
+    Returns:
+            A list of solutions. Each solution is represented as a dictionary mapping variable names to their values.
     """
 
     solving_args = solving_args or {}
     solver = solving_args.get("solver", "DEFAULT")
     print(f"[INFO] Solving MILP model with settings: {solving_args}")
-    if solver in ["Gurobi", "DEFAULT"]:
+    if solver.upper() in ["GUROBI", "DEFAULT"]:
         return solve_milp_gurobi(filename, solving_args)    
-    elif solver == "SCIP":
+    elif solver.upper() == "SCIP":
         return solve_milp_scip(filename, solving_args)
-    raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: 'Gurobi' (DEFAULT), 'SCIP'.")
+    raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: 'GUROBI' (DEFAULT), 'SCIP'.")
 
 
 def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi.
     if gurobipy_import == False: 
-        print("gurobipy module can't be loaded ... skipping test\n")
-        return None
+        print("[WARNING] gurobipy module can't be loaded ... skipping test\n")
+        return []
     
-    # Load the model
     try:
-        model = gp.read(filename)
-    except gp.GurobiError as e:
-        print(f"[ERROR] Model loading from {filename}: {e}")
-        return None
-
-    # Set Parameters provided by Gurobi. TO DO MORE 
-    if "time_limit" in solving_args: 
-        model.Params.timeLimit = solving_args["time_limit"]
-    if "OutputFlag" in solving_args:
-        model.Params.OutputFlag = solving_args["OutputFlag"]
-    if "MIPFocus" in solving_args:
-        model.Params.MIPFocus = solving_args["MIPFocus"]
-    if "SolutionLimit" in solving_args:
-        model.Params.SolutionLimit = solving_args["SolutionLimit"]
-
-    # Solve the model
-    target = solving_args.get("target", "DEFAULT")
-    try:
-        if target == "ALL":
+        model = gp.read(filename) # Load the model from file.
+        # Set Parameters provided by Gurobi.
+        for key, val in solving_args.items():
+            if hasattr(model.Params, key):
+                setattr(model.Params, key, val)
+        solution_number = solving_args.get("solution_number", 1)
+        if isinstance(solution_number, int) and solution_number > 1:
             model.Params.PoolSearchMode = 2
-            model.Params.PoolSolutions = 1000000
-        elif target == "SATISFIABLE":
-            if "MIPFocus" not in solving_args: 
-                model.Params.MIPFocus = 1
-            if "SolutionLimit" not in solving_args:
-                model.Params.SolutionLimit = 1
+            model.Params.PoolSolutions = solution_number
+        # Solve the model
         model.optimize()
-        print("[INFO] Solving status:", model.status)
+        sol_count = getattr(model, "SolCount", 0)
+        print(f"[INFO] Number of solutions found: {sol_count}")
     except gp.GurobiError:
-        print("[ERROR] Check your Gurobi license,  visit https://gurobi.com/unrestricted for more information\n")
-        return None
-    
-    if target in ["OPTIMAL", "DEFAULT", "SATISFIABLE"]:
-        if model.status in [gp.GRB.Status.OPTIMAL, gp.GRB.Status.TIME_LIMIT, gp.GRB.Status.SUBOPTIMAL, gp.GRB.Status.INTERRUPTED]:
-            sol_dic = {v.VarName: int(round(v.Xn)) for v in model.getVars()}
-            sol_dic["obj_fun_value"] = model.ObjVal
-            sol_dic["status"] = model.status
-            return sol_dic
-        else:
-            return None
+        print("[ERROR] Check your Gurobi license, visit https://gurobi.com/unrestricted for more information\n")
+        return []
 
-    elif target == "ALL":
-        print("[INFO] Number of solutions found: ", model.SolCount)
+    # Return a list of solutions
+    # Case 1: No solution found
+    if sol_count == 0:
+        return []
+    
+    # Case 2: Single optimal solution found
+    elif solution_number == 1 or getattr(model.Params, "PoolSearchMode", 0) == 0:
+        sol = {v.VarName: v.X for v in model.getVars()}
+        sol["obj_fun_value"] = model.ObjVal
+        return [sol]
+    
+    # Case 3: Multiple solutions found
+    elif getattr(model.Params, "PoolSearchMode", 0) > 0:
         sol_list = []
         for i in range(model.SolCount):
             model.Params.SolutionNumber = i  
-            sol_dic = {v.VarName: int(round(v.Xn)) for v in model.getVars()}
-            sol_dic["obj_fun_value"] = model.PoolObjVal
-            sol_dic["status"] = model.status
-            sol_list.append(sol_dic)
+            sol = {v.VarName: v.Xn for v in model.getVars()}
+            sol.update({"obj_fun_value": model.PoolObjVal})
+            sol_list.append(sol)
         return sol_list
-    
-    raise ValueError(f"[ERROR] Unknown target: {target}")
 
 
-def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP.
+def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It supports finding one solution currently. TO DO: finding multiple solutions
     if not scip_import:
-        print("PySCIPOpt module can't be loaded ... skipping SCIP test\n")
-        return None
+        print("[WARNING] PySCIPOpt module can't be loaded ... skipping SCIP test\n")
+        return []
     
     try:
         model = Model()
         model.readProblem(filename)
-    except Exception as e:
-        print(f"[ERROR] Failed to read MILP model from '{filename}': {e}")
-        return None
-    
-    # Set Parameters provided by SCIP. TO DO MORE 
-    if "time_limit" in solving_args: 
-        model.setRealParam("limits/time", solving_args["time_limit"])
-    
-    # Solve the model
-    target = solving_args.get("target", "DEFAULT")
-    if target == "SATISFIABLE":
-        model.setIntParam("limits/solutions", 1)
-    if target in ["OPTIMAL", "DEFAULT", "SATISFIABLE"]:
+        # Set Parameters provided by SCIP. TO DO MORE 
+        if "time_limit" in solving_args: 
+            model.setRealParam("limits/time", solving_args["time_limit"])
+        solution_number = solving_args.get("solution_number", 1)
+        if isinstance(solution_number, int) and solution_number > 1: # TO DO: support multiple solutions
+            print("[WARNING] It currently does not support finding multiple solutions ... returning only one solution\n")
+            model.setIntParam("limits/solutions", solution_number)
+        # Solve the model
         model.optimize()
-        print("[INFO] Solving status: ",model.getStatus())
-        if model.getStatus() in ["optimal", "feasible", "solution limit", "time limit", "userinterrupt"]:
-            sol_dic = {v.name: int(round(model.getVal(v))) for v in model.getVars()}
-            sol_dic["obj_fun_value"] = model.getObjVal()
-            sol_dic["status"] = model.getStatus()
-            return sol_dic
-        return None
-        
-    elif target == "ALL":
-        sol_list = []
-        while model.getStatus() != "infeasible":
-            model.optimize()
-            print("[INFO] Solving status: ",model.getStatus())
-            if model.getStatus() in ["optimal", "feasible", "solution limit", "time limit", "userinterrupt"]:
-                sol_dic = {v.name: int(round(model.getVal(v))) for v in model.getVars()}
-                sol_dic["obj_fun_value"] = model.getObjVal()
-                sol_dic["status"] = model.getStatus()
-                sol_list.append(sol_dic)
-            else:
-                break
-        return sol_list
-        
-    raise ValueError(f"Unknown target: {target}")
+        sol_count = model.getNSols()
+        print(f"[INFO] Number of solutions found: {sol_count}")
+    except Exception as e:
+        print(f"[WARNING] SCIP solver error: {e} ... skipping test\n")
+        return []
+    
+    # Return a list of solutions
+    if sol_count == 0:
+        return []
+    
+    else:
+        sol = model.getBestSol()
+        sol_dic = {v.name: model.getSolVal(sol, v) for v in model.getVars()}
+        sol_dic["obj_fun_value"] = model.getSolObjVal(sol)
+        return [sol_dic]
 
-
-def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate anf write the MILP model in standard .lp format, based on the given constraints and objective function.
+def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate and write the MILP model in standard .lp format, based on the given constraints and objective function.
     # === Step 1: Define the MILP Model Structure === #
     content = "Minimize\nobj\nSubject To\n"
 
@@ -255,11 +218,11 @@ def solve_sat(filename, variable_map, solving_args=None):
 
 def solve_sat_pysat(filename, variable_map, solving_args):
     if not pysat_import:
-        print("pysat module can't be loaded ... skipping test\n")
+        print("[WARNING] pysat module can't be loaded ... skipping test\n")
         return None
     
     solver = solving_args.get("solver", "DEFAULT")
-    target = solving_args.get("target", "DEFAULT")
+    solution_number = solving_args.get("solution_number", 1)
     cnf = CNF(filename)
     if solver == "DEFAULT":
         solver = Solver()
@@ -268,38 +231,23 @@ def solve_sat_pysat(filename, variable_map, solving_args):
     
     solver.append_formula(cnf.clauses)
 
-    if target in ["SATISFIABLE", "DEFAULT"]:
-        if solver.solve():
-            model = solver.get_model()
-            sol_dic = {}
-            for var, value in variable_map.items():
-                if value in model:
-                    sol_dic[var] = 1
-                elif -value in model:
-                    sol_dic[var] = 0
-            return sol_dic
-        else:
-            print("No solution exists.")
-            return None
-        
-    elif target == "ALL":
-        sol_list = []
-        while solver.solve():
-            model = solver.get_model()
-            sol_dic = {}
-            for var, value in variable_map.items():
-                if value in model:
-                    sol_dic[var] = 1
-                elif -value in model:
-                    sol_dic[var] = 0       
-            sol_list.append(sol_dic)
-            block_clause = [-l for l in model] # TO DO: optimaize: if abs(l) in main_vars
-            solver.add_clause(block_clause)
-        solver.delete()
-        print("[INFO] Number of solutions found: ", len(sol_list))
-        return sol_list
-    
-    raise ValueError(f"[ERROR] Unknown target: {target}")
+    sol_count = 0
+    sol_list = []
+    while sol_count < solution_number and solver.solve():
+        model = solver.get_model()
+        sol = {}
+        for var, value in variable_map.items():
+            if value in model:
+                sol[var] = 1
+            elif -value in model:
+                sol[var] = 0
+        sol_list.append(sol)
+        block_clause = [-l for l in model] # TO DO: optimaize: if abs(l) in main_vars
+        solver.add_clause(block_clause)
+        sol_count += 1
+    solver.delete()
+    print("[INFO] Number of solutions found: ", len(sol_list))
+    return sol_list
     
 
 def solve_sat_ortools(filename, variable_map, solving_args): # TO DO

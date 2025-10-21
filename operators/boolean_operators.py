@@ -13,7 +13,7 @@ class AND(BinaryOperator):  # Operator for the bitwise AND operation: compute th
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
         elif implementation_type == 'verilog': 
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def generate_model(self, model_type='sat'):
         model_list = []
@@ -70,7 +70,7 @@ class OR(BinaryOperator):  # Operator for the bitwise OR operation: compute the 
            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
         elif implementation_type == 'verilog': 
            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
             
     def generate_model(self, model_type='sat'):
         model_list = []
@@ -117,74 +117,23 @@ class OR(BinaryOperator):  # Operator for the bitwise OR operation: compute the 
 
 
 class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute the bitwise XOR on the two input variables towards the output variable 
-    def __init__(self, input_vars, output_vars, ID = None, mat=None):
+    def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
-        self.mat = mat
 
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python': 
-            if self.mat:
-                n = len(self.mat)
-                s = self.get_var_ID('out', 0, unroll) + ' = ' 
-                for i in range(n):
-                    s += "(("
-                    if self.mat[i][0] != None:
-                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
-                    if self.mat[i][1] != None:
-                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
-                    s += f") << {n-i-1}) | "
-                return [s[:-2]]
-            else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
         elif implementation_type == 'c': 
-            if self.mat:
-                n = len(self.mat)
-                s = self.get_var_ID('out', 0, unroll) + ' = '
-                for i in range(n):
-                    s += "("
-                    if self.mat[i][0] != None:
-                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
-                    if self.mat[i][1] != None:
-                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
-                    s += f") << {n-i-1} | "
-                s = s.rstrip(' | ') + ';'
-                return [s]
-            else: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
         elif implementation_type == 'verilog': 
-            if self.mat:
-                n = len(self.mat)
-                s = "assign " + self.get_var_ID('out', 0, unroll) + ' = '
-                for i in range(n):
-                    s += "("
-                    if self.mat[i][0] != None:
-                        s += f"(({self.get_var_ID('in', 0, unroll)} >> {n-self.mat[i][0]-1}) & 1)"
-                    if self.mat[i][1] != None:
-                        s += f" ^ (({self.get_var_ID('in', 1, unroll)} >> {n-self.mat[i][1]-1}) & 1)"
-                    s += f") << {n-i-1} | "
-                s = s.rstrip(' | ') + ';'
-                return [s]
-            else: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
         model_list = []
         if model_type == 'sat': 
-            if self.mat and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                for i in range(len(self.mat)): 
-                    if self.mat[i][0] != None and self.mat[i][1] != None:
-                        i1, i2, o = var_in1[self.mat[i][0]], var_in2[self.mat[i][1]], var_out[i]
-                        if self.model_version == "DEFAULT" or self.model_version == self.__class__.__name__ + "_XORDIFF": 
-                            model_list += [f'{i1} {i2} -{o}', f'{i1} -{i2} {o}', f'-{i1} {i2} {o}', f'-{i1} -{i2} -{o}']
-                        elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                            model_list += [f'{i1} -{o}', f'-{i1} {o}', f'{i2} -{o}', f'-{i2} {o}']
-                        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")  
-                    elif self.mat[i][0] != None: 
-                        model_list += [f'{var_in1[self.mat[i][0]]} -{var_out[i]}', f'-{var_in1[self.mat[i][0]]} {var_out[i]}']
-                    elif self.mat[i][1] != None: 
-                        model_list += [f'{var_in2[self.mat[i][1]]} -{var_out[i]}', f'-{var_in2[self.mat[i][1]]} {var_out[i]}']                        
-                return model_list
             # Modeling for differential cryptanalysis
-            elif self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]:
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 for i in range(len(var_in1)):
                     i1, i2, o = var_in1[i],var_in2[i],var_out[i]
@@ -207,36 +156,8 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp': 
-            if self.mat and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_XORDIFF_2", self.__class__.__name__ + "_LINEAR"]):
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                bin_vars = []
-                for i in range(len(self.mat)): 
-                    if self.mat[i][0] != None and self.mat[i][1] != None:
-                        i1, i2, o = var_in1[self.mat[i][0]], var_in2[self.mat[i][1]], var_out[i]
-                        bin_vars += [i1, i2, o]
-                        if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
-                            d = self.ID + '_d_' + str(i)
-                            model_list += [f'{i1} + {i2} + {o} - 2 {d} >= 0', f'{i1} + {i2} + {o} <= 2', f'{d} - {i1} >= 0', f'{d} - {i2} >= 0', f'{d} - {o} >= 0']
-                            bin_vars.append(d)
-                        elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":                             
-                            model_list += [f'{i1} + {i2} - {o} >= 0', f'{i2} + {o} - {i1} >= 0', f'{i1} + {o} - {i2} >= 0', f'{i1} + {i2} + {o} <= 2']
-                        elif self.model_version == self.__class__.__name__ + "_XORDIFF_2": 
-                            d = self.ID + '_d_' + str(i)
-                            model_list += [f'{i1} + {i2} + {o} - 2 {d} = 0']
-                            bin_vars.append(d)
-                        elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                            model_list += [f'{i1} - {o} = 0', f'{i2} - {o} = 0']
-                    elif self.mat[i][0] != None: 
-                        model_list += [f'{var_in1[self.mat[i][0]]} - {var_out[i]} = 0']
-                        bin_vars += [var_in1[self.mat[i][0]], var_out[i]]
-                    elif self.mat[i][1] != None : 
-                        model_list += [f'{var_in2[self.mat[i][1]]} - {var_out[i]} = 0']  
-                        bin_vars += [var_in2[self.mat[i][1]], var_out[i]]     
-                    else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)   
-                model_list.append('Binary\n' +  ' '.join(v for v in bin_vars))
-                return model_list
             # Modeling for differential cryptanalysis
-            elif self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF"]: 
                     var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                     var_d = [self.ID + '_d_' + str(i) for i in range(self.input_vars[0].bitsize)]
                     for i in range(len(var_in1)): 
@@ -308,7 +229,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 expression_parts.append(self.get_var_ID('in', i, unroll))
             expression = ' ^ '.join(expression_parts)
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
     
     def generate_model(self, model_type='sat'):
         model_list = []
@@ -347,7 +268,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 model_list.append('Binary\n' + ' '.join(sum(var_in, []) + var_out))
                 model_list.append('Integer\n' + ' '.join(var_d))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":  # Reference: Milp-aided cryptanalysis of the future block cipher.
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":  # Reference: MILP-aided cryptanalysis of the future block cipher.
                 var_in, var_out = ([self.get_var_model("in", i) for i in range(len(self.input_vars))], self.get_var_model("out", 0))
                 var_in = [list(group) for group in zip(*var_in)]
                 var_d = [[f"{self.ID}_d_{i}_{j}" for i in range(int((len(self.input_vars)+1)/2))] for j in range(self.input_vars[0].bitsize)] 
@@ -398,8 +319,8 @@ class NOT(UnaryOperator): # Operator for the bitwise NOT operation: compute the 
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
         elif implementation_type == 'verilog': 
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ~' + self.get_var_ID('in', 0, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
-            
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+
     def generate_model(self, model_type='sat'):
         if model_type == 'sat': 
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]: 
@@ -428,7 +349,7 @@ class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute t
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
         elif implementation_type == 'verilog': 
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
-    
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def generate_model(self, model_type='sat'):
         model_list = []

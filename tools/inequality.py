@@ -5,7 +5,6 @@ def inequality_to_constraint_sat(inequality, variables): # Convert an inequality
         Return: 'x1 -x2 -x4'
     """
     terms = []
-    rhs = inequality[-1]
     for coeff, var in zip(inequality[:-1], variables):
         if coeff == 1:
             terms.append(f"{var}")

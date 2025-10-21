@@ -66,7 +66,7 @@ class AESround(Operator): # Operator for the AES round
                 for j in range(len(self.layers[i])):
                     code_list += self.layers[i][j].generate_implementation(implementation_type, unroll=unroll)
             return code_list
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
     def generate_model(self, model_type='sat'):
         if model_type == 'sat' or model_type == 'milp': 

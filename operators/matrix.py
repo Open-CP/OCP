@@ -358,9 +358,9 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
             return [s]        
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
         
-    def generate_model(self, model_type='SAT'):
+    def generate_model(self, model_type='sat'):
         model_list = []
-        if (model_type == 'SAT' or model_type == 'MILP') and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
+        if (model_type == 'sat' or model_type == 'milp') and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
             var_in = []
             var_out = []
             for i in range(self.input_vars[0].bitsize):
@@ -377,7 +377,7 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
             cons = trans_op.generate_model(model_type)
             model_list += cons
             return model_list
-        elif model_type == 'SAT':
+        elif model_type == 'sat':
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 unit_vectors = set()
@@ -388,7 +388,8 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     model_list = [f'{var_in[0]} -{var_out[0]}', f'-{var_in[0]} {var_out[0]}']
                 return model_list            
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'MILP': 
+
+        elif model_type == 'milp': 
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]: 
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 unit_vectors = set()
@@ -400,5 +401,5 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list 
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'CP': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")    

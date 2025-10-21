@@ -1,137 +1,128 @@
 from abc import ABC, abstractmethod
-from collections import defaultdict
-import re
+from pathlib import Path
+import sys
+import json
+from datetime import datetime, timezone
+ROOT = Path(__file__).resolve().parent.parent # this file -> attacks -> <ROOT>
+sys.path.append(str(ROOT))
+
+FILES_DIR = ROOT / "files"
+FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# Class that represents a differential/linear trail derived from the solution.
+# Class that represents a trail derived from the solution.
 class Trail(ABC):
-    def __init__(self, primitive, goal, start_round, end_round, solution):
-        self.primitive = primitive  # The cipher primitive
-        self.goal = goal # the attack goal
-        self.start_round = start_round  # The start round of the trail
-        self.end_round = end_round  # The end round of the trail
-        self.solution = solution  # The solution dictionary mapping variable names to values
-        self.trail_vars = self.gen_trail_vars()
-        self.trail = self.extract_trail_from_solution()  # Extract the trail from the solution dictionary
+    def __init__(self, type, data, solution_trace=None):
+        """
+        Initialize the Trail object.
 
-    @abstractmethod
-    def gen_trail_vars(self): # Generate variables representing the trail.
+        Parameters:
+        - type: The type of the trail (e.g., "differential", "linear")
+        - data: A dictionary containing:
+            "cipher": str, The name of the cipher (e.g., "AES")
+            "rounds": List[int] | int, The number of rounds or a list of round indices (e.g., 3 or [1, 2, 3])
+            ...
+        - solution_trace: # Optional mapping from variable name to its value, for example, the solution returned from MILP/SAT solver.
+        """
+        assert "cipher" in data, "[WARNING] data must contain 'cipher'"
+        assert "rounds" in data, "[WARNING] data must contain 'rounds'"
+        self.type = type
+        self.data = data
+        self.solution_trace = solution_trace or {}
+
+    def save_json(self, filename=None): # Save the trail information into a .json file.
+        trail_dict = {
+            "type": str(self.type).upper(),
+            "data": dict(self.data),
+            "solution_trace": dict(self.solution_trace),
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "tool": "OCP",
+            }        
+        if filename is None:
+            filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.json")
+        with open(filename, "w") as f:
+            json.dump(trail_dict, f, ensure_ascii=False, indent='\t')
+
+    def save_trail_txt(self, filename=None, show_mode=2): # Save the trail in a human-readable format into a .txt file.
+        if filename is None:
+            filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.txt")
+        lines = self.print_trail(show_mode)
+        with open(filename, "w") as f:
+            f.write(lines)
+        return lines
+        
+    def save_trail_tex(self, filename=None): # TO DO
         pass
 
-    @abstractmethod
-    def extract_trail_from_solution(self):   # Extract the trail from the solution dictionary.
+    def save_trail_pdf(self, filename=None): # TO DO
         pass
-    
+            
     @abstractmethod
-    def print_trail(self, mode=2, hex_format=True, filename=None): # Print the trail in a human-readable format.
-        pass  
-
-    # @abstractmethod
-    # def visualize_trail(self): # Generate a visual representation of the trail.
-    #     pass  
+    def print_trail(self, show_mode):
+        lines = "========== Trail ==========\n"
+        lines += f"Type: {self.type}\n"
+        lines += f"Cipher: {self.data['cipher']}\n"
+        return lines
 
 
 class DifferentialTrail(Trail):
-    def __init__(self, primitive, goal, start_round, end_round, solution):
-        super().__init__(primitive, goal, start_round, end_round, solution)
+    def __init__(self, data, solution_trace=None):
+        """
+        Parameters:
+        - data: A dictionary containing:
+            "cipher": str, The name of the cipher (e.g., "AES")
+            "functions": List[str], The list of functions involved in the cipher (e.g., ["FUNCTION", "KEY_SCHEDULE"])
+            "rounds": Dict[str, List[int] | int], For each function, the number of rounds or a list of round indices (e.g., {"FUNCTION": 3} or {"FUNCTION": [1, 2, 3]})
+            "diff_weight": float | int | None, The weight (defined as the negetive of logarithm base 2 of the differential probability) of the differential trail (e.g., 2)
+            "rounds_diff_weight": List[float] | None, The list of weigts of each round (e.g., [0, 1, 1])
+            "trail_values": List[str], The values of the trail
+        """
+        data["functions"] = data.get("functions", ["FUNCTION"])
+        if isinstance(data['rounds'], int):
+            data['rounds'] = {s: list(range(1, data['rounds'] + 1)) for s in data['functions']}
+        if isinstance(data['trail_values'], list):
+            data['trail_values'] = {"FUNCTION": data['trail_values']}
+        super().__init__("differential", data, solution_trace=solution_trace)
 
-    def gen_trail_vars(self): # Generate variables that represent the differential trail based on the cipher structure.       
-        bitwise = "TRUNCATEDDIFF" not in self.goal
-        trail_vars = defaultdict(lambda: defaultdict(lambda: defaultdict(list)))
-        for s in self.primitive.states:
-            for r in range(self.start_round[s], self.end_round[s]+1):
-                for l in range(self.primitive.states[s].nbr_layers+1):
-                    for var in self.primitive.states[s].vars[r][l]:
-                        if bitwise and var.bitsize > 1:
-                            trail_vars[s][r][l].extend([f"{var.ID}_{n}" for n in range(var.bitsize)]) # Append all bit-level variable names
-                        else:
-                            trail_vars[s][r][l].append(var.ID) # Append word-level variable name
-        return trail_vars
     
-    def extract_trail_from_solution(self):
-        trail_values = defaultdict(lambda: defaultdict(lambda: defaultdict(str)))
-        for s in self.primitive.states:
-            for r in range(self.start_round[s], self.end_round[s] + 1):
-                for l in range(self.primitive.states[s].nbr_layers + 1):
-                    value = ""
-                    for var in self.trail_vars[s][r][l]:
-                        value += str(self.solution.get(var, "0"))  # Get the value of the variable from the solution
-                    trail_values[s][r][l] = value
-        return trail_values
-
-    def print_trail(self, show_mode=2, hex_format=True):
+    def print_trail(self, show_mode=2):        
         """
         Print the trail in a human-readable format.
         
         Parameters:
         - mode: 
-            0 - Print only the first and last round (layer 0).
-            1 - Print all rounds (layer 0).
-            2 - Print all rounds and all layers.
-        - hex_format: If True, convert values to hexadecimal strings.
-        """       
+            0 - Print only the first and last round (layer 0) in hexadecimal strings.
+            1 - Print all rounds (layer 0) in hexadecimal strings.
+            2 - Print all rounds and all layers in hexadecimal strings.
+        """
+        lines = super().print_trail(show_mode)
+        if "diff_weight" in self.data and self.data["diff_weight"] is not None:
+            lines += f"Total Weight: {self.data['diff_weight']}\n"
+        if "rounds_diff_weight" in self.data and self.data["rounds_diff_weight"] is not None:
+            lines += f"rounds_diff_weight: {self.data['rounds_diff_weight']}\n"
 
-        if "obj_fun_value" in self.solution:
-            print(f"******** objective value of the solution: {self.solution['obj_fun_value']} ********")
-            
-        for s in self.primitive.states:
-            print(f"========= State {s}: =========")
-
+        trail_values = self.data['trail_values']        
+        for fun in trail_values:
+            print(f"Printing trail for function: {fun}...")
             if show_mode == 0:
-                for r in [self.start_round[s], self.end_round[s]]:
-                    print(f"Round {r}:")  
-                    layers = [0 if s in ["STATE", "KEY_STATE"] else 1]
-                    for l in layers:
-                        value_str = self.trail[s][r][l]
-                        if hex_format:
-                            value_str = "0x" + hex(int(value_str, 2))[2:].zfill(len(value_str) // 4)
-                        print(f"(Layer {l}): {value_str}")
-
+                show_rounds = [1, len(trail_values[fun])] if len(trail_values[fun]) > 1 else [1]
+                show_layers = list(range(len(trail_values[fun][0])))
             elif show_mode == 1:
-                total_w = 0
-                for r in list(range(self.start_round[s], self.end_round[s]+1)):
-                    print(f"Round {r}:")
-                    total_w += self.gen_round_objective_function_value(r)
-                    layers = [0 if s in ["STATE", "KEY_STATE"] else 1]
-                    for l in layers:
-                        value_str = self.trail[s][r][l]
-                        if hex_format:
-                            value_str = "0x" + hex(int(value_str, 2))[2:].zfill(len(value_str) // 4)
-                        print(f"(Layer {l}): {value_str}")
-                print(f"Total objective function value = {total_w}")
-    
+                show_rounds = list(range(1, len(trail_values[fun]) + 1))
+                show_layers = [0]
             elif show_mode == 2:
-                total_w = 0
-                for r in list(range(self.start_round[s], self.end_round[s]+1)):
-                    print(f"Round {r}:")
-                    total_w += self.gen_round_objective_function_value(r)
-                    layers = list(range(self.primitive.states[s].nbr_layers + 1))
-                    for l in layers:                        
-                        value_str = self.trail[s][r][l]
-                        if hex_format:
-                            value_str = "0x" + hex(int(value_str, 2))[2:].zfill(len(value_str) // 4)
-                        print(f"(Layer {l}): {value_str}")
-                print(f"Total objective function value = {total_w}")
-                
-
-    def gen_round_objective_function_value(self, r):
-        obj_fun = self.solution.get("obj_fun", None)
-        if obj_fun is not None and r <= len(obj_fun):  # Print the objective value
-            obj_fun_r = obj_fun[r-1]
-
-        w = 0
-        for obj in obj_fun_r:
-            terms = obj.split('+')
-            for term in terms:
-                match = re.match(r'(\d*\.?\d*)\s*(\w+)', term.strip())
-                if match:
-                    coefficient = float(match.group(1)) if match.group(1) != '' else 1  # Default coefficient is 1 if not found
-                    variable = match.group(2)
-                    if variable in self.solution:
-                        w += coefficient * self.solution[variable]
-                else:
-                    print(f"Warning: Unable to parse '{term.strip()}'")
-                    w = "-"
-                    break
-        print(f"Objective Function Value: {w}")
-        return w
+                show_rounds = list(range(1, len(trail_values[fun]) + 1))
+                show_layers = list(range(len(trail_values[fun][0])))
+            else:
+                raise ValueError(f"[WARNING] show_mode {show_mode} should be 0, 1, or 2.")
+            
+            lines += f"-------- {fun}: --------\n"
+            print("show_rounds:", show_rounds)
+            print("show_layers:", show_layers)
+            for r in show_rounds:
+                lines += f"Round {r}:\n"
+                for l in show_layers:
+                    value_str = self.data['trail_values'][fun][r-1][l]
+                    lines += f"{value_str}\n"
+        print(lines)
+        return lines

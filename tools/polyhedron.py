@@ -6,11 +6,7 @@ from functools import reduce
 try:
     import cdd
 except ImportError:
-    print("pycddlib is not installed, installing it by 'pip install pycddlib', https://pypi.org/project/pycddlib/")
-
-base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files/sbox_modeling/'))
-if not os.path.exists(base_path): 
-    os.makedirs(base_path, exist_ok=True)
+    print("[WARNING] pycddlib is not installed, installing it by 'pip install pycddlib', https://pypi.org/project/pycddlib/")
 
 
 def cdd_ineq_to_coeff_rhs(ineq): # Convert a cddlib-style inequality of the form: [b, a1, a2, ..., an] to the coefficients [a1, a2, ..., an, -b], which represents 'a1*x1 + ... + an*xn >= -b'

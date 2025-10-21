@@ -1,12 +1,14 @@
+import subprocess
+from pathlib import Path
+
 try:
     from pyeda.inter import espresso_tts
 except ImportError:
-    print("PyEDA is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/")        
-import subprocess
-import os
-base_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'files/sbox_modeling/'))
-if not os.path.exists(base_path): 
-    os.makedirs(base_path, exist_ok=True)
+    print("[WARNING] PyEDA is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/")
+
+ROOT = Path(__file__).resolve().parents[1] # this file -> tools -> <ROOT>
+FILES_DIR = ROOT / "files" / "sbox_modeling"
+FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list of integer coefficients representing a linear inequality of the form: sum_i (coeff_i * x_i) >= rhs
     """    
@@ -59,8 +61,8 @@ def ttb_to_ineq_logic(ttable, variables, mode=0): # Convert a truth table to CNF
     file_contents += cont_ttable
 
     # Setup paths
-    pla_file = os.path.join(base_path, 'ttable.txt')
-    result_file = os.path.join(base_path, 'sttable.txt')
+    pla_file = str(FILES_DIR / 'ttable.txt')
+    result_file = str(FILES_DIR / 'sttable.txt')
 
     # Write input PLA file
     with open(pla_file, "w") as fw:
