@@ -73,7 +73,6 @@ def extract_trail_from_solution(cipher, goal, solution, hex_format=True):
             trail_values[fun] = fun_vals
         if fun_vars:
             trail_vars[fun] = fun_vars
-    print(trail_values, trail_vars)
     return trail_values, trail_vars
 
 # ---------- Differential Attack Interface ----------

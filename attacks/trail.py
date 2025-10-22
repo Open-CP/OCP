@@ -117,8 +117,6 @@ class DifferentialTrail(Trail):
                 raise ValueError(f"[WARNING] show_mode {show_mode} should be 0, 1, or 2.")
             
             lines += f"-------- {fun}: --------\n"
-            print("show_rounds:", show_rounds)
-            print("show_layers:", show_layers)
             for r in show_rounds:
                 lines += f"Round {r}:\n"
                 for l in show_layers:

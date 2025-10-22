@@ -142,7 +142,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
                 model_list = [f"{var_in[0]} - {var_out[0]} = 0"]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self._class_._name_), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(str(self.__class__._name_), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
     
