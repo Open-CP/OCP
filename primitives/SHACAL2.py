@@ -99,5 +99,16 @@ class SHACAL2_block_cipher(Block_cipher):
         return [[IN, KEY], OUT]
     
 
-def SHACAL2_BLOCK_CIPHER(r=None, version=[256, 512], represent_mode=0): # TO DO
-    pass
+def SHACAL2_BLOCK_CIPHER(r=None, version=[256, 512], represent_mode=0):
+    shacal2Version = version[0]
+    stateWordsCount = 8
+    keyWordsCount = 16
+    shacal2Name = f"SHACAL2_{shacal2Version}_{r}"
+    if shacal2Version == 256:
+        wordSize = 32
+    elif shacal2Version == 512:
+        wordSize = 64
+    inputVariables, outputVariables = [var.Variable(wordSize,ID="in"+str(i)) for i in range(stateWordsCount)], [var.Variable(wordSize,ID="out"+str(i)) for i in range(stateWordsCount)]
+    keyVariables = [var.Variable(wordSize,ID="k"+str(i)) for i in range(keyWordsCount)]
+    shacal2Instance = SHACAL2_block_cipher(shacal2Name, version, inputVariables, keyVariables, outputVariables, nbr_rounds=r, represent_mode=represent_mode)
+    return shacal2Instance

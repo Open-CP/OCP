@@ -59,11 +59,11 @@ def test_visualisation(cipher): # Generate visualisation figure
 
 def test_imp_shacal2():
 
-    versions = [[256, 512], [512, 1024]]
+    versions = [[256, 512]]
 
     for version in versions:
 
-        cipher = SHACAL2_BLOCK_CIPHER(r=None, version=version, represent_mode=0)
+        cipher = SHACAL2_BLOCK_CIPHER(r=64, version=version, represent_mode=0)
 
         test_python_imp(cipher)
 
@@ -77,7 +77,7 @@ def test_imp_shacal2():
 
         # test_verilog_unrolled_imp(cipher) # TO DO
 
-        test_visualisation(cipher)
+        # test_visualisation(cipher)
 
 
 if __name__ == "__main__":

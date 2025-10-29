@@ -353,7 +353,7 @@ def modeling_solving_optimal_sat(cipher, goal, constraints, config_model, config
 
 def modeling_solving_optimal_sat_intobj(cipher, goal, constraints, config_model, config_solver): # Find the optimal solution with integer objective function value
     optimal_search_strategy_sat = config_model.get("optimal_search_strategy_sat", "INCREASING FROM AT MOST 0")
-    obj_val = int(optimal_search_strategy_sat.split()[-1])
+    obj_val = int(float(optimal_search_strategy_sat.split()[-1]))
     solutions = None
         
     if optimal_search_strategy_sat.startswith("INCREASING FROM AT MOST"):
@@ -625,10 +625,9 @@ def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bit
             - "SUM_EXACTLY": Sum of selected variables == target value.
             - "SUM_AT_LEAST": Sum of selected variables >= target value.
             - "SUM_AT_MOST": Sum of selected variables <= target value.
-        cons_args (dict): Parameters for constraint generation, including:
-            - cons_value (int): Target value for the constraint.
-            - cons_vars (list[str]): Additional variable names to include.
-            - bitwise (bool): If True, expand variables by bit.
+        cons_vars (list[str]): Variable names.
+        cons_value (int): Target value.
+        bitwise (bool): If True, expand variables by bit.
 
     Returns:
         list[str]: List of generated model constraint strings.
@@ -674,6 +673,8 @@ def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
     elif model_type == "sat" and cons_value == 0:
         return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
     elif model_type == "sat" and pysat_import:
+        if not encoding:
+            encoding = 1  # Default to 1 if not specified
         assert encoding in [0,1,2,3,4,5,6,7,8,9], f"[ERROR] Invalid encoding = {encoding}, refer https://pysathq.github.io/docs/html/api/card.html"
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
@@ -703,6 +704,8 @@ def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQ
     elif model_type == "sat" and encoding == "SEQUENTIAL":
         return gen_sequential_encoding_sat(cons_vars, cons_value)
     elif model_type == "sat" and pysat_import:
+        if not encoding:
+            encoding = "SEQUENTIAL"  # Default to "SEQUENTIAL" if not specified
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
@@ -733,6 +736,8 @@ def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding="SE
     elif model_type == "sat" and encoding == "SEQUENTIAL":
         return gen_sequential_encoding_sat(cons_vars, cons_value, greater_or_equal=True)
     elif model_type == "sat" and pysat_import:
+        if not encoding:
+            encoding = "SEQUENTIAL"  # Default to "SEQUENTIAL" if not specified
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]

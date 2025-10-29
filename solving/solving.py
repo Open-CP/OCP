@@ -86,7 +86,6 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
         # Solve the model
         model.optimize()
         sol_count = getattr(model, "SolCount", 0)
-        print(f"[INFO] Number of solutions found: {sol_count}")
     except gp.GurobiError:
         print("[ERROR] Check your Gurobi license, visit https://gurobi.com/unrestricted for more information\n")
         return []
@@ -94,12 +93,14 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
     # Return a list of solutions
     # Case 1: No solution found
     if sol_count == 0:
+        print(f"[INFO] Found no solution.")
         return []
     
     # Case 2: Single optimal solution found
     elif solution_number == 1 or getattr(model.Params, "PoolSearchMode", 0) == 0:
         sol = {v.VarName: v.X for v in model.getVars()}
         sol["obj_fun_value"] = model.ObjVal
+        print(f"[INFO] Found 1 solution.")
         return [sol]
     
     # Case 3: Multiple solutions found
@@ -110,6 +111,7 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
             sol = {v.VarName: v.Xn for v in model.getVars()}
             sol.update({"obj_fun_value": model.PoolObjVal})
             sol_list.append(sol)
+        print(f"[INFO] Found {len(sol_list)} solutions.")
         return sol_list
 
 
@@ -131,61 +133,76 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It
         # Solve the model
         model.optimize()
         sol_count = model.getNSols()
-        print(f"[INFO] Number of solutions found: {sol_count}")
     except Exception as e:
         print(f"[WARNING] SCIP solver error: {e} ... skipping test\n")
         return []
     
     # Return a list of solutions
     if sol_count == 0:
+        print(f"[INFO] Found no solution.")
         return []
     
     else:
         sol = model.getBestSol()
         sol_dic = {v.name: model.getSolVal(sol, v) for v in model.getVars()}
         sol_dic["obj_fun_value"] = model.getSolObjVal(sol)
+        print(f"[INFO] Found 1 solution.")
         return [sol_dic]
 
 def gen_milp_model(constraints, obj_fun=None, filename=""): # Generate and write the MILP model in standard .lp format, based on the given constraints and objective function.
-    # === Step 1: Define the MILP Model Structure === #
-    content = "Minimize\nobj\nSubject To\n"
+    if not filename:
+        raise ValueError("Please specify an output filename for the MILP model.")
+    dir_path = os.path.dirname(filename)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
 
-    # === Step 2: Process Constraints === #
-    bin_vars, in_vars = [], []
-    for constraint in constraints:
-        if "Binary" in constraint:
-            constraint_split = constraint.split('Binary\n')
-            content += constraint_split[0]
-            bin_vars += constraint_split[1].strip().split()
-        elif "Integer" in constraint:
-            constraint_split = constraint.split('Integer\n')
-            content += constraint_split[0]
-            in_vars += constraint_split[1].strip().split()
-        else: content += constraint + '\n'
+    with open(filename, "w") as f:
+        # === Step 1: Define the MILP Model Structure === #
+        # If an objective function (obj_fun) is provided, write a symbolic objective name "obj", which will be defined later in the constraint section. Otherwise, write "Minimize 0" to indicate a feasibility-only model.
+        if obj_fun:
+            f.write("Minimize\n obj\nSubject To\n")
+        else:
+            f.write("Minimize\n 0\nSubject To\n")
+
+        # === Step 2: Process Constraints === #
+        bin_vars, in_vars = set(), set()
+        for constraint in constraints:
+            if "Binary" in constraint:
+                parts = constraint.split('Binary\n')
+                if parts[0].strip():
+                    f.write(parts[0].strip() + "\n")
+                for segment in parts[1:]:
+                    seg = segment.strip()
+                    if seg:
+                        bin_vars.update(seg.split())
+            elif "Integer" in constraint:
+                parts = constraint.split('Integer\n')
+                if parts[0].strip():
+                    f.write(parts[0].strip() + "\n")
+                for segment in parts[1:]:
+                    seg = segment.strip()
+                    if seg:
+                        in_vars.update(seg.split())
+            else:
+                f.write(constraint if constraint.endswith('\n') else constraint + '\n')
+        
+        # === Step 3: Define the Objective Function === #
+        if obj_fun:
+            if isinstance(obj_fun[0], list):
+                obj_terms = [obj for row in obj_fun for obj in row]
+            else:
+                obj_terms = obj_fun
+            f.write(" + ".join(obj_terms) + " - obj = 0" + "\n")              
+
+        # === Step 4: Declare Binary and Integer Variables === #
+        if bin_vars:
+            f.write("Binary\n" + " ".join(sorted(bin_vars)) + "\n")
+        if in_vars:
+            f.write("Integer\n" + " ".join(sorted(in_vars)) + "\n")
+
+        f.write("End\n")
     
-    # === Step 3: Define the Objective Function === #
-    if obj_fun:
-        if isinstance(obj_fun[0], list):
-            obj_fun_flatten = [obj for row in obj_fun for obj in row]
-            content += " + ".join(obj_fun_flatten) + ' - obj = 0\n'
-        elif isinstance(obj_fun[0], str):
-            content += " + ".join(obj_fun) + ' - obj = 0\n'        
-
-    # === Step 4: Declare Binary and Integer Variables === #
-    if bin_vars: 
-        content += "Binary\n" + " ".join(set(bin_vars)) + "\n"
-    if in_vars: 
-        content += "Integer\n" + " ".join(set(in_vars)) + "\n"
-
-    # === Step 5: Write the model into a file === #
-    if filename:
-        dir_path = os.path.dirname(filename)
-        if not os.path.exists(dir_path): 
-            os.makedirs(dir_path, exist_ok=True)
-        with open(filename, "w") as myfile:
-            myfile.write(content + "End\n")    
-    
-    return {"content": content}  # Return the model content and objective function
+    return None
 
 
 def solve_sat(filename, variable_map, solving_args=None):
@@ -246,7 +263,7 @@ def solve_sat_pysat(filename, variable_map, solving_args):
         solver.add_clause(block_clause)
         sol_count += 1
     solver.delete()
-    print("[INFO] Number of solutions found: ", len(sol_list))
+    print(f"[INFO] Found {len(sol_list)} solutions.")
     return sol_list
     
 
@@ -274,21 +291,22 @@ def create_numerical_cnf(cnf): # Convert a given CNF formula into numerical CNF 
 
 
 def gen_sat_model(constraints=[], filename=""): # Generate and write the SAT model.
+    if not filename:
+        raise ValueError("Please specify an output filename for the SAT model.")
+    dir_path = os.path.dirname(filename)
+    if dir_path:
+        os.makedirs(dir_path, exist_ok=True)
+    
     # === Step 1: Convert Constraints to Numerical CNF Format === #
     num_var, variable_map, numerical_cnf = create_numerical_cnf(constraints)
     
-    # === Step 2: Generate the CNF Model === #
+    # === Step 2: Prepare and write CNF file === #
     num_clause = len(constraints)
-    content = f"p cnf {num_var} {num_clause}\n"  
-    for constraint in numerical_cnf:
-        content += constraint + ' 0\n'
-    
-    # === Step 3. Write the model into a file === #
-    if filename:
-        dir_path = os.path.dirname(filename)
-        if not os.path.exists(dir_path): 
-            os.makedirs(dir_path, exist_ok=True)
-        with open(filename, "w") as myfile:
-            myfile.write(content)    
 
-    return {"content": content, "variable_map": variable_map}
+    with open(filename, "w") as f:
+        f.write(f"p cnf {num_var} {num_clause}\n")
+        for constraint in numerical_cnf:
+            f.write(f"{constraint} 0\n")
+
+    # === Step 3: Return metadata === #
+    return {"variable_map": variable_map}
