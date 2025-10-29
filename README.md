@@ -1,22 +1,26 @@
-# OCP(Open Cryptanalysis Platform)
+# OCP (Open Cryptanalysis Platform)
 
 The OCP tool is composed of the following main modules:
 
-- **Tool** is the main file of the tool, offering interfaces to other modules. Users can launch here scripts to analyze primitives. 
+- **OCP.py** is the main file of the OCP tool, with some utilization examples. Users can launch scripts to analyze cryptographic primitives. 
 
-- **operators** contains the various operators that can be used to build the modelisation of a `primitive`. Users can add here new operators if needed, or add new ways for the operators to be modeled. 
+- **variables** contains the class that can be used to create variables for the modelling of a cryptographic primitive.
+
+- **operators** contains the various operators that can be used to build the modelisation of a cryptographic primitive. Users can add new operators here if needed, or add new ways to model the operators. 
    
-- **variables** contains the variable class that can be used to build the modelisation of a `primitive`.
+- **primitives** contains the modelisation of various cryptographic primitives (using variables and operators), including permutations and block ciphers. Many existing cryptographic primitives are already modeled. Users can add their own cryptographic primitives if not already present.
 
-- **primitives** contains the modelisation of various primitives, including permutations and block ciphers. Users can add here own primitive if not already present.
-
-- **attack** contains various pre-defined attacks, including differential attacks. Users can perform attacks run on pre-difined primitives.
+- **attacks** contains various pre-defined attack modules, including differential and linear attacks. Users can perform attacks on predefined primitives.
 
 - **solving** contains automated solving techniques, including MILP, SAT, and CP solvers.
 
-- **Implementations** contains the implementations of various primitives.
+- **implementations** contains the automated implementation modules of the cryptographic primitives, including C, Python, and Verilog.
+  
+- **visualizations** contains the methods to display the cryptographic primitives, the distinguishers, and the attacks. 
 
-- **visualizations** contains the methods to display primitives and distinguishers.
+- **tools** contains various specific tools used in OCP.
+
+- **test** contains various test scripts for attacks and implementations.
 
 
 The overall structure is illustrated in the diagram below:
@@ -25,7 +29,7 @@ The overall structure is illustrated in the diagram below:
 </p>
 
 
-
+⬇️ You can download OCP from the [OCP GitHub](https://open-cp.github.io/OCP/)
 📖 For detailed documentation, visit the [OCP Wiki](https://github.com/Open-CP/OCP/wiki).  
 
 
