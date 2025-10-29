@@ -29,7 +29,7 @@ The overall structure is illustrated in the diagram below:
 </p>
 
 
-⬇️ You can download OCP from the [OCP GitHub](https://open-cp.github.io/OCP/)
+⬇️ You can download OCP from the [OCP GitHub](https://open-cp.github.io/OCP/)    
 📖 For detailed documentation, visit the [OCP Wiki](https://github.com/Open-CP/OCP/wiki).  
 
 
