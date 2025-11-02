@@ -22,6 +22,31 @@ except ImportError:
 
 
 # --------------------------- Model Configuration ---------------------------
+def fill_functions_rounds_layers_positions(cipher, functions=None, rounds=None, layers=None, positions=None):
+    """
+    Fill in functions, rounds, layers, and positions to full coverage when the corresponding argument is None; otherwise, keep user-supplied values.
+
+    Parameters:
+        cipher (object): The cipher object.
+        functions (list[str]): List of functions. If None, use all functions of the cipher. Example: ["FUNCTION", "KEY_SCHEDULE", "SUBKEYS"].
+        rounds (dict): Dictionary specifying rounds. If None, use all. Example: {"FUNCTION": [1, 2, 3]}.
+        layers (dict): Dictionary specifying layers. If None, use all. Example: {"FUNCTION": {1: [0, 1], 2: [0, 1], 3: [0, 1]}}.
+        positions (dict): Dictionary specifying positions. If None, use all. Example: {"FUNCTION": {1: {0: [0, 1], 1: [0, 1]}, 2: {0: [0, 1], 1: [0, 1]}, 3: {0: [0, 1], 1: [0, 1]}}}.
+
+    Returns:
+        tuple: (functions, rounds, layers, positions)
+    """
+    if functions is None:
+        functions = [f for f in cipher.functions]
+    if rounds is None:
+        rounds = {f: list(range(1, cipher.functions[f].nbr_rounds + 1)) for f in functions}
+    if layers is None:
+        layers = {f: {r: list(range(cipher.functions[f].nbr_layers+1)) for r in rounds[f]} for f in functions}
+    if positions is None:
+        positions = {f: {r: {l: list(range(len(cipher.functions[f].constraints[r][l]))) for l in layers[f][r]} for r in rounds[f]} for f in functions}
+    return functions, rounds, layers, positions
+
+
 def configure_model_version(cipher, goal, config_model): # Configure the model version for all operators in the cipher based on the attack goal and config_model.
     functions, rounds, layers, positions = config_model.get("functions"), config_model.get("rounds"), config_model.get("layers"), config_model.get("positions")
 

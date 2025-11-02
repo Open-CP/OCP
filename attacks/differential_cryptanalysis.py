@@ -31,22 +31,11 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
     config_model["model_type"] = config_model.get("model_type", "milp").lower()
 
     # Set "functions", "rounds", "layers", "positions" for modeling
-    functions = config_model.get("functions", None)
-    rounds = config_model.get("rounds", None)
-    layers = config_model.get("layers", None)
-    positions = config_model.get("positions", None)
-    if functions is None: # List of functions to include in the model. By default, use all functions.
-        functions = [f for f in cipher.functions]
-        config_model.setdefault("functions", functions)
-    if rounds is None: # Dictionary with "functions" key, containing a list of rounds. By default, use all rounds.
-        rounds = {f: list(range(1, cipher.functions[f].nbr_rounds + 1)) for f in functions}
-        config_model.setdefault("rounds", rounds)
-    if layers is None: # Dictionary with "functions" key, "rounds" key, containing a list of layers. By default, use all layers.
-        layers = {f: {r: list(range(cipher.functions[f].nbr_layers+1)) for r in rounds[f]} for f in functions}
-        config_model.setdefault("layers", layers)
-    if positions is None: # Dictionary with "functions" key, "rounds" key, "layers" key containing a list of positions. By default, use all positions.
-        positions = {f: {r: {l: list(range(len(cipher.functions[f].constraints[r][l]))) for l in layers[f][r]} for r in rounds[f]} for f in functions}
-        config_model.setdefault("positions", positions)
+    functions, rounds, layers, positions = model_constraints.fill_functions_rounds_layers_positions(cipher, functions=None, rounds=None, layers=None, positions=None)
+    config_model.setdefault("functions", functions)
+    config_model.setdefault("rounds", rounds)
+    config_model.setdefault("layers", layers)
+    config_model.setdefault("positions", positions)
 
     # Set "solver" for solving the model
     config_solver.setdefault("solver", "DEFAULT")
