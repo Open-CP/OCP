@@ -29,34 +29,33 @@ class Trail(ABC):
         self.type = type
         self.data = data
         self.solution_trace = solution_trace or {}
+        self.json_filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.json")
+        self.txt_filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.txt")
 
-    def save_json(self, filename=None): # Save the trail information into a .json file.
+
+    def save_json(self): # Save the trail information into a .json file.
         trail_dict = {
             "type": str(self.type).upper(),
             "data": dict(self.data),
             "solution_trace": dict(self.solution_trace),
             "created_at": datetime.now(timezone.utc).isoformat(),
             "tool": "OCP",
-            }        
-        if filename is None:
-            filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.json")
-        with open(filename, "w") as f:
+            }
+        with open(self.json_filename, "w") as f:
             json.dump(trail_dict, f, ensure_ascii=False, indent='\t')
 
-    def save_trail_txt(self, filename=None, show_mode=2): # Save the trail in a human-readable format into a .txt file.
-        if filename is None:
-            filename = str(FILES_DIR / f"{self.data['cipher']}_{self.type}_trail.txt")
+    def save_trail_txt(self, show_mode=2): # Save the trail in a human-readable format into a .txt file.
         lines = self.print_trail(show_mode)
-        with open(filename, "w") as f:
+        with open(self.txt_filename, "w") as f:
             f.write(lines)
         return lines
-        
+
     def save_trail_tex(self, filename=None): # TO DO
         pass
 
     def save_trail_pdf(self, filename=None): # TO DO
         pass
-            
+
     @abstractmethod
     def print_trail(self, show_mode):
         lines = "========== Trail ==========\n"
@@ -84,13 +83,13 @@ class DifferentialTrail(Trail):
             data['trail_values'] = {"FUNCTION": data['trail_values']}
         super().__init__("differential", data, solution_trace=solution_trace)
 
-    
-    def print_trail(self, show_mode=2):        
+
+    def print_trail(self, show_mode=2):
         """
         Print the trail in a human-readable format.
-        
+
         Parameters:
-        - mode: 
+        - mode:
             0 - Print only the first and last round (layer 0) in hexadecimal strings.
             1 - Print all rounds (layer 0) in hexadecimal strings.
             2 - Print all rounds and all layers in hexadecimal strings.
@@ -101,7 +100,7 @@ class DifferentialTrail(Trail):
         if "rounds_diff_weight" in self.data and self.data["rounds_diff_weight"] is not None:
             lines += f"rounds_diff_weight: {self.data['rounds_diff_weight']}\n"
 
-        trail_values = self.data['trail_values']        
+        trail_values = self.data['trail_values']
         for fun in trail_values:
             print(f"Printing trail for function: {fun}...")
             if show_mode == 0:
@@ -115,7 +114,7 @@ class DifferentialTrail(Trail):
                 show_layers = list(range(len(trail_values[fun][0])))
             else:
                 raise ValueError(f"[WARNING] show_mode {show_mode} should be 0, 1, or 2.")
-            
+
             lines += f"-------- {fun}: --------\n"
             for r in show_rounds:
                 lines += f"Round {r}:\n"
