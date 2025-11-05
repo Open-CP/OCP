@@ -83,8 +83,7 @@ def set_model_versions(cipher, version, functions, rounds, layers, positions, op
     for f in functions:
         for r in rounds[f]:
             for l in layers[f][r]:
-                for i in positions[f][r][l]:
-                    cons = cipher.functions[f].constraints[r][l][i]
+                for cons in cipher.functions[f].constraints[r][l]: # Only support all constraints in a layer for now.
                     if operator_name is None: # Assign model_version to all operators in the cipher.
                         cons.model_version = cons.__class__.__name__ + "_" + version
                     elif operator_name is not None and operator_name in cons.__class__.__name__: # Assign model_version to operators with a specific name.
@@ -120,8 +119,7 @@ def gen_input_non_zero_constraints(cipher, goal, config_model): # Generate a sta
         if f in ["FUNCTION", "KEY_SCHEDULE"]:
             start_round = rounds[f][0]
             start_layer = layers[f][start_round][0]
-            start_words, end_words = positions[f][start_round][start_layer][0], positions[f][start_round][start_layer][-1]
-            cons_vars += cipher.functions[f].vars[start_round][start_layer][start_words:end_words+1]
+            cons_vars += cipher.functions[f].vars[start_round][start_layer][:cipher.functions["FUNCTION"].nbr_words] # Only supports input non-zero constraints on FUNCTION and KEY_SCHEDULE functions.
     bitwise = False if "TRUNCATEDDIFF" in goal else True
     return gen_predefined_constraints(model_type=model_type, cons_type="SUM_AT_LEAST", cons_vars=cons_vars, cons_value=1, bitwise=bitwise, encoding=atleast_encoding)
 
@@ -214,11 +212,11 @@ def gen_constraints_at_most(model_type, cons_vars, cons_value):
 def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
-    elif model_type == "sat" and encoding == "SEQUENTIAL":
+    elif model_type == "sat" and (encoding == "SEQUENTIAL" or encoding is None):
         return gen_sequential_encoding_sat(cons_vars, cons_value)
     elif model_type == "sat" and pysat_import:
-        if not encoding:
-            encoding = "SEQUENTIAL"  # Default to "SEQUENTIAL" if not specified
+        if not isinstance(encoding, int):
+            encoding = 1  # Default to 1 if the encoding is not specified as an integer
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
@@ -241,16 +239,14 @@ def gen_constraints_at_least(model_type, cons_vars, cons_value):
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for GREATER_EQUAL constraint.")
 
-def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):
+def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding=1):
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
     elif model_type == "sat" and cons_value == 1:
         return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
-    elif model_type == "sat" and encoding == "SEQUENTIAL":
-        return gen_sequential_encoding_sat(cons_vars, cons_value, greater_or_equal=True)
     elif model_type == "sat" and pysat_import:
         if not encoding:
-            encoding = "SEQUENTIAL"  # Default to "SEQUENTIAL" if not specified
+            encoding = 1  # Default to 1 if not specified
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
@@ -263,44 +259,37 @@ def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding="SE
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_GREATER_EQUAL constraint.")
 
-def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None, greater_or_equal=False): # Generate SAT constraints for a sequential counter encoding of a cardinality constraint. reference: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
+def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None): # Generate SAT constraints for a sequential counter encoding of a cardinality constraint. Reference: Conjunctive normal form. Technical report, Encyclopedia of Mathematics, http://encyclopediaofmath.org/index.php?title= Conjunctive_normal_form&oldid=35078. Refer to the code from: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
     if not hasattr(gen_sequential_encoding_sat, "_counter"): # Use function attribute to set global counter
         gen_sequential_encoding_sat._counter = 0
     n = len(hw_list)
-    # === Special case: require all variables to be False ===
-    if (not greater_or_equal and weight == 0) or (greater_or_equal and weight == n):
-        constraints = [f'-{var}' for var in hw_list]
-        return constraints
-    # === At-least-k is transformed into at-most-(n-k) ===
-    if greater_or_equal:
-        weight = n - weight
-        minus = ''
-    else:
-        minus = '-'
+    if not isinstance(weight, int) or weight < 0 or weight > n:
+        raise ValueError(f"weight should be an integer: 0 <= weight <= n (n={n}), got {weight}")
+    if weight == 0:
+        return [f'-{var}' for var in hw_list]
     if dummy_variables is None:
         gen_sequential_encoding_sat._counter += 1
         prefix = f'dummy_seq_{gen_sequential_encoding_sat._counter}'
         dummy_variables = [[f'{prefix}_{i}_{j}' for j in range(weight)] for i in range(n - 1)]
-    constraints = [f'{minus}{hw_list[0]} {dummy_variables[0][0]}']
+    constraints = [f'-{hw_list[0]} {dummy_variables[0][0]}']
     constraints.extend([f'-{dummy_variables[0][j]}' for j in range(1, weight)])
     for i in range(1, n - 1):
-        constraints.append(f'{minus}{hw_list[i]} {dummy_variables[i][0]}')
+        constraints.append(f'-{hw_list[i]} {dummy_variables[i][0]}')
         constraints.append(f'-{dummy_variables[i - 1][0]} {dummy_variables[i][0]}')
-        constraints.extend([f'{minus}{hw_list[i]} -{dummy_variables[i - 1][j - 1]} {dummy_variables[i][j]}'
+        constraints.extend([f'-{hw_list[i]} -{dummy_variables[i - 1][j - 1]} {dummy_variables[i][j]}'
                             for j in range(1, weight)])
         constraints.extend([f'-{dummy_variables[i - 1][j]} {dummy_variables[i][j]}'
                             for j in range(1, weight)])
-        constraints.append(f'{minus}{hw_list[i]} -{dummy_variables[i - 1][weight - 1]}')
-    constraints.append(f'{minus}{hw_list[n - 1]} -{dummy_variables[n - 2][weight - 1]}')
-    return constraints
-
+        constraints.append(f'-{hw_list[i]} -{dummy_variables[i - 1][weight - 1]}')
+    constraints.append(f'-{hw_list[n - 1]} -{dummy_variables[n - 2][weight - 1]}')
+    return  constraints
 
 # ----------- Matsui's branch-and-bound constraints Generation -------------
 def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
-    assert Round >= 2, "Round must be at least 2."
-    assert len(best_obj) == Round-1, "best_obj length must be Round-1."
-    assert obj_fun is not None and len(obj_fun) == Round and all(isinstance(obj, list) for obj in obj_fun), "obj_fun must be a list of lists, and with length equal to Round."
-    assert cons_type in ["ALL", "UPPER", "LOWER"], "cons_type must be one of ['ALL', 'UPPER', 'LOWER']."
+    assert Round >= 2, f"Round = {Round} must be at least 2."
+    assert len(best_obj) == Round-1, f"best_obj = {best_obj} length must be Round-1 = {Round-1}."
+    assert obj_fun is not None and len(obj_fun) == Round and all(isinstance(obj, list) for obj in obj_fun), f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}."
+    assert cons_type in ["ALL", "UPPER", "LOWER"], f"cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER']."
 
     add_cons = []
     for i in range(1, Round):
@@ -317,12 +306,12 @@ def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Ge
 
 
 def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstraintChoice=1, GroupNumForChoice=1): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
-    assert Round >= 2, "Round must be at least 2."
-    assert len(best_obj) == Round-1, "best_obj length must be Round-1."
-    assert isinstance(obj_sat, int) and obj_sat > 0, "obj_sat must be a positive integer."
-    assert obj_var is not None and len(obj_var) == Round and all(isinstance(row, list) for row in obj_var), "obj_var must be a list of lists, and with length equal to Round."
-    assert GroupConstraintChoice == 1, "Currently only support GroupConstraintChoice = 1."
-    assert GroupNumForChoice >= 1, "GroupNumForChoice must be at least 1."
+    assert Round >= 2, f"Round = {Round} must be at least 2."
+    assert len(best_obj) == Round-1, f"best_obj length = {len(best_obj)} must be (Round-1) = {Round-1}."
+    assert isinstance(obj_sat, int) and obj_sat > 0, f"obj_sat = {obj_sat} must be a positive integer."
+    assert obj_var is not None and len(obj_var) == Round and all(isinstance(row, list) for row in obj_var), f"obj_var must be a list of lists, and with length = {len(obj_var)} equal to Round = {Round}."
+    assert GroupConstraintChoice == 1, f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}."
+    assert GroupNumForChoice >= 1, f"GroupNumForChoice = {GroupNumForChoice} must be at least 1."
 
     if not hasattr(gen_matsui_constraints_sat, "_counter"): # Use function attribute to set global counter
         gen_matsui_constraints_sat._counter = 0
@@ -357,8 +346,8 @@ def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m): #
     assert isinstance(dummy_var, list) and len(dummy_var) == len(obj_var) - 1, "dummy_var must be a list with length equal to len(obj_var) - 1."
     assert isinstance(k, int) and k > 0, "k must be a positive integer."
     assert isinstance(left, int) and left >= 0, "left index must be a non-negative integer."
-    assert isinstance(right, int) and right < len(obj_var), "right index out of range."
-    assert isinstance(m, int) and m >= 0, "m must be a non-negative integer."
+    assert isinstance(right, int) and right < len(obj_var), f"right index = {right} out of range of obj_var = {len(obj_var)}."
+    assert isinstance(m, int) and m >= 0, f"m={m} must be a non-negative integer."
 
     n = len(obj_var)
     add_cons = []

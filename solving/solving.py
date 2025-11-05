@@ -93,14 +93,14 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
     # Return a list of solutions
     # Case 1: No solution found
     if sol_count == 0:
-        print(f"[INFO] Found no solution.")
+        print(f"[INFO] Found no solution from Gurobi.")
         return []
 
     # Case 2: Single optimal solution found
     elif solution_number == 1 or getattr(model.Params, "PoolSearchMode", 0) == 0:
         sol = {v.VarName: v.X for v in model.getVars()}
         sol["obj_fun_value"] = model.ObjVal
-        print(f"[INFO] Found 1 solution.")
+        print(f"[INFO] Found 1 solution from Gurobi.")
         return [sol]
 
     # Case 3: Multiple solutions found
@@ -111,7 +111,7 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
             sol = {v.VarName: v.Xn for v in model.getVars()}
             sol.update({"obj_fun_value": model.PoolObjVal})
             sol_list.append(sol)
-        print(f"[INFO] Found {len(sol_list)} solution(s).")
+        print(f"[INFO] Found {len(sol_list)} solution(s) from Gurobi.")
         return sol_list
 
 
@@ -139,14 +139,14 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It
 
     # Return a list of solutions
     if sol_count == 0:
-        print(f"[INFO] Found no solution.")
+        print(f"[INFO] Found no solution from SCIP.")
         return []
 
     else:
         sol = model.getBestSol()
         sol_dic = {v.name: model.getSolVal(sol, v) for v in model.getVars()}
         sol_dic["obj_fun_value"] = model.getSolObjVal(sol)
-        print(f"[INFO] Found 1 solution.")
+        print(f"[INFO] Found 1 solution from SCIP.")
         return [sol_dic]
 
 
@@ -208,7 +208,7 @@ def solve_sat_pysat(filename, variable_map, solving_args):
         solver.add_clause(block_clause)
         sol_count += 1
     solver.delete()
-    print(f"[INFO] Found {len(sol_list)} solution(s).")
+    print(f"[INFO] Found {len(sol_list)} solution(s) from PySAT.")
     return sol_list
 
 

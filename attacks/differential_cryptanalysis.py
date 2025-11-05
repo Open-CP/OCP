@@ -106,7 +106,7 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
         solutions = milp_search.modeling_solving_milp(objective_target, model_cons, obj_fun, config_model, config_solver)
 
     elif model_type == "sat":
-        if model_objective.has_Sbox_with_decimal_weights(cipher, goal):
+        if goal in ["DIFFERENTIALPATH_PROB", "DIFFERENTIAL_PROB"] and model_objective.has_Sbox_with_decimal_weights(cipher, goal):
             config_model["decimal_objective_function"] = {}
             Sbox = model_objective.detect_Sbox(cipher)
             config_model["decimal_objective_function"]["Sbox"] = Sbox
