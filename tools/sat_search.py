@@ -283,7 +283,7 @@ def modeling_solving(objective_target, constraints, objective_function, config_m
         GroupConstraintChoice = config_model["matsui_constraint"].get("GroupConstraintChoice", 1)
         GroupNumForChoice = config_model["matsui_constraint"].get("GroupNumForChoice", 1)
         if Round is None or best_obj is None:
-            raise ValueError("[WARNING] Please provide 'Round' and 'best_obj' for Matsui strategy, .")
+            raise ValueError("[WARNING] Please provide 'Round' and 'best_obj' for Matsui strategy.")
         if obj_val >= best_obj[-1]:
             model_cons += model_constraints.gen_matsui_constraints_sat(Round, best_obj, obj_val, obj_fun_vars, GroupConstraintChoice, GroupNumForChoice)
         else:

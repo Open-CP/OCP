@@ -13,6 +13,20 @@ def cdd_ineq_to_coeff_rhs(ineq): # Convert a cddlib-style inequality of the form
     return ineq[1:] + [-ineq[0]]
 
 
+def cdd_eq_to_coeff_rhs(eq):
+    """
+    Convert a cddlib-style equality [b, a1, ..., an] (meaning b + a x = 0) into 2 inequalities matching is_sat() format (a * x >= b_form):
+      1)  a * x >= -b
+      2) (-a) * x >= b
+    Return: a list of two inequalities, each as [a1, ..., an, rhs]
+    """
+    b = eq[0]
+    a = eq[1:]
+    ineq1 = a + [-b] # a * x >= -b
+    ineq2 = [-ai for ai in a] + [b] # (-a) * x >= b
+    return [ineq1, ineq2]
+
+
 def normalize_inequality(ineq):  # Ensure integer coefficients with minimal scaling
     ineq = [Fraction(x) for x in ineq]
     lcm_den = reduce(lambda a, b: a * b // gcd(a, b), [x.denominator for x in ineq], 1)
@@ -44,12 +58,24 @@ def	minimize_constraints_greedy(inequalities, variables, ttable): # Select a min
             cutoff_of_ine = collect_cutoffs(point, l)
             cutoff.append(cutoff_of_ine)
             count_of_cutoff.append(len(cutoff_of_ine))
+        if not count_of_cutoff or max(count_of_cutoff) == 0:
+            print(f"[INFO]: No inequality can further remove the remaining ({len(point)}) invalid points.") # In this case, the selected inequalities cannot exactly describe the truth table, some invalid points may remain.
+            break
         max_count_index = count_of_cutoff.index(max(count_of_cutoff))
         select_ine.append(ine[max_count_index])
         ine.remove(ine[max_count_index])
         for p in cutoff[max_count_index]:
             point.remove(p)
     return select_ine
+
+
+def extract_equalities_indices(poly): # Parse the H-representation text of the polyhedron to extract the 'linearity' line, which indicates the indices (1-based) of equality constraints.
+    lines = str(poly).splitlines()
+    for line in lines:
+        if line.strip().startswith("linearity"):
+            parts = line.strip().split() # e.g. "linearity 1 1 5 8" → [1,5,8]
+            return [int(x) for x in parts[2:]]
+    return []
 
 
 def ttb_to_ineq_convex_hull(ttable, variables): # Convert a truth table to CNF or MILP constraints using the convex hull method via pycddlib.
@@ -60,7 +86,12 @@ def ttb_to_ineq_convex_hull(ttable, variables): # Convert a truth table to CNF o
     gen_matrix.rep_type = cdd.RepType.GENERATOR
     poly = cdd.Polyhedron(gen_matrix)
     inequalities = poly.get_inequalities()
-    raw_ineqs = [cdd_ineq_to_coeff_rhs(list(ineq)) for ineq in inequalities]
+    all_rows = [list(row) for row in inequalities]
+    equalities_index = extract_equalities_indices(inequalities)
+    raw_ineqs = [cdd_ineq_to_coeff_rhs(list(ineq)) for ineq in all_rows]
+    for i in equalities_index:
+        eq = all_rows[i - 1]
+        raw_ineqs.extend(cdd_eq_to_coeff_rhs(list(eq)))
     processed_ineqs = [normalize_inequality(ineq) for ineq in raw_ineqs]
     minmized_ineqs = minimize_constraints_greedy(processed_ineqs, variables, ttable)
     return minmized_ineqs
