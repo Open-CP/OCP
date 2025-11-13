@@ -50,7 +50,8 @@ def modeling_solving_sat(objective_target, constraints, objective_function, conf
     print("====== Modeling and Solving SAT Information ======")
     print(f"--- Found {len(solutions)} solution(s) ---")
     for key, value in {**config_model, **config_solver}.items():
-        print(f"--- {key} ---: {value}")
+        if key not in ["positions"]:
+            print(f"--- {key} ---: {value}")
     return solutions
 
 
