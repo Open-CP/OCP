@@ -286,12 +286,14 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                  myfile.write("\tTODOTODO assign " + s + "[" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + ":" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + "] = 'h0\n") 
                  
              myfile.write("\t" + my_prim.name + " UUT (" + ", ".join(my_prim.inputs) + ", " + ", ".join(my_prim.outputs) + ");\n")
+             myfile.write("\tinitial begin\n \t#1;\n")
              for my_input in my_prim.inputs: 
                  myfile.write('\t$display("' + my_input + ': ");')
-                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.inputs[my_input])) + ';i=i+1){ $display("0x%h, ", ' + my_input + '[i]);} $display("\\n");\n')                       
+                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.inputs[my_input])) + ';i=i+1) begin $display("0x%h, ", ' + my_input + '[i]); end\n')                       
              for my_output in my_prim.outputs: 
                  myfile.write('\t$display("' + my_output + ': ");') 
-                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.outputs[my_output])) + ';i=i+1){ $display("0x%h, ", ' + my_output + '[i]);} $display("\\n");\n')     
+                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.outputs[my_output])) + ';i=i+1) begin $display("0x%h, ", ' + my_output + '[i]); end \n')     
+             myfile.write("\tend\n")
              myfile.write('endmodule\n')
 
 
