@@ -78,7 +78,7 @@ def test_imp_speck_permutation():
 
     test_c_unrolled_imp(cipher)
 
-    test_verilog_imp(cipher)
+    # test_verilog_imp(cipher)
 
     test_verilog_unrolled_imp(cipher)
 

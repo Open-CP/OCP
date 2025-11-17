@@ -218,7 +218,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              for my_output in my_prim.outputs: myfile.write("//   " + my_output + ": an array of " + str(len(my_prim.outputs[my_output])) + " words of " + str(my_prim.outputs[my_output][0].bitsize) + " bits \n") 
              myfile.write("module " + my_prim.name + "(" + ", ".join([i for i in my_prim.inputs]) + ", " +  ", ".join([i for i in my_prim.outputs]) + "); \n")
              
-             for s in my_prim.inputs:  myfile.write("\n\tinput[" + str(len(s)*my_prim.inputs[s][0].bitsize-1) + ":0] " + s + "; \n")
+             for s in my_prim.inputs:  myfile.write("\n\tinput[" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + ":0] " + s + "; \n")
              for s in my_prim.outputs: myfile.write("\toutput[" + str(len(my_prim.outputs[s])*my_prim.outputs[s][0].bitsize-1) + ":0] " + s + "; \n")
 
              for s in my_prim.functions_implementation_order: 
@@ -238,10 +238,11 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                      if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                  if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                  myfile.write("\n")
-                   
+             myfile.write("\n")
+                  
              if unroll:  
                 for r in range(1,max(nbr_rounds_table)+1):
-                     myfile.write("\n\t// Round " + str(r) + "\n")
+                     myfile.write("\t// Round " + str(r) + "\n")
                      for s in my_prim.functions_implementation_order:
                          if  r <= my_prim.functions[s].nbr_rounds:
                             for l in range(my_prim.functions[s].nbr_layers+1):
@@ -249,7 +250,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                                     for line in cons.generate_implementation('verilog', unroll=True): myfile.write("\t" + line + "\n")
                             myfile.write("\n")
              else:
-                 myfile.write("\n\t// Round function \n")
+                 myfile.write("\t// Round function \n")
                  myfile.write("\tfor (int i=0; i<" + str(nbr_rounds) + "; i++) {\n")                     
                  for s in my_prim.functions_implementation_order:
                     for l in range(my_prim.functions[s].nbr_layers+1):
@@ -258,13 +259,13 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                     myfile.write("\n")
                  myfile.write("\t}\n")     
                  
-             myfile.write("\n\t// Output \n")
+             myfile.write("\t// Output \n")
              cpt, cptw = 0, 0
              my_output_name = sum([[i]*len(my_prim.outputs[i]) for i in my_prim.outputs], [])
              for s in my_prim.functions: 
                  for w in range(my_prim.functions[s].nbr_words): 
-                     if unroll: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].ID + "; \n")
-                     else: myfile.write("\t" + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].remove_round_from_ID() + "; \n")
+                     if unroll: myfile.write("\tassign " + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].ID + "; \n")
+                     else: myfile.write("\tassign " + my_output_name[cpt] + "[" + str(my_prim.functions[s].word_bitsize-1 + my_prim.functions[s].word_bitsize*cptw) + ":" + str(my_prim.functions[s].word_bitsize*cptw) + "] = " + my_prim.functions[s].vars[nbr_rounds][my_prim.functions[s].nbr_layers][w].remove_round_from_ID() + "; \n")
                      cptw = cptw+1
                      if cptw>=len(my_prim.outputs[my_output_name[cpt]]): cptw=0
                      cpt = cpt + 1
@@ -275,23 +276,23 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              myfile.write("endmodule \n")
              
              myfile.write("\n// test implementation\n")
-             myfile.write("int main() {\n")
-             for my_input in my_prim.inputs: myfile.write("\t" + get_var_def_c(my_prim.inputs[my_input][0].bitsize) + " " + my_input + "[" + str(len(my_prim.inputs[my_input])) + "] = {" + ", ".join(["0x0"]*len(my_prim.inputs[my_input])) + "}; \n") 
-             for my_output in my_prim.outputs: myfile.write("\t" + get_var_def_c(my_prim.outputs[my_output][0].bitsize) + " " + my_output + "[" + str(len(my_prim.outputs[my_output])) + "] = {" + ", ".join(["0x0"]*len(my_prim.outputs[my_output])) + "}; \n") 
-             myfile.write("\t" + my_prim.name + "(" + ", ".join(my_prim.inputs) + ", " + ", ".join(my_prim.outputs) + ");\n")
+             myfile.write("module test_implementation();")
+             for s in my_prim.inputs:  myfile.write("\n\tlogic[" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + ":0] " + s + "; \n")
+             for s in my_prim.outputs: myfile.write("\tlogic[" + str(len(my_prim.outputs[s])*my_prim.outputs[s][0].bitsize-1) + ":0] " + s + "; \n")
+             myfile.write('\tinteger i;\n')
+             
+             for s in my_prim.inputs: 
+                 #for word in 
+                 myfile.write("\tTODOTODO assign " + s + "[" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + ":" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + "] = 'h0\n") 
+                 
+             myfile.write("\t" + my_prim.name + " UUT (" + ", ".join(my_prim.inputs) + ", " + ", ".join(my_prim.outputs) + ");\n")
              for my_input in my_prim.inputs: 
-                 myfile.write('\tprintf("' + my_input + ': ");') 
-                 if my_prim.inputs[my_input][0].bitsize <= 32: 
-                    myfile.write('\tfor (int i=0;i<' + str(len(my_prim.inputs[my_input])) + ';i++){ printf("0x%x, ", ' + my_input + '[i]);} printf("\\n");\n')                       
-                 else: 
-                    myfile.write('\tfor (int i=0;i<' + str(len(my_prim.inputs[my_input])) + ';i++){ printf("0x%llx, ", ' + my_input + '[i]);} printf("\\n");\n')                    
+                 myfile.write('\t$display("' + my_input + ': ");')
+                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.inputs[my_input])) + ';i=i+1){ $display("0x%h, ", ' + my_input + '[i]);} $display("\\n");\n')                       
              for my_output in my_prim.outputs: 
-                 myfile.write('\tprintf("' + my_output + ': ");') 
-                 if my_prim.inputs[my_input][0].bitsize <= 32: 
-                    myfile.write('\tfor (int i=0;i<' + str(len(my_prim.outputs[my_output])) + ';i++){ printf("0x%x, ", ' + my_output + '[i]);} printf("\\n");\n')     
-                 else:
-                    myfile.write('\tfor (int i=0;i<' + str(len(my_prim.outputs[my_output])) + ';i++){ printf("0x%llx, ", ' + my_output + '[i]);} printf("\\n");\n')     
-             myfile.write('}\n')
+                 myfile.write('\t$display("' + my_output + ': ");') 
+                 myfile.write('\tfor (i=0;i<' + str(len(my_prim.outputs[my_output])) + ';i=i+1){ $display("0x%h, ", ' + my_output + '[i]);} $display("\\n");\n')     
+             myfile.write('endmodule\n')
 
 
 def test_implementation_python(cipher, cipher_name, input, output):
