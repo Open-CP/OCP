@@ -11,6 +11,7 @@ For examples of other ciphers, refer to the following folders:
 """
 
 from pathlib import Path
+from primitives.shacal2 import SHACAL2_BLOCKCIPHER
 from primitives.speck import SPECK_PERMUTATION, SPECK_BLOCKCIPHER
 import implementations.implementations as imp
 import visualisations.visualisations as vis
@@ -106,7 +107,7 @@ def test_imp_speck_blockcipher():
 # ********************* Differential Cryptanalysis ********************* #
 def test_diff_attack_speck_milp():
     # Step 1. Define the cipher (permutation or block cipher)
-    cipher = SPECK_PERMUTATION(r=5, version = 32)
+    cipher = SPECK_PERMUTATION(r=None, version = 32)
     # cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
 
     # Step 2. Set parameters.

@@ -13,7 +13,7 @@ class Skinny_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds (optional)
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
         # define the parameters
@@ -25,7 +25,7 @@ class Skinny_permutation(Permutation):
         round_constants = self.gen_rounds_constant_table()
         sbox = Skinny_4bit_Sbox if word_bitsize==4 else Skinny_8bit_Sbox
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
 
         # create constraints
         if represent_mode==0:
@@ -43,7 +43,7 @@ class Skinny_permutation(Permutation):
                                     0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a,
                                     0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
 
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):
             rc = round_constants[i-1]
             c0, c1, c2 = rc & 0xF, rc >> 4, 0x2
             constant_table.append([c0,c1,c2])
@@ -59,10 +59,10 @@ class Skinny_permutation(Permutation):
         return [[IN], OUT]
 
 
-def SKINNY_PERMUTATION(r=None, version=64):
+def SKINNY_PERMUTATION(r=None, version=64, represent_mode=0):
     my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
-    my_cipher = Skinny_permutation(f"SKINNY{version}_PERM", version, my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = Skinny_permutation(f"SKINNY{version}_PERM", version, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation
 
 
 # The Skinny block cipher
@@ -101,7 +101,7 @@ class Skinny_block_cipher(Block_cipher):
         sbox = Skinny_4bit_Sbox if s_word_bitsize == 4 else Skinny_8bit_Sbox
         if self.tweak_size >= 2: self.functions_implementation_order = ["KEY_SCHEDULE", "SUBKEYS", "FUNCTION"]
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
 
@@ -158,7 +158,7 @@ class Skinny_block_cipher(Block_cipher):
                                     0x12, 0x24, 0x08, 0x11, 0x22, 0x04, 0x09, 0x13, 0x26, 0x0c, 0x19, 0x32, 0x25, 0x0a,
                                     0x15, 0x2a, 0x14, 0x28, 0x10, 0x20]
 
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):
             rc = round_constants[i-1]
             c0, c1, c2 = rc & 0xF, rc >> 4, 0x2
             constant_table.append([c0,c1,c2])
@@ -192,8 +192,8 @@ class Skinny_block_cipher(Block_cipher):
             ciphertext = [0x94, 0xec, 0xf5, 0x89, 0xe2, 0x1, 0x7c, 0x60, 0x1b, 0x38, 0xc6, 0x34, 0x6a, 0x10, 0xdc, 0xfa]
         return [[plaintext, key], ciphertext]
 
-def SKINNY_BLOCKCIPHER(r=None, version=[64, 64]):
+def SKINNY_BLOCKCIPHER(r=None, version=[64, 64], represent_mode=0):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
-    my_cipher = Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher

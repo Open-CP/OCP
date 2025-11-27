@@ -70,17 +70,17 @@ class DifferentialTrail(Trail):
         Parameters:
         - data: A dictionary containing:
             "cipher": str, The name of the cipher (e.g., "AES")
-            "functions": List[str], The list of functions involved in the cipher (e.g., ["FUNCTION", "KEY_SCHEDULE"])
-            "rounds": Dict[str, List[int] | int], For each function, the number of rounds or a list of round indices (e.g., {"FUNCTION": 3} or {"FUNCTION": [1, 2, 3]})
+            "functions": List[str], The list of functions involved in the cipher (e.g., ["PERMUTATION", "KEY_SCHEDULE"])
+            "rounds": Dict[str, List[int] | int], For each function, the number of rounds or a list of round indices (e.g., {"PERMUTATION": 3} or {"PERMUTATION": [1, 2, 3]})
             "diff_weight": float | int | None, The weight (defined as the negetive of logarithm base 2 of the differential probability) of the differential trail (e.g., 2)
             "rounds_diff_weight": List[float] | None, The list of weigts of each round (e.g., [0, 1, 1])
             "trail_values": List[str], The values of the trail
         """
-        data["functions"] = data.get("functions", ["FUNCTION"])
+        data["functions"] = data.get("functions", ["PERMUTATION"])
         if isinstance(data['rounds'], int):
             data['rounds'] = {s: list(range(1, data['rounds'] + 1)) for s in data['functions']}
         if isinstance(data['trail_values'], list):
-            data['trail_values'] = {"FUNCTION": data['trail_values']}
+            data['trail_values'] = {"PERMUTATION": data['trail_values']}
         super().__init__("differential", data, solution_trace=solution_trace)
 
 

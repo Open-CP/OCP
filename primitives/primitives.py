@@ -6,16 +6,16 @@ from operators.matrix import Matrix, GF2Linear_Trans
 def generateID(name, round_nb, layer, position):
     return name + '_' + str(round_nb) + '_' + str(layer) + '_' + str(position)
 
-# ********************* FUNCTIONS ********************* #
-# Class that represents a function object, i.e. a collection of functions that will be updated through a certain number of rounds each composed of a certain number of layers
+# ********************* LAYERED_FUNCTION ********************* #
+# Class that represents a layered function object, i.e. a collection of functions that will be updated through a certain number of rounds each composed of a certain number of layers
 # This object will contain the list of variables representing the functions at each stage of the computation
 # This object will contain the list of constraints linking the variables together
 
-class Function:
+class Layered_Function:
     def __init__(self, name, label, nbr_rounds, nbr_layers, nbr_words, nbr_temp_words, word_bitsize):
         self.name = name                      # name of the function
         self.label = label                    # label for display when refering that function
-        self.nbr_rounds = nbr_rounds          # number of layers per round in that function
+        self.nbr_rounds = nbr_rounds          # number of rounds in that function
         self.nbr_layers = nbr_layers          # number of layers per round in that function
         self.nbr_words = nbr_words            # number of words in that function
         self.nbr_temp_words = nbr_temp_words  # number of temporary words in that function
@@ -222,12 +222,32 @@ class Primitive(ABC):
         self.name = name                # name of the primitive
         self.inputs = inputs            # list of the inputs of the primitive
         self.outputs = outputs          # list of the outputs of the primitive
-        self.functions = []                # list of functions used by the primitive
+        self.functions = []             # list of functions used by the primitive
         self.inputs_constraints = []    # constraints linking the primitive inputs to the functions input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the functions output variables
         self.test_vectors = []
         
         
+# ********************************************** FUNCTIONS **********************************************
+# Subclass that represents a function object    
+# A function is composed of a single internal function 
+     
+class Function(Primitive):
+    def __init__(self, name, s_input, s_output, nbr_rounds, config):
+        super().__init__(name, {"IN_":s_input}, {"OUT_":s_output})
+        nbr_layers, nbr_words_input, nbr_words_output, nbr_temp_words, word_bitsize = config[0], config[1], config[2], config[3], config[4]
+        self.nbr_rounds = nbr_rounds
+        self.functions = {"FUNCTION": Layered_Function("FUNCTION", "", nbr_rounds, nbr_layers, max(nbr_words_input, nbr_words_output), nbr_temp_words, word_bitsize)}
+        self.functions_implementation_order = ["FUNCTION"]
+        self.functions_display_order = ["FUNCTION"]
+
+        if len(s_input)!=nbr_words_input: raise Exception("Function: the number of input words does not match the number of input words in function")
+        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_'+str(i)))
+
+        if len(s_output)!=nbr_words_output: raise Exception("Function: the number of output words does not match the number of output words in function")
+        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_'+str(i)))
+
+
 # ********************************************** PERMUTATIONS **********************************************
 # Subclass that represents a permutation object    
 # A permutation is composed of a single function 
@@ -237,15 +257,15 @@ class Permutation(Primitive):
         super().__init__(name, {"IN_":s_input}, {"OUT_":s_output})
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = config[0], config[1], config[2], config[3]
         self.nbr_rounds = nbr_rounds
-        self.functions = {"FUNCTION": Function("PERMUTATION", "", nbr_rounds, nbr_layers, nbr_words, nbr_temp_words, word_bitsize)}
-        self.functions_implementation_order = ["FUNCTION"]
-        self.functions_display_order = ["FUNCTION"]
+        self.functions = {"PERMUTATION": Layered_Function("PERMUTATION", "", nbr_rounds, nbr_layers, nbr_words, nbr_temp_words, word_bitsize)}
+        self.functions_implementation_order = ["PERMUTATION"]
+        self.functions_display_order = ["PERMUTATION"]
 
         if len(s_input)!=nbr_words: raise Exception("Permutation: the number of input words does not match the number of words in function")
-        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_'+str(i)))
+        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_'+str(i)))
 
         if len(s_output)!=nbr_words: raise Exception("Permutation: the number of output words does not match the number of words in function")
-        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_'+str(i)))
+        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_'+str(i)))
              
 
 # ********************************************** BLOCK CIPHERS **********************************************
@@ -259,17 +279,19 @@ class Block_cipher(Primitive):
         k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize = k_config[0], k_config[1], k_config[2], k_config[3]
         sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize = sk_config[0], sk_config[1], sk_config[2], sk_config[3]
         self.nbr_rounds = nbr_rounds
-        self.functions = {"FUNCTION": Function("PERMUTATION", 's', nbr_rounds, s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), "KEY_SCHEDULE": Function("KEY_SCHEDULE", 'k', k_nbr_rounds, k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), "SUBKEYS": Function("SUBKEYS", 'sk', nbr_rounds, sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize)}
-        self.functions_implementation_order = ["SUBKEYS", "KEY_SCHEDULE", "FUNCTION"]
-        self.functions_display_order = ["FUNCTION", "KEY_SCHEDULE", "SUBKEYS"]
+        self.functions = {"PERMUTATION": Layered_Function("PERMUTATION", 's', nbr_rounds, s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), "KEY_SCHEDULE": Layered_Function("KEY_SCHEDULE", 'k', k_nbr_rounds, k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), "SUBKEYS": Layered_Function("SUBKEYS", 'sk', nbr_rounds, sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize)}
+        self.functions_implementation_order = ["SUBKEYS", "KEY_SCHEDULE", "PERMUTATION"]
+        self.functions_display_order = ["PERMUTATION", "KEY_SCHEDULE", "SUBKEYS"]
         
         if (len(k_input)!=k_nbr_words) or (len(p_input)!=s_nbr_words): raise Exception("Block_cipher: the number of input plaintext/key words does not match the number of plaintext/key words in function") 
 
-        if len(p_input)!=s_nbr_words: raise Exception("Block_cipher: the number of plaintext words does not match the number of words in function")
-        for i in range(len(p_input)): self.inputs_constraints.append(op.Equal([p_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_P_'+str(i)))
+        if len(p_input)!=s_nbr_words: raise Exception("Block_cipher: the number of plaintext words does not match the number of words in the permutation")
+        for i in range(len(p_input)): self.inputs_constraints.append(op.Equal([p_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_P_'+str(i)))
 
-        if len(k_input)!=k_nbr_words: raise Exception("Block_cipher: the number of key words does not match the number of words in function")
+        if len(k_input)!=k_nbr_words: raise Exception("Block_cipher: the number of key words does not match the number of words in the")
         for i in range(len(k_input)): self.inputs_constraints.append(op.Equal([k_input[i]], [self.functions["KEY_SCHEDULE"].vars[1][0][i]], ID='IN_LINK_K_'+str(i)))
 
-        if len(c_output)!=s_nbr_words: raise Exception("Block_cipher: the number of ciphertext words does not match the number of words in function") 
-        for i in range(len(c_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][s_nbr_layers][i]], [c_output[i]], ID='OUT_LINK_C_'+str(i)))
+        if len(c_output)!=s_nbr_words: raise Exception("Block_cipher: the number of ciphertext words does not match the number of words in the permutation") 
+        for i in range(len(c_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][s_nbr_layers][i]], [c_output[i]], ID='OUT_LINK_C_'+str(i)))
+
+

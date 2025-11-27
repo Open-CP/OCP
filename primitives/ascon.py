@@ -14,7 +14,7 @@ class ASCON_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         if nbr_rounds==None: nbr_rounds=12
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 320, 320, 1)
@@ -22,7 +22,7 @@ class ASCON_permutation(Permutation):
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         self.test_vectors = self.gen_test_vectors()
         
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         
         constant_table = self.gen_rounds_constant_table()
 
@@ -45,8 +45,8 @@ class ASCON_permutation(Permutation):
     def gen_rounds_constant_table(self):
         constant_table = []
         cons = [0xf0 - r*0x10 + r*0x1 for r in range(12)]
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):  
-            constant_table.append([((cons[12-self.functions["FUNCTION"].nbr_rounds+i-1] >> (7-l)) & 1) for l in range(8)])
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):  
+            constant_table.append([((cons[12-self.functions["PERMUTATION"].nbr_rounds+i-1] >> (7-l)) & 1) for l in range(8)])
         return constant_table
     
     def gen_test_vectors(self):
@@ -62,5 +62,5 @@ class ASCON_permutation(Permutation):
 
 def ASCON_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
-    my_cipher = ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    return my_cipher
+    my_permutation = ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation

@@ -14,7 +14,7 @@ class Rocca_AD_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if nbr_rounds==None: nbr_rounds=20
@@ -26,7 +26,7 @@ class Rocca_AD_permutation(Permutation):
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         self.test_vectors = self.gen_test_vectors()
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
 
         # create constraints
         if represent_mode==0:
@@ -50,5 +50,5 @@ class Rocca_AD_permutation(Permutation):
 
 def ROCCA_AD_PERMUTATION(r=5, represent_mode=0):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
-    my_cipher = Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    return my_cipher
+    my_permutation = Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation

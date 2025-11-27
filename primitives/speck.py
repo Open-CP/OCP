@@ -14,7 +14,7 @@ class Speck_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds (optional)
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
         # define the parameters
@@ -22,7 +22,7 @@ class Speck_permutation(Permutation):
         if nbr_rounds==None: nbr_rounds=22 if version==32 else 22 if version==48 else 26 if version==64 else 28 if version==96 else 32 if version==128 else None
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 2, 0, p_bitsize>>1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         rotr, rotl = (7, 2) if version == 32 else (8, 3)
         self.test_vectors = self.gen_test_vectors(version)
 
@@ -53,11 +53,11 @@ class Speck_permutation(Permutation):
         return [[IN], OUT]
 
 
-def SPECK_PERMUTATION(r=None, version=32):
+def SPECK_PERMUTATION(r=None, version=32, represent_mode=0):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = Speck_permutation(f"SPECK{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation
 
 
 class Speck_block_cipher(Block_cipher):
@@ -84,7 +84,7 @@ class Speck_block_cipher(Block_cipher):
         elif k_bitsize*2==p_bitsize*3: perm, right_k_index, left_k_index = ([1,0,2], 1, 2)
         elif k_bitsize==2*p_bitsize: perm, right_k_index, left_k_index = ([2,0,1,3], 2, 3)
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
 
@@ -116,7 +116,7 @@ class Speck_block_cipher(Block_cipher):
 
     def gen_rounds_constant_table(self):
         constant_table = []
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):
             constant_table.append([i-1])
         return constant_table
 
@@ -165,8 +165,8 @@ class Speck_block_cipher(Block_cipher):
         return [[plaintext, key], ciphertext]
 
 
-def SPECK_BLOCKCIPHER(r=None, version = [32, 64]):
+def SPECK_BLOCKCIPHER(r=None, version = [32, 64], represent_mode=0):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher

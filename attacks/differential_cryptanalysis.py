@@ -130,7 +130,7 @@ def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, soluti
     trails = []
     for i, sol in enumerate(solutions):
         trail_values, trail_vars = extract_trail_values_and_vars(cipher, goal, sol)
-        data = {"cipher": f"{cipher.functions['FUNCTION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_vars": trail_vars, "trail_values": trail_values, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
+        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_vars": trail_vars, "trail_values": trail_values, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
         trail = DifferentialTrail(data, solution_trace=sol)
         if i > 0:
             trail.json_filename = trail.json_filename.replace(".json", f"_{i}.json") if trail.json_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.json")

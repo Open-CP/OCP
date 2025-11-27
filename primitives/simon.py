@@ -13,7 +13,7 @@ class Simon_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
         p_bitsize = version
@@ -23,7 +23,7 @@ class Simon_permutation(Permutation):
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         self.test_vectors = self.gen_test_vectors(version)
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
 
         # create constraints
         if represent_mode==0:
@@ -62,11 +62,11 @@ class Simon_permutation(Permutation):
         return [[IN], OUT]
 
 
-def SIMON_PERMUTATION(r=None, version=32):
+def SIMON_PERMUTATION(r=None, version=32, represent_mode=0):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation
 
 
 # The Simon block cipher
@@ -90,7 +90,7 @@ class Simon_block_cipher(Block_cipher):
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         self.test_vectors = self.gen_test_vectors(version)
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
 
@@ -143,7 +143,7 @@ class Simon_block_cipher(Block_cipher):
         z4 = 0b11110111001001010011000011101000000100011011010110011110001011
         z=z0 if (version[0],version[1])==(32,64) else z0 if (version[0],version[1])==(48,72) else z1 if (version[0],version[1])==(48,96)  else z2 if (version[0],version[1])==(64,96)  else z3 if (version[0],version[1])==(64,128)  else z2 if (version[0],version[1])==(96,96) else z3 if (version[0],version[1])==(96,144) else z2 if (version[0],version[1])==(128,128) else z3 if (version[0],version[1])==(128,192) else z4 if (version[0],version[1])==(128,256) else None
         round_constant = (2 ** (version[0] >> 1) - 1) ^ 3
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):
             constant_table.append([round_constant ^ ((z >> ((i-1) % 62)) & 1)])
         return constant_table
 
@@ -192,8 +192,8 @@ class Simon_block_cipher(Block_cipher):
         return [[plaintext, key], ciphertext]
 
 
-def SIMON_BLOCKCIPHER(r=None, version=[32,64]):
+def SIMON_BLOCKCIPHER(r=None, version=[32,64], represent_mode=0):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
-    my_cipher = Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher

@@ -14,7 +14,7 @@ class ChaCha_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
@@ -24,7 +24,7 @@ class ChaCha_permutation(Permutation):
             nbr_temp_words = 0
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.functions["FUNCTION"]
+            S = self.functions["PERMUTATION"]
         
             for i in range(1,nbr_rounds+1):  
                 if i%2 == 0:
@@ -66,10 +66,10 @@ class ChaCha_permutation(Permutation):
         return [[IN], OUT]
 
 
-def CHACHA_PERMUTATION(r=None): 
+def CHACHA_PERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
-    my_cipher = ChaCha_permutation("ChaCha_PERM", my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = ChaCha_permutation("ChaCha_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation
 
 
 # The ChaCha permutation to generate the key stream
@@ -81,7 +81,7 @@ class ChaCha_keypermutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
@@ -91,7 +91,7 @@ class ChaCha_keypermutation(Permutation):
             nbr_temp_words = 16 # To retain the initial input for adding with final state to obtain the key stream
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.functions["FUNCTION"]
+            S = self.functions["PERMUTATION"]
         
             for i in range(1,nbr_rounds+1):  
                 if i%2 == 0:
@@ -149,7 +149,7 @@ class ChaCha_keypermutation(Permutation):
         return [[IN], OUT]
     
 
-def CHACHA_KEYPERMUTATION(r=None): 
+def CHACHA_KEYPERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
-    my_cipher = ChaCha_keypermutation("ChaCha_KEYPERM", my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = ChaCha_keypermutation("ChaCha_KEYPERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation

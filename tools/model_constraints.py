@@ -28,10 +28,10 @@ def fill_functions_rounds_layers_positions(cipher, functions=None, rounds=None, 
 
     Parameters:
         cipher (object): The cipher object.
-        functions (list[str]): List of functions. If None, use all functions of the cipher. Example: ["FUNCTION", "KEY_SCHEDULE", "SUBKEYS"].
-        rounds (dict): Dictionary specifying rounds. If None, use all. Example: {"FUNCTION": [1, 2, 3]}.
-        layers (dict): Dictionary specifying layers. If None, use all. Example: {"FUNCTION": {1: [0, 1], 2: [0, 1], 3: [0, 1]}}.
-        positions (dict): Dictionary specifying positions. If None, use all. Example: {"FUNCTION": {1: {0: [0, 1], 1: [0, 1]}, 2: {0: [0, 1], 1: [0, 1]}, 3: {0: [0, 1], 1: [0, 1]}}}.
+        functions (list[str]): List of functions. If None, use all functions of the cipher. Example: ["PERMUTATION", "KEY_SCHEDULE", "SUBKEYS"].
+        rounds (dict): Dictionary specifying rounds. If None, use all. Example: {"PERMUTATION": [1, 2, 3]}.
+        layers (dict): Dictionary specifying layers. If None, use all. Example: {"PERMUTATION": {1: [0, 1], 2: [0, 1], 3: [0, 1]}}.
+        positions (dict): Dictionary specifying positions. If None, use all. Example: {"PERMUTATION": {1: {0: [0, 1], 1: [0, 1]}, 2: {0: [0, 1], 1: [0, 1]}, 3: {0: [0, 1], 1: [0, 1]}}}.
 
     Returns:
         tuple: (functions, rounds, layers, positions)
@@ -93,7 +93,7 @@ def set_model_versions(cipher, version, functions, rounds, layers, positions, op
 def gen_round_model_constraint_obj_fun(cipher, goal, model_type, config_model): # Generate constraints for a given cipher based on user-specified parameters.
     configure_model_version(cipher, goal, config_model)
     constraint = []
-    obj_fun = [[] for _ in range(cipher.functions["FUNCTION"].nbr_rounds)]
+    obj_fun = [[] for _ in range(cipher.functions["PERMUTATION"].nbr_rounds)]
     functions, rounds, layers, positions = config_model.get("functions"), config_model.get("rounds"), config_model.get("layers"), config_model.get("positions")
     for f in functions:
         for r in rounds[f]:
@@ -116,10 +116,10 @@ def gen_input_non_zero_constraints(cipher, goal, config_model): # Generate a sta
     atleast_encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL")
     cons_vars = []
     for f in functions:
-        if f in ["FUNCTION", "KEY_SCHEDULE"]:
+        if f in ["PERMUTATION", "KEY_SCHEDULE"]:
             start_round = rounds[f][0]
             start_layer = layers[f][start_round][0]
-            cons_vars += cipher.functions[f].vars[start_round][start_layer][:cipher.functions["FUNCTION"].nbr_words] # Only supports input non-zero constraints on FUNCTION and KEY_SCHEDULE functions.
+            cons_vars += cipher.functions[f].vars[start_round][start_layer][:cipher.functions["PERMUTATION"].nbr_words] # Only supports input non-zero constraints on FUNCTION and KEY_SCHEDULE functions.
     bitwise = False if "TRUNCATEDDIFF" in goal else True
     return gen_predefined_constraints(model_type=model_type, cons_type="SUM_AT_LEAST", cons_vars=cons_vars, cons_value=1, bitwise=bitwise, encoding=atleast_encoding)
 

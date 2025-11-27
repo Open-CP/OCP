@@ -14,7 +14,7 @@ class AES_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         if nbr_rounds==None: nbr_rounds=10
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, 8)
@@ -22,7 +22,7 @@ class AES_permutation(Permutation):
         self.test_vectors = self.gen_test_vectors()
         full_rounds = 10
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         constant_table =self.gen_rounds_constant_table()
 
         # create constraints
@@ -38,7 +38,7 @@ class AES_permutation(Permutation):
     def gen_rounds_constant_table(self):
         constant_table = []
         Rcon = [0x01000000, 0x02000000, 0x04000000, 0x08000000, 0x10000000, 0x20000000, 0x40000000, 0x80000000, 0x1B000000, 0x36000000]
-        for i in range(1,self.functions["FUNCTION"].nbr_rounds+1):
+        for i in range(1,self.functions["PERMUTATION"].nbr_rounds+1):
             constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff] * 4)
         return constant_table
 
@@ -49,10 +49,10 @@ class AES_permutation(Permutation):
         return [[IN], OUT]
 
 
-def AES_PERMUTATION(r=None):
+def AES_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation
 
 
 # The AES block cipher
@@ -88,7 +88,7 @@ class AES_block_cipher(Block_cipher):
             nk = int(k_bitsize/32)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
 
@@ -170,7 +170,7 @@ class AES_block_cipher(Block_cipher):
         return [[plaintext, key], ciphertext]
 
 
-def AES_BLOCKCIPHER(r=None, version = [128, 128]):
+def AES_BLOCKCIPHER(r=None, version = [128, 128], represent_mode=0):
     my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
-    my_cipher = AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r)
+    my_cipher = AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     return my_cipher

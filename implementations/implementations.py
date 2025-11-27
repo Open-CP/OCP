@@ -75,7 +75,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                     if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                 if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                 myfile.write("\n")
-
+            myfile.write("\n")
             
             
             for s in my_prim.functions: 
@@ -88,7 +88,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
             
             if unroll: 
                 for r in range(1,max(nbr_rounds_table)+1):
-                    myfile.write("\n\t# Round " + str(r) + "\n")
+                    myfile.write("\t# Round " + str(r) + "\n")
                     for s in my_prim.functions_implementation_order: 
                         if r <= my_prim.functions[s].nbr_rounds:
                             for l in range(my_prim.functions[s].nbr_layers+1):                        
@@ -96,7 +96,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                                     for line in cons.generate_implementation("python", unroll=True): myfile.write("\t" + line + "\n")      
                             myfile.write("\n")
             else: 
-                myfile.write("\n\t# Round function \n")
+                myfile.write("\t# Round function \n")
                 myfile.write("\tfor i in range(" + str(nbr_rounds) + "):\n")  
                 for s in my_prim.functions_implementation_order: 
                     for l in range(my_prim.functions[s].nbr_layers+1):                        
@@ -153,10 +153,11 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                      if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                  if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                  myfile.write("\n")
-                   
+             myfile.write("\n")
+
              if unroll:  
                 for r in range(1,max(nbr_rounds_table)+1):
-                     myfile.write("\n\t// Round " + str(r) + "\n")
+                     myfile.write("\t// Round " + str(r) + "\n")
                      for s in my_prim.functions_implementation_order:
                          if  r <= my_prim.functions[s].nbr_rounds:
                             for l in range(my_prim.functions[s].nbr_layers+1):
@@ -164,7 +165,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                                     for line in cons.generate_implementation('c', unroll=True): myfile.write("\t" + line + "\n")
                             myfile.write("\n")
              else:
-                 myfile.write("\n\t// Round function \n")
+                 myfile.write("\t// Round function \n")
                  myfile.write("\tfor (int i=0; i<" + str(nbr_rounds) + "; i++) {\n")                     
                  for s in my_prim.functions_implementation_order:
                     for l in range(my_prim.functions[s].nbr_layers+1):
@@ -173,7 +174,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                     myfile.write("\n")
                  myfile.write("\t}\n")     
                  
-             myfile.write("\n\t// Output \n")
+             myfile.write("\t// Output \n")
              cpt, cptw = 0, 0
              my_output_name = sum([[i]*len(my_prim.outputs[i]) for i in my_prim.outputs], [])
              for s in my_prim.functions: 
@@ -281,10 +282,10 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
              for s in my_prim.outputs: myfile.write("\tlogic[" + str(len(my_prim.outputs[s])*my_prim.outputs[s][0].bitsize-1) + ":0] " + s + "; \n")
              myfile.write('\tinteger i;\n')
              
-             for s in my_prim.inputs: 
-                 #for word in 
-                 myfile.write("\tTODOTODO assign " + s + "[" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + ":" + str(len(my_prim.inputs[s])*my_prim.inputs[s][0].bitsize-1) + "] = 'h0\n") 
-                 
+             for s in my_prim.inputs:
+                for i in range(len(my_prim.inputs[s])):
+                    myfile.write('\tinitial ' + s + '[' + str(my_prim.inputs[s][0].bitsize*(i+1)-1) + ':' + str(my_prim.inputs[s][0].bitsize*i) + '] = ' + str(my_prim.inputs[s][0].bitsize) + "'h0; \n")
+
              myfile.write("\t" + my_prim.name + " UUT (" + ", ".join(my_prim.inputs) + ", " + ", ".join(my_prim.outputs) + ");\n")
              myfile.write("\tinitial begin\n \t#1;\n")
              for my_input in my_prim.inputs: 

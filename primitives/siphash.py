@@ -13,14 +13,14 @@ class SipHash_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         nbr_layers = 10
         nbr_words = 4 
         nbr_temp_words = 0
         word_bitsize = 64
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-        S = self.functions["FUNCTION"]
+        S = self.functions["PERMUTATION"]
 
         # create constraints
         if represent_mode==0:
@@ -45,7 +45,7 @@ class SipHash_permutation(Permutation):
         return [[IN], OUT]
     
     
-def SIPHASH_PERMUTATION(r=None): 
+def SIPHASH_PERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
-    my_cipher = SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r)
-    return my_cipher
+    my_permutation = SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    return my_permutation

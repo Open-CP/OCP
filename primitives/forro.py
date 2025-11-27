@@ -14,7 +14,7 @@ class Forro_permutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_subrounds: Number of subrounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
@@ -24,25 +24,17 @@ class Forro_permutation(Permutation):
             nbr_temp_words = 0
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_subrounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.functions["FUNCTION"]
+            S = self.functions["PERMUTATION"]
         
             for i in range(1,nbr_subrounds +1):  
-                if i%8 == 1:
-                    SR = [0, 4, 8, 12, 3]
-                elif i%8 ==2:
-                    SR = [1, 5, 9, 13, 0]
-                elif i%8 ==3:
-                    SR = [2, 6, 10, 14, 1]
-                elif i%8 ==4:
-                    SR = [3, 7, 11, 15, 2]
-                elif i%8 ==5:
-                    SR = [0, 5, 10, 15, 3]
-                elif i%8 ==6:
-                    SR = [1, 6, 11, 12, 0]
-                elif i%8 ==7:
-                    SR = [2, 7, 8, 13, 1]
-                else:
-                    SR = [3, 4, 9, 14, 2]
+                if i%8 == 1:  SR = [0, 4, 8, 12, 3]
+                elif i%8 ==2: SR = [1, 5, 9, 13, 0]
+                elif i%8 ==3: SR = [2, 6, 10, 14, 1]
+                elif i%8 ==4: SR = [3, 7, 11, 15, 2]
+                elif i%8 ==5: SR = [0, 5, 10, 15, 3]
+                elif i%8 ==6: SR = [1, 6, 11, 12, 0]
+                elif i%8 ==7: SR = [2, 7, 8, 13, 1]
+                else:         SR = [3, 4, 9, 14, 2]
                 
                 
                 S.SingleOperatorLayer("Add1", i, 0, ModAdd, [[SR[3], SR[4]]], [SR[3]])
@@ -59,9 +51,6 @@ class Forro_permutation(Permutation):
                 S.SingleOperatorLayer("Add6", i, 10, ModAdd, [[SR[1], SR[0]]], [SR[0]])
                 S.RotationLayer("Rot3", i, 11, [['l', 8, SR[0], SR[0]]])
 
-
-
-        
         self.test_vectors = self.gen_test_vectors()
 
 
@@ -81,15 +70,11 @@ class Forro_permutation(Permutation):
         return [[IN], OUT]
     
 
-def FORRO_PERMUTATION(r=None): 
+def FORRO_PERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
-    my_cipher = Forro_permutation("Forro_PERM", my_input, my_output, nbr_subrounds=r)
-    return my_cipher    
+    my_permutation = Forro_permutation("Forro_PERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
+    return my_permutation    
     
-
-
-
-
 
 # The Forro permutation to generate the key stream
 class Forro_keypermutation(Permutation):
@@ -100,7 +85,7 @@ class Forro_keypermutation(Permutation):
         :param s_input: Input state
         :param s_output: Output state
         :param nbr_subrounds: Number of subrounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
@@ -110,25 +95,17 @@ class Forro_keypermutation(Permutation):
             nbr_temp_words = 16 # To retain the initial input for adding with final state to obtain the key stream
             word_bitsize = 32
             super().__init__(name, s_input, s_output, nbr_subrounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-            S = self.functions["FUNCTION"]
+            S = self.functions["PERMUTATION"]
         
             for i in range(1,nbr_subrounds +1):  
-                if i%8 == 1:
-                    SR = [0, 4, 8, 12, 3]
-                elif i%8 ==2:
-                    SR = [1, 5, 9, 13, 0]
-                elif i%8 ==3:
-                    SR = [2, 6, 10, 14, 1]
-                elif i%8 ==4:
-                    SR = [3, 7, 11, 15, 2]
-                elif i%8 ==5:
-                    SR = [0, 5, 10, 15, 3]
-                elif i%8 ==6:
-                    SR = [1, 6, 11, 12, 0]
-                elif i%8 ==7:
-                    SR = [2, 7, 8, 13, 1]
-                else:
-                    SR = [3, 4, 9, 14, 2]
+                if i%8 == 1:  SR = [0, 4, 8, 12, 3]
+                elif i%8 ==2: SR = [1, 5, 9, 13, 0]
+                elif i%8 ==3: SR = [2, 6, 10, 14, 1]
+                elif i%8 ==4: SR = [3, 7, 11, 15, 2]
+                elif i%8 ==5: SR = [0, 5, 10, 15, 3]
+                elif i%8 ==6: SR = [1, 6, 11, 12, 0]
+                elif i%8 ==7: SR = [2, 7, 8, 13, 1]
+                else:         SR = [3, 4, 9, 14, 2]
                 
                 # In the first round copy the initial word to temporary words
                 if i == 1:
@@ -178,10 +155,10 @@ class Forro_keypermutation(Permutation):
         return [[IN], OUT]   
 
 
-def FORRO_KEYPERMUTATION(r=None): 
+def FORRO_KEYPERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
-    my_cipher = Forro_keypermutation("Forro_KEYPERM", my_input, my_output, nbr_subrounds=r)
-    return my_cipher     
+    my_permutation = Forro_keypermutation("Forro_KEYPERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
+    return my_permutation     
 
 
 
