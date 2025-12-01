@@ -2,6 +2,8 @@ from abc import ABC
 import variables.variables as var
 import operators.operators as op
 from operators.matrix import Matrix, GF2Linear_Trans
+from operators.boolean_operators import ConstantXOR
+from operators.modular_operators import ConstantAdd
 
 def generateID(name, round_nb, layer, position):
     return name + '_' + str(round_nb) + '_' + str(layer) + '_' + str(position)
@@ -138,13 +140,16 @@ class Layered_Function:
             self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
         
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant". 
-    def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table):
+    def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, modulo=None):
         if len(constant)<(self.nbr_words + self.nbr_temp_words): constant = constant + [None]*(self.nbr_words + self.nbr_temp_words - len(constant))
         i = 0
         for j in range(self.nbr_words + self.nbr_temp_words):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-            if constant[j]!=None: 
-                self.constraints[crt_round][crt_layer].append(op.ConstantAdd([in_var], [out_var], add_type, constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer,j)))  
+            if constant[j]!=None:
+                if add_type == 'xor':
+                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer,j)))
+                elif add_type == 'modadd':
+                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer,j)))
                 i += 1
             else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
     

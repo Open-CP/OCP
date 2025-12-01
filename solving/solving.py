@@ -1,14 +1,8 @@
 """
-This module provides tools for constructing and solving MILP/SAT models.
-Core functionalities:
-1. Formulate MILP/SAT models from constraints and objective functions.
-2. Solve MILP/SAT models using supported solvers:
+This module provides tools for solving MILP/SAT models. Supports multiple solvers and configurations.
     - MILP solvers: Gurobi, SCIP, OR-Tools
     - SAT solvers: PySAT, OR-Tools
-3. Solve MILP/SAT models under different parameters and settings.
 """
-
-import os
 
 try: # Solve MILP model using Gurobi solver
     import gurobipy as gp
@@ -26,7 +20,7 @@ except ImportError:
     scip_import = False
     pass
 
-try: # Solve MILP model using Or-tools solver. TO DO
+try: # Solve MILP/SAT model using Or-tools solver. TO DO
     from ortools.linear_solver import pywraplp
     import ortoolslpparser
     ortools_import = True
@@ -44,13 +38,14 @@ except ImportError:
     pysat_import = False
     pass
 
-def solve_milp(filename, solving_args=None):
+
+def solve_milp(filename, config_solver=None):
     """
     Solve a MILP model.
 
     Parameters:
         filename (str): Path to the MILP model file.
-        solving_args (dict):
+        config_solver (dict):
             - solver: solver name (e.g, "GUROBI", "SCIP").
             - solution_number: The number of solutions to find (default: 1).
 
@@ -58,17 +53,17 @@ def solve_milp(filename, solving_args=None):
             A list of solutions. Each solution is represented as a dictionary mapping variable names to their values.
     """
 
-    solving_args = solving_args or {}
-    solver = solving_args.get("solver", "DEFAULT")
-    print(f"[INFO] Solving MILP model with settings: {solving_args}")
+    config_solver = config_solver or {}
+    solver = config_solver.get("solver", "DEFAULT")
+    print(f"[INFO] Solving MILP model with settings: {config_solver}")
     if solver.upper() in ["GUROBI", "DEFAULT"]:
-        return solve_milp_gurobi(filename, solving_args)
+        return solve_milp_gurobi(filename, config_solver)
     elif solver.upper() == "SCIP":
-        return solve_milp_scip(filename, solving_args)
+        return solve_milp_scip(filename, config_solver)
     raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: 'GUROBI' (DEFAULT), 'SCIP'.")
 
 
-def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi.
+def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurobi.
     if gurobipy_import == False:
         print("[WARNING] gurobipy module can't be loaded ... skipping test\n")
         return []
@@ -76,10 +71,10 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
     try:
         model = gp.read(filename) # Load the model from file.
         # Set Parameters provided by Gurobi. Example: TimeLimit, SolutionLimit, PoolSearchMode, PoolSolutions, MIPFocus, etc.
-        for key, val in solving_args.items():
+        for key, val in config_solver.items():
             if hasattr(model.Params, key):
                 setattr(model.Params, key, val)
-        solution_number = solving_args.get("solution_number", 1)
+        solution_number = config_solver.get("solution_number", 1)
         if isinstance(solution_number, int) and solution_number > 1:
             model.Params.PoolSearchMode = 2
             model.Params.PoolSolutions = solution_number
@@ -115,7 +110,7 @@ def solve_milp_gurobi(filename, solving_args): # Solve a MILP model using Gurobi
         return sol_list
 
 
-def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It supports finding one solution currently. TO DO: finding multiple solutions
+def solve_milp_scip(filename, config_solver): # Solve a MILP model using SCIP. It supports finding one solution currently. TO DO: finding multiple solutions
     if not scip_import:
         print("[WARNING] PySCIPOpt module can't be loaded ... skipping SCIP test\n")
         return []
@@ -124,9 +119,9 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It
         model = Model()
         model.readProblem(filename)
         # Set Parameters provided by SCIP. TO DO MORE
-        if "time_limit" in solving_args:
-            model.setRealParam("limits/time", solving_args["time_limit"])
-        solution_number = solving_args.get("solution_number", 1)
+        if "time_limit" in config_solver:
+            model.setRealParam("limits/time", config_solver["time_limit"])
+        solution_number = config_solver.get("solution_number", 1)
         if isinstance(solution_number, int) and solution_number > 1: # TO DO: support multiple solutions
             print("[WARNING] It currently does not support finding multiple solutions ... returning only one solution\n")
             model.setIntParam("limits/solutions", solution_number)
@@ -150,13 +145,13 @@ def solve_milp_scip(filename, solving_args): # Solve a MILP model using SCIP. It
         return [sol_dic]
 
 
-def solve_sat(filename, variable_map, solving_args=None):
+def solve_sat(filename, variable_map, config_solver=None):
     """
     Solve a SAT problem
 
     Args:
         filename (str): Path to the CNF file.
-        solving_args (dict):
+        config_solver (dict):
             - target: The optimization target:
                 - "SATISFIABLE": Find a feasible solution.
                 - "All": Find all feasible solutions.
@@ -168,23 +163,23 @@ def solve_sat(filename, variable_map, solving_args=None):
         - None if no feasible solution is found or solver fails.
     """
 
-    solving_args = solving_args or {}
-    solver = solving_args.get("solver", "DEFAULT")
-    print(f"[INFO] Solving SAT model with settings: {solving_args}")
+    config_solver = config_solver or {}
+    solver = config_solver.get("solver", "DEFAULT")
+    print(f"[INFO] Solving SAT model with settings: {config_solver}")
     if solver in ["DEFAULT", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
-        return solve_sat_pysat(filename, variable_map, solving_args)
+        return solve_sat_pysat(filename, variable_map, config_solver)
     elif solver == "ORTools":
-        return solve_sat_ortools(filename, variable_map, solving_args)
+        return solve_sat_ortools(filename, variable_map, config_solver)
     raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: ORTools, DEFAULT, Cadical103, Cadical153, Cadical195, CryptoMinisat, Gluecard3, Gluecard4, Glucose3, Glucose4, Lingeling, MapleChrono, MapleCM, Maplesat, Mergesat3, Minicard, Minisat22, MinisatGH'.")
 
 
-def solve_sat_pysat(filename, variable_map, solving_args):
+def solve_sat_pysat(filename, variable_map, config_solver):
     if not pysat_import:
         print("[WARNING] pysat module can't be loaded ... skipping test\n")
         return None
 
-    solver = solving_args.get("solver", "DEFAULT")
-    solution_number = solving_args.get("solution_number", 1)
+    solver = config_solver.get("solver", "DEFAULT")
+    solution_number = config_solver.get("solution_number", 1)
     cnf = CNF(filename)
     if solver == "DEFAULT":
         solver = Solver()
@@ -212,5 +207,5 @@ def solve_sat_pysat(filename, variable_map, solving_args):
     return sol_list
 
 
-def solve_sat_ortools(filename, variable_map, solving_args): # TO DO
+def solve_sat_ortools(filename, variable_map, config_solver): # TO DO
     return None
