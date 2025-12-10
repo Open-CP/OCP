@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod
-import math
 
 
 def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
@@ -247,79 +246,6 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
                 model_list = [f"{var_in[i]} - {var_in[i]} = 0" for i in range(self.amount)]
                 model_list += [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
                 model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
-
-
-class ConstantAdd(UnaryOperator): # Operator for the constant addition: use add_type ('xor' or '+') to incorporate the constant with value "constant" to the input variable and result is stored in the output variable
-                                  # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
-    def __init__(self, input_vars, output_vars, add_type, constant_table, round = 0, index = 0, modulo = None, ID = None):
-        super().__init__(input_vars, output_vars, ID = ID)
-        if add_type!='xor' and add_type!='modadd': raise Exception(str(self.__class__.__name__) + ": unknown add_type value")
-        self.add_type = add_type
-        self.modulo = modulo
-        self.table = constant_table
-        self.table_r, self.table_i = round, index
-
-    def generate_implementation(self, implementation_type='python', unroll=False):
-        if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
-        else: my_constant=f"RC[i][{self.table_i}]"
-        if implementation_type == 'python':
-            if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
-            elif self.add_type == 'modadd':
-                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + " + " + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else:
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo)]
-        elif implementation_type == 'c':
-            if self.add_type == 'xor': return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
-            elif self.add_type == 'modadd':
-                if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
-                else:
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                    else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
-        elif implementation_type == 'verilog':
-            if self.add_type == 'xor': return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant + ';']
-            elif self.add_type == 'modadd':
-                if self.modulo == None: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
-                else:
-                    if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                    else: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
-
-    def generate_implementation_header(self, implementation_type='python'):
-        if implementation_type == 'python':
-            return [f"#Constraints List\nRC={self.table}"]
-        elif implementation_type == 'c':
-            bit_size = max(max(row) for row in self.table).bit_length()
-            var_def_c = 'uint8_t' if bit_size <= 8 else "uint32_t" if bit_size <= 32 else "uint64_t" if bit_size <= 64 else "uint128_t"
-            return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
-        elif implementation_type == 'verilog':
-            bit_size = max(max(row) for row in self.table).bit_length()
-            return [f"// Constraints List\nreg [{bit_size-1}:0] RC [0:{len(self.table)-1}][0:{len(self.table[0])-1}];", "initial begin"] + [f"    RC[{i}][{j}] = {bit_size}'h{self.table[i][j]:X};" for i in range(len(self.table)) for j in range(len(self.table[0]))] + ["end"]
-        else: return None
-
-    def generate_model(self, model_type='sat'):
-        if model_type == 'sat':
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"] and self.add_type == 'xor':
-                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"] and self.add_type == 'xor':
-                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"] and self.add_type == 'xor':
-                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list
-            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"] and self.add_type == 'xor':
-                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)

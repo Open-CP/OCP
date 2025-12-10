@@ -1,4 +1,5 @@
 from itertools import combinations
+import math
 from operators.operators import Operator, BinaryOperator, UnaryOperator, RaiseExceptionVersionNotExisting
   
 
@@ -331,6 +332,60 @@ class NOT(UnaryOperator): # Operator for the bitwise NOT operation: compute the 
             if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]: 
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                return model_list
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+
+
+class ConstantXOR(UnaryOperator): # Operator for the constant addition using xor, to incorporate the constant with value "constant" to the input variable and result is stored in the output variable
+    def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, ID = None):
+        super().__init__(input_vars, output_vars, ID = ID)
+        self.table = constant_table
+        self.table_r, self.table_i = round, index
+
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
+        else: my_constant=f"RC[i][{self.table_i}]"
+        if implementation_type == 'python':
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
+        elif implementation_type == 'c':
+            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
+        elif implementation_type == 'verilog':
+            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant + ';']
+        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+
+    def generate_implementation_header(self, implementation_type='python'):
+        if implementation_type == 'python':
+            return [f"#Constraints List\nRC={self.table}"]
+        elif implementation_type == 'c':
+            bit_size = max(max(row) for row in self.table).bit_length()
+            var_def_c = 'uint8_t' if bit_size <= 8 else "uint32_t" if bit_size <= 32 else "uint64_t" if bit_size <= 64 else "uint128_t"
+            return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
+        elif implementation_type == 'verilog':
+            bit_size = max(max(row) for row in self.table).bit_length()
+            return [f"// Constraints List\nreg [{bit_size-1}:0] RC [0:{len(self.table)-1}][0:{len(self.table[0])-1}];", "initial begin"] + [f"    RC[{i}][{j}] = {bit_size}'h{self.table[i][j]:X};" for i in range(len(self.table)) for j in range(len(self.table[0]))] + ["end"]
+        else: return None
+
+    def generate_model(self, model_type='sat'):
+        if model_type == 'sat':
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
+                return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
+                return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
+            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'milp':
+            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
+                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
+                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                return model_list
+            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
+                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
+                model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)

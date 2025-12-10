@@ -99,7 +99,7 @@ class Skinny_block_cipher(Block_cipher):
         self.test_vectors = self.gen_test_vectors(version)
         round_constants = self.gen_rounds_constant_table()
         sbox = Skinny_4bit_Sbox if s_word_bitsize == 4 else Skinny_8bit_Sbox
-        if self.tweak_size >= 2: self.functions_implementation_order = ["KEY_SCHEDULE", "SUBKEYS", "FUNCTION"]
+        if self.tweak_size >= 2: self.functions_implementation_order = ["KEY_SCHEDULE", "SUBKEYS", "PERMUTATION"]
 
         S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
