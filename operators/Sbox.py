@@ -671,3 +671,9 @@ class KNOT_Sbox(Sbox):             # Operator of the KNOT 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)
         self.table = [4, 0, 10, 7, 11, 14, 1, 13, 9, 15, 6, 8, 5, 2, 12, 3]
+
+
+class PRINCE_Sbox(Sbox):          # Operator of the PRINCE 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [0xb, 0xf, 0x3, 0x2, 0xa, 0xc, 0x9, 0x1, 0x6, 0x7, 0x8, 0x0, 0xe, 0x5, 0xd, 0x4]
