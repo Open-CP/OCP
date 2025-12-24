@@ -63,4 +63,5 @@ class ASCON_permutation(Permutation):
 def ASCON_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(320)], [var.Variable(1,ID="out"+str(i)) for i in range(320)]
     my_permutation = ASCON_permutation("ASCON_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation

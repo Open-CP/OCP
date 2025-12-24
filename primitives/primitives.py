@@ -1,3 +1,4 @@
+import copy 
 from abc import ABC
 import variables.variables as var
 import operators.operators as op
@@ -24,10 +25,10 @@ class Layered_Function:
         self.word_bitsize = word_bitsize      # number of bits per word in that function
         self.vars = []                    
         self.constraints = []  
-        
+
         # list of variables for that function (indexed with vars[r][l][n] where r is the round number, l the layer number, n the word number)
         self.vars = [[[] for i in range(nbr_layers+1)] for j in range(nbr_rounds+1)] 
-
+        
         # list of constraints for that function (indexed with constraints[r][l][n] where r is the round number, l the layer number, n the constraint number)
         self.constraints = [[[] for i in range(nbr_layers+1)] for j in range(nbr_rounds+1)]  
     
@@ -38,9 +39,8 @@ class Layered_Function:
                 
         # create initial constraints
         for i in range(0,nbr_rounds):  
-            self.constraints[i][nbr_layers] = [op.Equal([self.vars[i][nbr_layers][j]], [self.vars[i+1][0][j]], ID=generateID('LINK_' + label,i,nbr_layers,j)) for j in range(nbr_words + nbr_temp_words)]
+            self.constraints[i][nbr_layers] = [op.Equal([self.vars[i][nbr_layers][j]], [self.vars[i+1][0][j]], ID=generateID('LINK_EQ_' + label,i,nbr_layers+1,j)) for j in range(nbr_words + nbr_temp_words)]
             
-
     def display(self, representation='binary'):   # method that displays in details the function
         print("Name: " + str(self.name), " / nbr_words: " + str(self.nbr_words), " / word_bitsize: " + str(self.word_bitsize))
         print("Vars: [" + str([ len(self.vars[i]) for i in range(len(self.vars))])   + "]")
@@ -75,19 +75,19 @@ class Layered_Function:
             if len(mask)<n_words: mask = mask + [0]*(n_words - len(mask))
             for j in range(n_words):
                 if mask[j]==1: 
-                    in_var, out_var = [self.vars[crt_round][crt_layer][i] for i in index[j]], [self.vars[crt_round][crt_layer+1][i] for i in index[j]]
-                    self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+                    in_vars, out_vars = [self.vars[crt_round][crt_layer][i] for i in index[j]], [self.vars[crt_round][crt_layer+1][i] for i in index[j]]
+                    self.constraints[crt_round][crt_layer].append(sbox_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer+1,j)))
                 else: 
                     for i in range(bitsize):
                         in_var, out_var = self.vars[crt_round][crt_layer][j*bitsize+i], self.vars[crt_round][crt_layer+1][j*bitsize+i]
-                        self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+                        self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
         else:
             if mask is None: mask = [1]*self.nbr_words 
             if len(mask)<(self.nbr_words + self.nbr_temp_words): mask = mask + [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
             for j in range(self.nbr_words + self.nbr_temp_words):
                 in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-                if mask[j]==1: self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
-                else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+                if mask[j]==1: self.constraints[crt_round][crt_layer].append(sbox_operator([in_var], [out_var], ID=generateID(name,crt_round,crt_layer+1,j)))
+                else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
        
     # apply a layer "name" of a Permutation, at the round "crt_round", at the layer "crt_layer", with the permutation "permutation". 
     def PermutationLayer(self, name, crt_round, crt_layer, permutation):
@@ -106,7 +106,7 @@ class Layered_Function:
         if len(permutation)<(self.nbr_words + self.nbr_temp_words): permutation = permutation + [i for i in range(len(permutation), self.nbr_words + self.nbr_temp_words)] 
         for j in range(len(permutation)):
             in_var, out_var = self.vars[crt_round][crt_layer][permutation[j]], self.vars[crt_round][crt_layer+1][j]
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
 
     # apply a layer "name" of Rotation, at the round "crt_round", at the layer "crt_layer". Each rot is a list of rotation executions, each execution is composed of three elements plus an optional fourth: [direction, amount, index_in, (index_out)]. A rotation execution will take the word of the state located at position "index_in", apply the rotation direction "direction" and amount "amount" and place it in state located at position "index_out" (if defined, "index_in" otherwise). The state words receiving no rotation are applied identity.
     def RotationLayer(self, name, crt_round, crt_layer, rot):
@@ -123,21 +123,23 @@ class Layered_Function:
         Returns:
             None
         """
-        if type(rot[0]) is not list: rot = [rot]
-        identity_indexes = list(range(self.nbr_words + self.nbr_temp_words))
+        if type(rot[0]) is not list: rot = [rot]  # if only one rotation is given, transform it into a list of one rotation
+        table = [None]*(self.nbr_words + self.nbr_temp_words) # prepare a table to identify which output indexes are rotated values and which are not
         for r in rot:
-            in_index, out_index = r[2], r[2] if len(r)==3 else r[3]
-            self.constraints[crt_round][crt_layer].append(op.Rot([self.vars[crt_round][crt_layer][in_index]], [self.vars[crt_round][crt_layer+1][out_index]], r[0], r[1], ID=generateID(name,crt_round,crt_layer,in_index)))
-            if out_index in identity_indexes: identity_indexes.remove(out_index)
+            index_in, out_index = r[2], r[2] if len(r)==3 else r[3]
+            table[out_index] = (r[0], r[1], index_in, out_index)
 
-        for j in identity_indexes:
-            self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name,crt_round,crt_layer,j)))
+        for j in range(self.nbr_words + self.nbr_temp_words): # apply the rotations and the identity where no rotation is applied
+            if table[j] is not None:
+                self.constraints[crt_round][crt_layer].append(op.Rot([self.vars[crt_round][crt_layer][table[j][2]]], [self.vars[crt_round][crt_layer+1][table[j][3]]], table[j][0], table[j][1], ID=generateID(name,crt_round,crt_layer+1,table[j][3])))
+            else:
+                self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
 
     # apply a layer "name" of a simple identity at the round "crt_round", at the layer "crt_layer". 
     def AddIdentityLayer(self, name, crt_round, crt_layer):
         for j in range(self.nbr_words + self.nbr_temp_words):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
         
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant". 
     def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, modulo=None):
@@ -147,11 +149,11 @@ class Layered_Function:
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
             if constant[j]!=None:
                 if add_type == 'xor':
-                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer,j)))
+                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer+1,j)))
                 elif add_type == 'modadd':
-                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer,j)))
+                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer+1,j)))
                 i += 1
-            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))
+            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
     
     # apply a layer "name" of a single operator "my_operator" with input indexes "index_in" and output indexes "index_out", at the round "crt_round", at the layer "crt_layer". The other output indexes are just being applied identity
     def SingleOperatorLayer(self, name, crt_round, crt_layer, my_operator, index_in, index_out):
@@ -159,18 +161,18 @@ class Layered_Function:
         for j in range(self.nbr_words + self.nbr_temp_words):
             if j not in flat_index_out:
                 in_var, out_var = [self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]]
-                self.constraints[crt_round][crt_layer].append(op.Equal(in_var, out_var, ID=generateID(name,crt_round,crt_layer,j)))
+                self.constraints[crt_round][crt_layer].append(op.Equal(in_var, out_var, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
             else:
                 if isinstance(index_out[0], int):
                     in_vars = [self.vars[crt_round][crt_layer][k] for k in index_in[index_out.index(j)]]
                     out_vars = [self.vars[crt_round][crt_layer+1][j]]
-                    self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,j)))       
+                    self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer+1,j)))       
                 elif isinstance(index_out[0], list):
                     for id, sub_index in enumerate(index_out):
                         if j == sub_index[0]:
                             in_vars = [self.vars[crt_round][crt_layer][k] for k in index_in[id]]    
                             out_vars = [self.vars[crt_round][crt_layer + 1][i] for i in sub_index]
-                            self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer,j)))
+                            self.constraints[crt_round][crt_layer].append(my_operator(in_vars, out_vars, ID=generateID(name,crt_round,crt_layer+1,j)))
         
     # apply a layer "name" of a GF2Linear_Trans at the round "crt_round", at the layer "crt_layer"
     def GF2Linear_TransLayer(self, name, crt_round, crt_layer, index_in, index_out, mat, constants=None):
@@ -178,11 +180,11 @@ class Layered_Function:
         for j in range(self.nbr_words + self.nbr_temp_words):
             if j not in flat_index_out:
                 in_var, out_var = [self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]]
-                self.constraints[crt_round][crt_layer].append(op.Equal(in_var, out_var, ID=generateID(name,crt_round,crt_layer,j)))
+                self.constraints[crt_round][crt_layer].append(op.Equal(in_var, out_var, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
             else:
                 in_vars = [self.vars[crt_round][crt_layer][index_in[index_out.index(j)]]]
                 out_vars = [self.vars[crt_round][crt_layer+1][j]]
-                self.constraints[crt_round][crt_layer].append(GF2Linear_Trans(in_vars, out_vars, mat, ID=generateID(name,crt_round,crt_layer,j), constants=constants))
+                self.constraints[crt_round][crt_layer].append(GF2Linear_Trans(in_vars, out_vars, mat, ID=generateID(name,crt_round,crt_layer+1,j), constants=constants))
 
     # apply a layer "name" of a Matrix "mat" (only square matrix), at the round "crt_round", at the layer "crt_layer", operating in the field GF(2^"bitsize") with polynomial "polynomial"
     def MatrixLayer(self, name, crt_round, crt_layer, mat, indexes_list, polynomial = None):
@@ -192,16 +194,16 @@ class Layered_Function:
         flat_indexes = [x for sublist in indexes_list for x in sublist]
         for j in range(self.nbr_words + self.nbr_temp_words):
             if j not in flat_indexes: 
-                self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name,crt_round,crt_layer,j)))
+                self.constraints[crt_round][crt_layer].append(op.Equal([self.vars[crt_round][crt_layer][j]], [self.vars[crt_round][crt_layer+1][j]], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
         for j, indexes in enumerate(indexes_list): 
             if len(indexes)!=m: raise Exception("MatrixLayer: input vector does not match matrix size") 
-            self.constraints[crt_round][crt_layer].append(Matrix(name, [self.vars[crt_round][crt_layer][x] for x in indexes], [self.vars[crt_round][crt_layer+1][x] for x in indexes], mat = mat, polynomial = polynomial, ID=generateID(name,crt_round,crt_layer,j)) )
+            self.constraints[crt_round][crt_layer].append(Matrix(name, [self.vars[crt_round][crt_layer][x] for x in indexes], [self.vars[crt_round][crt_layer+1][x] for x in indexes], mat = mat, polynomial = polynomial, ID=generateID(name,crt_round,crt_layer+1,j)) )
        
     # extract a subkey from the external variable, determined by "extraction_mask"
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):
         for j, indexes in enumerate(extraction_indexes):
             in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j] 
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,j)))   
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))   
     
     # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity  
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
@@ -212,9 +214,9 @@ class Layered_Function:
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
             if mask[j]==1: 
                 sk_var = sk_function.vars[crt_round][-1][cpt]                
-                self.constraints[crt_round][crt_layer].append(my_operator([in_var, sk_var], [out_var], ID=generateID(name,crt_round,crt_layer,cpt))) 
+                self.constraints[crt_round][crt_layer].append(my_operator([in_var, sk_var], [out_var], ID=generateID(name,crt_round,crt_layer+1,j))) 
                 cpt = cpt + 1
-            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name,crt_round,crt_layer,cpt))) 
+            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j))) 
                    
 
 # ********************* PRIMITIVES ********************* #
@@ -231,7 +233,49 @@ class Primitive(ABC):
         self.inputs_constraints = []    # constraints linking the primitive inputs to the functions input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the functions output variables
         self.test_vectors = []
+
+    # method that cleans the graph from dead-end variables linked only to Equal operators
+    def clean_graph(self):
+        changed = True
+        while changed:
+            changed = False
+            for f in self.functions.values():       # for all functions of the primitive
+                for r in range(f.nbr_rounds+1):       # for all the rounds
+                    for l in range(f.nbr_layers+1):   # for all the layers
+                        for v in f.vars[r][l]:      # for all variables in that function
+                            #print(str(f.name) + " r:" + str(r) + " l:" + str(l) + " v:" + str(v.ID) + " connected to: " + str([ (vv.ID,op.__class__.__name__) for (vv,op) in v.connected_vars]))
+                            # find dead-end variables in the graph
+                            if len(v.connected_vars)==1 and v.connected_vars[0][1].__class__.__name__=="Equal":   
+                                v_temp=v
+                                # follow the chain and remove the corresponding Equal operators
+                                while len(v_temp.connected_vars)==1 and v_temp.connected_vars[0][1].__class__.__name__=="Equal":   
+                                    new_v = v_temp.connected_vars[0][0]
+                                    operator = v_temp.connected_vars[0][1]
+                                    v_temp.connected_vars.pop(0)                                
+                                    index = new_v.connected_vars.index((v_temp,operator))
+                                    new_v.connected_vars.pop(index)   
+                                    operator.is_ghost = True  # mark the Equal operator as ghost                                  
+                                    v_temp = new_v
+                                    changed = True
         
+        # remove ghost operators from the constraints lists
+        for f in self.functions.values():       # for all functions of the primitive
+            for r in range(f.nbr_rounds+1):       # for all the rounds
+                for l in range(f.nbr_layers+1):   # for all the layers
+                    for n in range(len(f.constraints[r][l])): 
+                        if f.constraints[r][l][n].is_ghost:
+                            f.constraints[r][l][n] = op.NoneOperator(input_vars=f.constraints[r][l][n].input_vars, output_vars=f.constraints[r][l][n].output_vars, ID=generateID("NONE",r,l,n))  # replace the ghost operator by a NoneOperator
+
+        for n in range(len(self.inputs_constraints)): 
+            if self.inputs_constraints[n].is_ghost:
+                self.inputs_constraints[n] = op.NoneOperator(input_vars=self.inputs_constraints[n].input_vars, output_vars=self.inputs_constraints[n].output_vars, ID="NONE_INPUT_" + str(n))  # replace the ghost operator by a NoneOperator
+
+        for n in range(len(self.outputs_constraints)): 
+            if self.outputs_constraints[n].is_ghost:
+                self.outputs_constraints[n] = op.NoneOperator(input_vars=self.outputs_constraints[n].input_vars, output_vars=self.outputs_constraints[n].output_vars, ID="NONE_OUTPUT_" + str(n))  # replace the ghost operator by a NoneOperator
+        
+
+                                                                                         
         
 # ********************************************** FUNCTIONS **********************************************
 # Subclass that represents a function object    
@@ -247,10 +291,10 @@ class Function(Primitive):
         self.functions_display_order = ["FUNCTION"]
 
         if len(s_input)!=nbr_words_input: raise Exception("Function: the number of input words does not match the number of input words in function")
-        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_'+str(i)))
+        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_EQ_'+str(i)))
 
         if len(s_output)!=nbr_words_output: raise Exception("Function: the number of output words does not match the number of output words in function")
-        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_'+str(i)))
+        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_EQ_'+str(i)))
 
 
 # ********************************************** PERMUTATIONS **********************************************
@@ -267,10 +311,10 @@ class Permutation(Primitive):
         self.functions_display_order = ["PERMUTATION"]
 
         if len(s_input)!=nbr_words: raise Exception("Permutation: the number of input words does not match the number of words in function")
-        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_'+str(i)))
+        for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_EQ_'+str(i)))
 
         if len(s_output)!=nbr_words: raise Exception("Permutation: the number of output words does not match the number of words in function")
-        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_'+str(i)))
+        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_EQ_'+str(i)))
              
 
 # ********************************************** BLOCK CIPHERS **********************************************
@@ -291,12 +335,12 @@ class Block_cipher(Primitive):
         if (len(k_input)!=k_nbr_words) or (len(p_input)!=s_nbr_words): raise Exception("Block_cipher: the number of input plaintext/key words does not match the number of plaintext/key words in function") 
 
         if len(p_input)!=s_nbr_words: raise Exception("Block_cipher: the number of plaintext words does not match the number of words in the permutation")
-        for i in range(len(p_input)): self.inputs_constraints.append(op.Equal([p_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_P_'+str(i)))
+        for i in range(len(p_input)): self.inputs_constraints.append(op.Equal([p_input[i]], [self.functions["PERMUTATION"].vars[1][0][i]], ID='IN_LINK_P_EQ_'+str(i)))
 
         if len(k_input)!=k_nbr_words: raise Exception("Block_cipher: the number of key words does not match the number of words in the")
-        for i in range(len(k_input)): self.inputs_constraints.append(op.Equal([k_input[i]], [self.functions["KEY_SCHEDULE"].vars[1][0][i]], ID='IN_LINK_K_'+str(i)))
+        for i in range(len(k_input)): self.inputs_constraints.append(op.Equal([k_input[i]], [self.functions["KEY_SCHEDULE"].vars[1][0][i]], ID='IN_LINK_K_EQ_'+str(i)))
 
         if len(c_output)!=s_nbr_words: raise Exception("Block_cipher: the number of ciphertext words does not match the number of words in the permutation") 
-        for i in range(len(c_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][s_nbr_layers][i]], [c_output[i]], ID='OUT_LINK_C_'+str(i)))
+        for i in range(len(c_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][s_nbr_layers][i]], [c_output[i]], ID='OUT_LINK_C_EQ_'+str(i)))
 
 

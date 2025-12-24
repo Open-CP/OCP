@@ -61,6 +61,7 @@ class GIFT_permutation(Permutation):
 def GIFT_PERMUTATION(r=None, version=64, represent_mode=0):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
     my_permutation = GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation
 
 
@@ -146,4 +147,5 @@ def GIFT_BLOCKCIPHER(r=None, version = [64, 128], represent_mode=0):
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = GIFT_block_cipher(f"GIFT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
+    my_cipher.clean_graph()
     return my_cipher

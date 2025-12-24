@@ -11,8 +11,6 @@ For examples of other ciphers, refer to the following folders:
 """
 
 from pathlib import Path
-from primitives.shacal2 import SHACAL2_BLOCKCIPHER
-from primitives.speck import SPECK_PERMUTATION, SPECK_BLOCKCIPHER
 import implementations.implementations as imp
 import visualisations.visualisations as vis
 import attacks.attacks as attacks
@@ -21,7 +19,7 @@ FILES_DIR = Path("files")
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-# ********************* IMPLEMENTATIONS AND FIGURES ********************* #
+# ********************* IMPLEMENTATIONS ********************* #
 def test_python_imp(cipher): # Generate Python implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.py", "python")
     if not cipher.test_vectors:
@@ -55,62 +53,30 @@ def test_verilog_imp(cipher): # Generate Verilog implementation and test it with
     if not cipher.test_vectors:
         print("warning: no test vector defined!")
         return False
-    # imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1]) # TO DO
+    imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1]) 
 
 def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.sv", "verilog", True)
     if not cipher.test_vectors:
         print("warning: no test vector defined!")
         return False
-    # imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1]) # TO DO
+    imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
 
+def test_all_implementations(cipher): # Generate all implementations
+    test_python_imp(cipher)
+    test_python_unrolled_imp(cipher)
+    test_c_imp(cipher)
+    test_c_unrolled_imp(cipher)
+    #test_verilog_imp(cipher)
+    #test_verilog_unrolled_imp(cipher)
+
+
+# ********************* VISUALIZATIONS ********************* #
 def test_visualisation(cipher): # Generate visualisation figure
     vis.generate_figure(cipher, FILES_DIR / f"{cipher.name}.pdf")
 
-def test_imp_speck_permutation():
-    # ********************* DEFINE CIPHER ********************* #
-    cipher = SPECK_PERMUTATION(r=None, version=32)
-
-    test_python_imp(cipher)
-
-    test_python_unrolled_imp(cipher)
-
-    test_c_imp(cipher)
-
-    test_c_unrolled_imp(cipher)
-
-    # test_verilog_imp(cipher)
-
-    test_verilog_unrolled_imp(cipher)
-
-    test_visualisation(cipher)
-
-def test_imp_speck_blockcipher():
-    # ********************* DEFINE CIPHER ********************* #
-    cipher = SPECK_BLOCKCIPHER(r=None, version=[32, 64])
-
-    test_python_imp(cipher)
-
-    test_python_unrolled_imp(cipher)
-
-    test_c_imp(cipher)
-
-    test_c_unrolled_imp(cipher)
-
-    # test_verilog_imp(cipher) # TO DO
-
-    # test_verilog_unrolled_imp(cipher) # TO DO
-
-    test_visualisation(cipher)
-
-
 # ********************* Differential Cryptanalysis ********************* #
-def test_diff_attack_speck_milp():
-    # Step 1. Define the cipher (permutation or block cipher)
-    cipher = SPECK_PERMUTATION(r=None, version = 32)
-    # cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
-
-    # Step 2. Set parameters.
+def test_diff_attack_milp(cipher):
     # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
     goal="DIFFERENTIALPATH_PROB"
     constraints=["INPUT_NOT_ZERO"]
@@ -119,15 +85,10 @@ def test_diff_attack_speck_milp():
     config_model=None
     config_solver=None
 
-    # Step 3. Search for the differential trail
+    # Search for the differential trail
     trails = attacks.diff_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
-def test_diff_attack_speck_sat():
-    # Step 1. Define the cipher (permutation or block cipher)
-    cipher = SPECK_PERMUTATION(r=5, version = 32)
-    # cipher = SPECK_BLOCKCIPHER(r=5, version=[32,64])
-
-    # Step 2. Set parameters.
+def test_diff_attack_speck_sat(cipher):
     # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
     goal="DIFFERENTIALPATH_PROB"
     constraints=["INPUT_NOT_ZERO"]
@@ -136,16 +97,19 @@ def test_diff_attack_speck_sat():
     config_model={"model_type": "sat"}
     config_solver=None
 
-    # Step 3. Search for the differential trail
+    # Search for the differential trail
     trails = attacks.diff_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
-
 if __name__ == "__main__":
+    #import primitives.aes as aes
+    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
+    #cipher = aes.AES_BLOCKCIPHER(version=[128,256])
 
-    test_imp_speck_permutation()
+    import primitives.simon as simon
+    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
+    cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
 
-    test_imp_speck_blockcipher()
-
-    test_diff_attack_speck_milp()
-
-    test_diff_attack_speck_sat()
+    test_all_implementations(cipher)
+    test_visualisation(cipher)
+    #test_diff_attack_milp(cipher)
+    #test_diff_attack_sat(cipher)

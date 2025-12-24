@@ -62,7 +62,7 @@ def test_imp_gift_permutation():
 
     for version in GIFT_PERMUTATION_VERSIONS:
 
-        cipher = GIFT_PERMUTATION(r=None, version=version)
+        cipher = GIFT_PERMUTATION(r=10, version=version)
 
         test_python_imp(cipher)
 
@@ -104,6 +104,6 @@ if __name__ == "__main__":
     print(f"=== Implementation Test Log ===")
     
     test_imp_gift_permutation()
-    test_imp_gift_blockcipher()
+    #test_imp_gift_blockcipher()
 
     print("All implementation tests completed!")

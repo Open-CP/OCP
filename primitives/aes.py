@@ -52,6 +52,7 @@ class AES_permutation(Permutation):
 def AES_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_permutation = AES_permutation("AES_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation
 
 
@@ -173,4 +174,5 @@ class AES_block_cipher(Block_cipher):
 def AES_BLOCKCIPHER(r=None, version = [128, 128], represent_mode=0):
     my_plaintext, my_key, my_ciphertext = [var.Variable(8,ID="in"+str(i)) for i in range(16)], [var.Variable(8,ID="k"+str(i)) for i in range(int(16*version[1]/version[0]))], [var.Variable(8,ID="out"+str(i)) for i in range(16)]
     my_cipher = AES_block_cipher(f"AES{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
+    my_cipher.clean_graph()
     return my_cipher

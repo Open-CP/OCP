@@ -8,7 +8,7 @@ try: # Solve MILP model using Gurobi solver
     import gurobipy as gp
     gurobipy_import = True
 except ImportError:
-    print("[WARNING] gurobipy module can't be loaded \n")
+    print("[WARNING] gurobipy module can't be loaded")
     gurobipy_import = False
     pass
 
@@ -16,7 +16,7 @@ try: # Solve MILP model using SCIP solver
     from pyscipopt import Model
     scip_import = True
 except ImportError:
-    print("[WARNING] PySCIPOpt module can't be loaded \n")
+    print("[WARNING] PySCIPOpt module can't be loaded")
     scip_import = False
     pass
 
@@ -25,7 +25,7 @@ try: # Solve MILP/SAT model using Or-tools solver. TO DO
     import ortoolslpparser
     ortools_import = True
 except ImportError:
-    print("[WARNING] ortools module can't be loaded \n")
+    print("[WARNING] ortools module can't be loaded")
     ortools_import = False
     pass
 
@@ -34,7 +34,7 @@ try: # Solve SAT model using a solver from python-sat
     from pysat.formula import CNF
     pysat_import = True
 except ImportError:
-    print("[WARNING] pysat module can't be loaded \n")
+    print("[WARNING] pysat module can't be loaded")
     pysat_import = False
     pass
 
@@ -65,7 +65,7 @@ def solve_milp(filename, config_solver=None):
 
 def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurobi.
     if gurobipy_import == False:
-        print("[WARNING] gurobipy module can't be loaded ... skipping test\n")
+        print("[WARNING] gurobipy module can't be loaded ... skipping test")
         return []
 
     try:
@@ -82,7 +82,7 @@ def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurob
         model.optimize()
         sol_count = getattr(model, "SolCount", 0)
     except gp.GurobiError:
-        print("[ERROR] Check your Gurobi license, visit https://gurobi.com/unrestricted for more information\n")
+        print("[ERROR] Check your Gurobi license, visit https://gurobi.com/unrestricted for more information")
         return []
 
     # Return a list of solutions
@@ -112,7 +112,7 @@ def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurob
 
 def solve_milp_scip(filename, config_solver): # Solve a MILP model using SCIP. It supports finding one solution currently. TO DO: finding multiple solutions
     if not scip_import:
-        print("[WARNING] PySCIPOpt module can't be loaded ... skipping SCIP test\n")
+        print("[WARNING] PySCIPOpt module can't be loaded ... skipping SCIP test")
         return []
 
     try:
@@ -123,13 +123,13 @@ def solve_milp_scip(filename, config_solver): # Solve a MILP model using SCIP. I
             model.setRealParam("limits/time", config_solver["time_limit"])
         solution_number = config_solver.get("solution_number", 1)
         if isinstance(solution_number, int) and solution_number > 1: # TO DO: support multiple solutions
-            print("[WARNING] It currently does not support finding multiple solutions ... returning only one solution\n")
+            print("[WARNING] It currently does not support finding multiple solutions ... returning only one solution")
             model.setIntParam("limits/solutions", solution_number)
         # Solve the model
         model.optimize()
         sol_count = model.getNSols()
     except Exception as e:
-        print(f"[WARNING] SCIP solver error: {e} ... skipping test\n")
+        print(f"[WARNING] SCIP solver error: {e} ... skipping test")
         return []
 
     # Return a list of solutions
@@ -175,7 +175,7 @@ def solve_sat(filename, variable_map, config_solver=None):
 
 def solve_sat_pysat(filename, variable_map, config_solver):
     if not pysat_import:
-        print("[WARNING] pysat module can't be loaded ... skipping test\n")
+        print("[WARNING] pysat module can't be loaded ... skipping test")
         return None
 
     solver = config_solver.get("solver", "DEFAULT")

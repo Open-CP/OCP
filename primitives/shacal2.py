@@ -86,4 +86,5 @@ def SHACAL2_BLOCKCIPHER(r=None, version=256, represent_mode=0):
     wordSize = 32 if version == 256 else 64
     my_plaintext, my_key, my_ciphertext = [var.Variable(wordSize,ID="in"+str(i)) for i in range(8)], [var.Variable(wordSize,ID="k"+str(i)) for i in range(16)], [var.Variable(wordSize,ID="out"+str(i)) for i in range(8)]
     my_cipher = SHACAL2_block_cipher(f"SHACAL2_{wordSize*8}_{wordSize*16}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
+    my_cipher.clean_graph()
     return my_cipher

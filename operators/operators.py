@@ -16,6 +16,14 @@ class Operator(ABC):
         self.output_vars = output_vars      # output variables of that operator
         self.model_version = model_version  # model version that will be used for that operator
         self.ID = ID                        # ID of the operator
+        self.is_ghost = False               # indicates whether that operator is a ghost operator (i.e., an operator that has been marked as ghost during the dead-end removal process) 
+
+        # For this new operator created, update the connected_vars list for each input and output variables
+        if self.__class__.__name__!="NoneOperator":
+            for var_in in input_vars:  
+                for var_out in output_vars:
+                    var_in.connected_vars.append((var_out,self))
+                    var_out.connected_vars.append((var_in,self))
 
     def display(self):
         print("ID: ", self.ID)
@@ -106,6 +114,17 @@ class BinaryOperator(Operator):   # Generic operator taking two inputs and one o
         if input_vars[0].bitsize != input_vars[1].bitsize: raise Exception(str(self.__class__.__name__) + ": your inputs sizes do not match")
         if input_vars[0].bitsize != output_vars[0].bitsize: raise Exception(str(self.__class__.__name__) + ": your input and output sizes do not match")
         super().__init__(input_vars, output_vars, ID = ID)
+
+
+class NoneOperator(Operator):  # Ghost Operator, does nothing (just a placeholder)
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, ID = ID)
+
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        return []
+
+    def generate_model(self, model_type='sat'):
+        return []
 
 
 class Equal(UnaryOperator):  # Operator assigning equality between the input variable and output variable (must be of same bitsize)

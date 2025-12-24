@@ -33,6 +33,7 @@ class PRESENT_permutation(Permutation):
 def PRESENT_PERMUTATION(r=None, represent_mode=0):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(64)], [var.Variable(1,ID="out"+str(i)) for i in range(64)]
     my_permutation = PRESENT_permutation(f"PRESENT_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation
 
 
@@ -130,4 +131,5 @@ def PRESENT_BLOCKCIPHER(r=None, version = [64, 80], represent_mode=0):
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = PRESENT_block_cipher(f"PRESENT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, )
+    my_cipher.clean_graph()
     return my_cipher

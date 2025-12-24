@@ -4,7 +4,7 @@ import sys
 import time 
 import copy
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from operators.operators import UnaryOperator, RaiseExceptionVersionNotExisting
+from operators.operators import Operator, RaiseExceptionVersionNotExisting
 from tools.minimize_logic import ttb_to_ineq_logic
 from tools.polyhedron import ttb_to_ineq_convex_hull
 from tools.inequality import inequality_to_constraint_sat, inequality_to_constraint_milp
@@ -13,7 +13,7 @@ if not os.path.exists(base_path):
     os.makedirs(base_path, exist_ok=True)
         
 
-class Sbox(UnaryOperator):  # Generic operator assigning a Sbox relationship between the input variable and output variable (must be of same bitsize)
+class Sbox(Operator):  # Generic operator assigning a Sbox relationship between the input variable and output variable (must be of same bitsize)
     def __init__(self, input_vars, output_vars, input_bitsize, output_bitsize, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.input_bitsize = input_bitsize

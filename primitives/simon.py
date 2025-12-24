@@ -66,6 +66,7 @@ def SIMON_PERMUTATION(r=None, version=32, represent_mode=0):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_permutation = Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation
 
 
@@ -196,4 +197,5 @@ def SIMON_BLOCKCIPHER(r=None, version=[32,64], represent_mode=0):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
+    my_cipher.clean_graph()
     return my_cipher

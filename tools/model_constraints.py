@@ -4,7 +4,7 @@ try:
     vpool = IDPool(start_from=1000)
     pysat_import = True
 except ImportError:
-    print("[WARNING] pysat module can't be loaded \n")
+    print("[WARNING] pysat module can't be loaded")
     pysat_import = False
 
 

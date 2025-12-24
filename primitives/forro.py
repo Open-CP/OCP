@@ -73,6 +73,7 @@ class Forro_permutation(Permutation):
 def FORRO_PERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Forro_permutation("Forro_PERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation    
     
 
@@ -158,6 +159,7 @@ class Forro_keypermutation(Permutation):
 def FORRO_KEYPERMUTATION(r=None, represent_mode=0): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Forro_keypermutation("Forro_KEYPERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
+    my_permutation.clean_graph()
     return my_permutation     
 
 
