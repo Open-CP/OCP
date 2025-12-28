@@ -106,7 +106,7 @@ class Layered_Function:
         if len(permutation)<(self.nbr_words + self.nbr_temp_words): permutation = permutation + [i for i in range(len(permutation), self.nbr_words + self.nbr_temp_words)] 
         for j in range(len(permutation)):
             in_var, out_var = self.vars[crt_round][crt_layer][permutation[j]], self.vars[crt_round][crt_layer+1][j]
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
 
     # apply a layer "name" of Rotation, at the round "crt_round", at the layer "crt_layer". Each rot is a list of rotation executions, each execution is composed of three elements plus an optional fourth: [direction, amount, index_in, (index_out)]. A rotation execution will take the word of the state located at position "index_in", apply the rotation direction "direction" and amount "amount" and place it in state located at position "index_out" (if defined, "index_in" otherwise). The state words receiving no rotation are applied identity.
     def RotationLayer(self, name, crt_round, crt_layer, rot):
@@ -139,7 +139,7 @@ class Layered_Function:
     def AddIdentityLayer(self, name, crt_round, crt_layer):
         for j in range(self.nbr_words + self.nbr_temp_words):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
         
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant". 
     def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, modulo=None):
@@ -203,7 +203,7 @@ class Layered_Function:
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):
         for j, indexes in enumerate(extraction_indexes):
             in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j] 
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))   
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))   
     
     # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity  
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
@@ -232,6 +232,7 @@ class Primitive(ABC):
         self.functions = []             # list of functions used by the primitive
         self.inputs_constraints = []    # constraints linking the primitive inputs to the functions input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the functions output variables
+        self.copy_constraints = []      # constraints for all the copy operators
         self.test_vectors = []
 
     # method that cleans the graph from dead-end variables linked only to Equal operators
@@ -243,18 +244,16 @@ class Primitive(ABC):
                 for r in range(f.nbr_rounds+1):       # for all the rounds
                     for l in range(f.nbr_layers+1):   # for all the layers
                         for v in f.vars[r][l]:      # for all variables in that function
-                            #print(str(f.name) + " r:" + str(r) + " l:" + str(l) + " v:" + str(v.ID) + " connected to: " + str([ (vv.ID,op.__class__.__name__) for (vv,op) in v.connected_vars]))
                             # find dead-end variables in the graph
                             if len(v.connected_vars)==1 and v.connected_vars[0][1].__class__.__name__=="Equal":   
                                 v_temp=v
                                 # follow the chain and remove the corresponding Equal operators
                                 while len(v_temp.connected_vars)==1 and v_temp.connected_vars[0][1].__class__.__name__=="Equal":   
-                                    new_v = v_temp.connected_vars[0][0]
-                                    operator = v_temp.connected_vars[0][1]
+                                    (new_v, new_op, direction) = v_temp.connected_vars[0]
                                     v_temp.connected_vars.pop(0)                                
-                                    index = new_v.connected_vars.index((v_temp,operator))
+                                    index = new_v.connected_vars.index((v_temp,new_op, "in" if direction=="out" else "out"))
                                     new_v.connected_vars.pop(index)   
-                                    operator.is_ghost = True  # mark the Equal operator as ghost                                  
+                                    new_op.is_ghost = True  # mark the Equal operator as ghost                                  
                                     v_temp = new_v
                                     changed = True
         
@@ -274,9 +273,55 @@ class Primitive(ABC):
             if self.outputs_constraints[n].is_ghost:
                 self.outputs_constraints[n] = op.NoneOperator(input_vars=self.outputs_constraints[n].input_vars, output_vars=self.outputs_constraints[n].output_vars, ID="NONE_OUTPUT_" + str(n))  # replace the ghost operator by a NoneOperator
         
+    # method that add the copy operators where needed in the graph
+    def add_copy_operators(self, functions_list=None):  
+        if functions_list is None:
+            functions_list = self.functions.values()
+        for f in functions_list:
+            for r in range(f.nbr_rounds+1):       # for all the rounds
+                for l in range(f.nbr_layers+1):   # for all the layers
+                    for v in f.vars[r][l]:      # for all variables in that function
+                        # find variables that need copy operators
+                        connected_vars_with_unique_operator = []
+                        added_operators = []  
+                        for (vv,opop,direction) in v.connected_vars:
+                            if direction=='in':  # we only consider the operators where v is an input variable
+                                if opop not in added_operators:
+                                    added_operators.append(opop)
+                                    connected_vars_with_unique_operator.append((vv,opop,direction))
 
-                                                                                         
-        
+                        # if more than one unique operator is connected to that variable, then we need copy operators
+                        if len(connected_vars_with_unique_operator)>1:
+                            #if there is a direct Equal operator, in connected_vars_with_unique_operator, put it on first position 
+                            for i in range(1,len(connected_vars_with_unique_operator)):                                
+                                if connected_vars_with_unique_operator[i][1].__class__.__name__=="Equal":
+                                    if connected_vars_with_unique_operator[i][1].simple_connect==True:
+                                        connected_vars_with_unique_operator[0], connected_vars_with_unique_operator[i] = connected_vars_with_unique_operator[i], connected_vars_with_unique_operator[0]
+                                    break
+                            for i in range(1, len(connected_vars_with_unique_operator)):
+                                (vv, opop, direction) = connected_vars_with_unique_operator[i]
+                                v_new = var.Variable(v.bitsize, ID=v.ID + "_COPY_" + str(i)) 
+                                op_new = op.CopyOperator([v], [v_new], ID= "COPY_" + v.ID + "_" + opop.ID)
+                                self.copy_constraints.append(op_new)      # save this new operator in the copy operator list
+                                v.copied_vars.append((v_new, op_new))     # save these new variables and operators
+                                for v_index in range(len(opop.input_vars)): # update the input of the operator with the new variable
+                                    if opop.input_vars[v_index]==vv: opop.input_vars[v_index] = v_new
+                                                                                            
+                                ## remove vv from connected vars in v
+                                index = vv.connected_vars.index((v, opop, "out"))
+                                vv.connected_vars.pop(index)
+
+                                ## remove v from connected vars in vv
+                                index = v.connected_vars.index((vv, opop, "in"))
+                                v.connected_vars.pop(index)    
+
+                                ## add v_new in connected vars of vv
+                                vv.connected_vars.append((v_new, opop, "out"))
+
+                                ## add vv in connected vars of v_new
+                                v_new.connected_vars.append((vv, opop, "in"))
+                                
+
 # ********************************************** FUNCTIONS **********************************************
 # Subclass that represents a function object    
 # A function is composed of a single internal function 

@@ -10,7 +10,10 @@ For examples of other ciphers, refer to the following folders:
 - test/differential_cryptanalysis
 """
 
+import copy
 from pathlib import Path
+
+from kiwisolver import Variable
 import implementations.implementations as imp
 import visualisations.visualisations as vis
 import attacks.attacks as attacks
@@ -100,6 +103,7 @@ def test_diff_attack_speck_sat(cipher):
     # Search for the differential trail
     trails = attacks.diff_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
+
 if __name__ == "__main__":
     #import primitives.aes as aes
     #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
@@ -110,6 +114,7 @@ if __name__ == "__main__":
     cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
 
     test_all_implementations(cipher)
+    cipher.add_copy_operators()
     test_visualisation(cipher)
     #test_diff_attack_milp(cipher)
     #test_diff_attack_sat(cipher)

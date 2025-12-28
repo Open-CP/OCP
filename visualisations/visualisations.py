@@ -1,7 +1,7 @@
 import os, os.path
 from numpy import linspace
 import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse, Rectangle
+from matplotlib.patches import Ellipse, Rectangle, Circle
 
 def adjust_lightness(color, amount=0.5):
     import matplotlib.colors as mc
@@ -19,7 +19,7 @@ def find_function_index_from_x_coord(in_x_coord, function_x_limits):
     return var_in_function   
 
 # function that generates the figure describing the primitive  
-def generate_figure(my_prim, filename, display_unused_variables=False): 
+def generate_figure(my_prim, filename, display_unused_variables=False, display_copied_variables=True): 
 
     os.makedirs(os.path.dirname(filename), exist_ok=True)      
     
@@ -30,7 +30,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
     y_space_rounds = 5   # controls the y-axis space between the rounds
     y_space_layer = 5    # controls the y-axis space between the layers
     y_space_in_out = 25  # controls the y-axis space between the input/output and the rest
-    elements_height = 8  # controls the height of the displayed elements
+    elements_height = 6  # controls the height of the displayed elements
     var_length = 10      # controls the length of the displayed variables
     op_length = 15       # controls the length of the displayed operators
     var_colors = ['lightcyan','lightgreen','gray']  # controls the displayed colors for the variables
@@ -44,6 +44,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
     constraints_table = [my_prim.functions[s].constraints for s in my_prim.functions_display_order]
     vars_table = [my_prim.functions[s].vars for s in my_prim.functions_display_order]
     vars_coord = []
+    operators_coord = []
     
     ax = plt.gca()
     
@@ -95,10 +96,11 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
                 y_coord = y_shift_round + (y_space_layer + elements_height)*2*l 
                 for w in range(len(vars_table[i][r][l])): 
                     x_coord = x_shift_state + w*(x_space + op_length)
-                    if vars_table[i][r][l][w].connected_vars != [] or display_unused_variables:
+                    my_var = vars_table[i][r][l][w]
+                    if my_var.connected_vars != [] or display_unused_variables:
                         ax.add_patch(Ellipse((x_coord,-y_coord), var_length, elements_height, facecolor=adjust_lightness(var_colors[(i)%len(var_colors)], (0.8 if w >= nbr_words_table[i] else 1))))
-                        ax.annotate(vars_table[i][r][l][w].ID, xy=(x_coord,-y_coord), fontsize=var_font_size, ha="center")
-                    vars_coord.append((vars_table[i][r][l][w].ID,(x_coord,-y_coord)))
+                        ax.annotate(my_var.ID, xy=(x_coord,-y_coord), fontsize=var_font_size, ha="center")
+                    vars_coord.append((my_var.ID,(x_coord,-y_coord)))
                    
             y_shift_round = y_shift_round + y_space_rounds + 2*(max(nbr_layers_table)+1)*(y_space_layer + elements_height)
             if y_shift_round > max_y_space: max_y_space = y_shift_round 
@@ -139,10 +141,11 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
                         ax.add_patch(Rectangle((x_coord,-y_coord-elements_height/2), op_length, elements_height, facecolor=op_colors[(i)%len(op_colors)], label='Label'))
                         ax.annotate(constraints_table[i][r][l][w].ID, xy=(x_coord+op_length/2,-y_coord), fontsize=op_font_size, ha="center")
                         if constraints_table[i][r][l][w].__class__.__name__ == "Rot": ax.annotate(str(constraints_table[i][r][l][w].direction) + " - " + str(constraints_table[i][r][l][w].amount), xy=(x_coord+op_length/2,-y_coord-elements_height/4), fontsize=op_font_size, ha="center")
-                        
+                        operators_coord.append((constraints_table[i][r][l][w].ID,(x_coord+op_length/2, -y_coord+elements_height/2)))
+
                         # display the links with the variables
-                        my_inputs = constraints_table[i][r][l][w].input_vars
-                        my_outputs = constraints_table[i][r][l][w].output_vars
+                        my_inputs = constraints_table[i][r][l][w].input_vars[:]
+                        my_outputs = constraints_table[i][r][l][w].output_vars[:]
                         in_x_coord, in_y_coord = list(linspace(x_coord,x_coord+op_length,len(my_inputs)+2)[1:-1]), -y_coord+elements_height/2
                         out_x_coord, out_y_coord = list(linspace(x_coord,x_coord+op_length,len(my_outputs)+2)[1:-1]), -y_coord-elements_height/2
                         for j in range(len(my_inputs)):
@@ -153,6 +156,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
                                     ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5, linestyle=(5, (3,24)), color='gray')
                                 else: 
                                     ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                        
                         for j in range(len(my_outputs)):
                             if not isinstance(my_outputs[j], list): my_outputs[j] = [my_outputs[j]]
                             for jj in range(len(my_outputs[j])):
@@ -161,6 +165,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
                                     ax.arrow(out_x_coord[j], out_y_coord, var_x_coord-out_x_coord[j], var_y_coord-out_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5, linestyle=(5, (3,24)), color='gray')
                                 else:
                                     ax.arrow(out_x_coord[j], out_y_coord, var_x_coord-out_x_coord[j], var_y_coord-out_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
+                        
                     # for the Equal operators, just display the link between the input and output variables
                     elif constraints_table[i][r][l][w].__class__.__name__ == "Equal":
                         (var_in_x_coord, var_in_y_coord) = vars_coord[constraints_table[i][r][l][w].input_vars[0].ID]
@@ -169,7 +174,8 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
                             ax.arrow(var_in_x_coord, var_in_y_coord, var_out_x_coord-var_in_x_coord, var_out_y_coord-var_in_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5, linestyle=(5, (3,24)), color='gray')  
                         else:
                             ax.arrow(var_in_x_coord, var_in_y_coord, var_out_x_coord-var_in_x_coord, var_out_y_coord-var_in_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
-                        
+                        operators_coord.append((constraints_table[i][r][l][w].ID,(var_out_x_coord,var_out_y_coord)))
+
             y_shift_round = y_shift_round + y_space_rounds + 2*(max(nbr_layers_table)+1)*(y_space_layer + elements_height)
            
         x_shift_state = x_shift_state + x_space_state + max_length[i]
@@ -186,7 +192,39 @@ def generate_figure(my_prim, filename, display_unused_variables=False):
             (x_out, y_out) = vars_coord[my_prim.outputs_constraints[j].output_vars[0].ID]
             ax.arrow(x_state_out_coord, y_state_out_coord, x_out-x_state_out_coord, y_out-y_state_out_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
     
-        
+    # display the copy variables
+    operators_coord = dict(operators_coord)
+    for i in range(len(my_prim.functions)):
+        for r in range(1,nbr_rounds_table[i]+1):
+            for l in range(nbr_layers_table[i]+1):
+                for w in range(len(vars_table[i][r][l])): 
+                    my_var = vars_table[i][r][l][w]
+                    if my_var.copied_vars != []:
+                        elements_to_draw=[]
+                        for cw in range(len(my_var.copied_vars)):
+                            (var_x_coord, var_y_coord) = vars_coord[my_var.ID]
+                            target_operator=my_var.copied_vars[cw][1]
+                            index=0
+                            while target_operator==my_var.copied_vars[cw][1]:
+                                target_operator = my_var.copied_vars[cw][1].output_vars[0].connected_vars[index][1]
+                                index=index+1
+                            (op_x_coord, op_y_coord) = operators_coord[target_operator.ID]
+                            a = (var_y_coord - op_y_coord) / (var_x_coord - op_x_coord)
+                            b = var_y_coord - a*var_x_coord
+                            my_y = var_y_coord - y_space_layer  
+                            my_x = (my_y - b) / a
+                            elements_to_draw.append((my_x,my_y,my_var.copied_vars[cw][0].ID,a,b))
+
+                        y_spread = list(linspace(-1,1,len(my_var.copied_vars)))
+                        #elements_to_draw = sorted(elements_to_draw, key=lambda x: x[0])
+                        for cw in range(len(elements_to_draw)):  
+                            my_x,my_y,ID,a,b = elements_to_draw[cw]                    
+                            my_x = my_x - y_spread[cw]/a  
+                            my_y = my_y - y_spread[cw]
+                            #my_x,my_y = elements_to_draw[cw][0] + (- y_spread[cw] -b)/a, elements_to_draw[cw][1] - y_spread[cw]                      
+                            ax.add_patch(Circle(xy=(my_x,my_y), radius=1, facecolor=adjust_lightness(var_colors[(i)%len(var_colors)], (0.8 if w >= nbr_words_table[i] else 1))))
+                            ax.annotate("  " + ID, xy=(my_x,my_y), fontsize=op_font_size, ha="left")
+
     #ax.autoscale_view()
     #ax.autoscale(tight=True)
     ax.set_xlim(-op_length, x_shift_state)

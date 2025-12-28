@@ -22,8 +22,8 @@ class Operator(ABC):
         if self.__class__.__name__!="NoneOperator":
             for var_in in input_vars:  
                 for var_out in output_vars:
-                    var_in.connected_vars.append((var_out,self))
-                    var_out.connected_vars.append((var_in,self))
+                    var_in.connected_vars.append((var_out,self,'in'))
+                    var_out.connected_vars.append((var_in,self,'out'))
 
     def display(self):
         print("ID: ", self.ID)
@@ -127,9 +127,23 @@ class NoneOperator(Operator):  # Ghost Operator, does nothing (just a placeholde
         return []
 
 
-class Equal(UnaryOperator):  # Operator assigning equality between the input variable and output variable (must be of same bitsize)
+class CopyOperator(Operator):  # Copy Operator
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
+
+    def generate_implementation(self, implementation_type='python', unroll=False):
+        # TODO
+        return []
+
+    def generate_model(self, model_type='sat'):
+        # TODO
+        return []
+    
+
+class Equal(UnaryOperator):  # Operator assigning equality between the input variable and output variable (must be of same bitsize)
+    def __init__(self, input_vars, output_vars, simple_connect=True, ID = None):
+        super().__init__(input_vars, output_vars, ID = ID)
+        self.simple_connect = simple_connect # "True" if this is an equality constraint here just to go to the next layer
 
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python':
