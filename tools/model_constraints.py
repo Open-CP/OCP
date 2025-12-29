@@ -80,20 +80,38 @@ def configure_model_version(cipher, goal, config_model): # Configure the model v
 
 
 def set_model_versions(cipher, version, functions, rounds, layers, positions, operator_name=None): # Assigns a specified model_version to constraints (operators) in the cipher based on specified parameters.
+    def _assgn_version(cons):
+        if operator_name is None: # Assign model_version to all operators in the cipher.
+            cons.model_version = cons.__class__.__name__ + "_" + version
+        elif operator_name is not None and operator_name in cons.__class__.__name__: # Assign model_version to operators with a specific name.
+            cons.model_version = cons.__class__.__name__ + "_" + version
+
+    # Assign model_version to input/output constraints
+    for cons in cipher.inputs_constraints:
+        _assgn_version(cons)
+    for cons in cipher.outputs_constraints:
+        _assgn_version(cons)
+
+    # Assign model_version to function
     for f in functions:
         for r in rounds[f]:
             for l in layers[f][r]:
                 for cons in cipher.functions[f].constraints[r][l]: # Only support all constraints in a layer for now.
-                    if operator_name is None: # Assign model_version to all operators in the cipher.
-                        cons.model_version = cons.__class__.__name__ + "_" + version
-                    elif operator_name is not None and operator_name in cons.__class__.__name__: # Assign model_version to operators with a specific name.
-                        cons.model_version = cons.__class__.__name__ + "_" + version
+                    _assgn_version(cons)
 
 
 def gen_round_model_constraint_obj_fun(cipher, goal, model_type, config_model): # Generate constraints for a given cipher based on user-specified parameters.
     configure_model_version(cipher, goal, config_model)
     constraint = []
     obj_fun = [[] for _ in range(cipher.functions["PERMUTATION"].nbr_rounds)]
+
+    # Generate constraints linking input and output
+    for cons in cipher.inputs_constraints:
+        constraint += cons.generate_model(model_type=model_type)
+    for cons in cipher.outputs_constraints:
+        constraint += cons.generate_model(model_type=model_type)
+
+    # Generate constraints and objective function for each round/layer/operator
     functions, rounds, layers, positions = config_model.get("functions"), config_model.get("rounds"), config_model.get("layers"), config_model.get("positions")
     for f in functions:
         for r in rounds[f]:
@@ -109,21 +127,6 @@ def gen_round_model_constraint_obj_fun(cipher, goal, model_type, config_model): 
 
 
 # -------------------- Predefined Constraint Generation --------------------
-def gen_input_non_zero_constraints(cipher, goal, config_model): # Generate a standard input non-zero constraint list according to the attack goal.
-    functions, rounds, layers, positions = config_model["functions"], config_model["rounds"], config_model["layers"], config_model["positions"]
-    assert functions is not None and rounds is not None and layers is not None and positions is not None, "functions, rounds, layers, positions must be specified in config_model."
-    model_type = config_model.get("model_type", "milp").lower()
-    atleast_encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL")
-    cons_vars = []
-    for f in functions:
-        if f in ["PERMUTATION", "KEY_SCHEDULE"]:
-            start_round = rounds[f][0]
-            start_layer = layers[f][start_round][0]
-            cons_vars += cipher.functions[f].vars[start_round][start_layer][:cipher.functions["PERMUTATION"].nbr_words] # Only supports input non-zero constraints on FUNCTION and KEY_SCHEDULE functions.
-    bitwise = False if "TRUNCATEDDIFF" in goal else True
-    return gen_predefined_constraints(model_type=model_type, cons_type="SUM_AT_LEAST", cons_vars=cons_vars, cons_value=1, bitwise=bitwise, encoding=atleast_encoding)
-
-
 def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bitwise=True, encoding=None):
     """
     Generate commonly used, predefined model constraints based on type and parameters.
@@ -288,6 +291,8 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None): # Genera
 def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
     assert Round >= 2, f"Round = {Round} must be at least 2."
     assert len(best_obj) == Round-1, f"best_obj = {best_obj} length must be Round-1 = {Round-1}."
+    while obj_fun and obj_fun[-1] == []: # Remove empty lists at the end of obj_fun
+        obj_fun.pop()
     assert obj_fun is not None and len(obj_fun) == Round and all(isinstance(obj, list) for obj in obj_fun), f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}."
     assert cons_type in ["ALL", "UPPER", "LOWER"], f"cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER']."
 
@@ -309,6 +314,8 @@ def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstrain
     assert Round >= 2, f"Round = {Round} must be at least 2."
     assert len(best_obj) == Round-1, f"best_obj length = {len(best_obj)} must be (Round-1) = {Round-1}."
     assert isinstance(obj_sat, int) and obj_sat > 0, f"obj_sat = {obj_sat} must be a positive integer."
+    while obj_var and obj_var[-1] == []: # Remove empty lists at the end of obj_var
+        obj_var.pop()
     assert obj_var is not None and len(obj_var) == Round and all(isinstance(row, list) for row in obj_var), f"obj_var must be a list of lists, and with length = {len(obj_var)} equal to Round = {Round}."
     assert GroupConstraintChoice == 1, f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}."
     assert GroupNumForChoice >= 1, f"GroupNumForChoice = {GroupNumForChoice} must be at least 1."

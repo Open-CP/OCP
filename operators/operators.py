@@ -11,16 +11,16 @@ def RaiseExceptionVersionNotExisting(class_name, model_version, model_type):
 # Operators/Constraints are relationships between a group of variables
 
 class Operator(ABC):
-    def __init__(self, input_vars, output_vars, model_version="DEFAULT", ID = None):
+    def __init__(self, input_vars, output_vars, model_version=None, ID=None):
         self.input_vars = input_vars        # input variables of that operator
         self.output_vars = output_vars      # output variables of that operator
         self.model_version = model_version  # model version that will be used for that operator
         self.ID = ID                        # ID of the operator
-        self.is_ghost = False               # indicates whether that operator is a ghost operator (i.e., an operator that has been marked as ghost during the dead-end removal process) 
+        self.is_ghost = False               # indicates whether that operator is a ghost operator (i.e., an operator that has been marked as ghost during the dead-end removal process)
 
         # For this new operator created, update the connected_vars list for each input and output variables
         if self.__class__.__name__!="NoneOperator":
-            for var_in in input_vars:  
+            for var_in in input_vars:
                 for var_out in output_vars:
                     var_in.connected_vars.append((var_out,self,'in'))
                     var_out.connected_vars.append((var_in,self,'out'))
@@ -138,7 +138,7 @@ class CopyOperator(Operator):  # Copy Operator
     def generate_model(self, model_type='sat'):
         # TODO
         return []
-    
+
 
 class Equal(UnaryOperator):  # Operator assigning equality between the input variable and output variable (must be of same bitsize)
     def __init__(self, input_vars, output_vars, simple_connect=True, ID = None):
@@ -156,7 +156,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
 
     def generate_model(self, model_type='sat'):
         if model_type == 'sat':
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
             elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
@@ -164,7 +164,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
@@ -216,18 +216,18 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
     def generate_model(self, model_type='sat'):
         if model_type == 'sat':
             var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[i]} {var_out[(i+self.amount)%len(var_in)]}", f"{var_in[i]} -{var_out[(i+self.amount)%len(var_in)]}")]
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 return [clause for i in range(len(var_in)) for clause in (f"-{var_in[(i+self.amount)%len(var_in)]} {var_out[i]}", f"{var_in[(i+self.amount)%len(var_in)]} -{var_out[i]}")]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
             var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction == 'r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction == 'l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            if (self.direction == 'r' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction == 'l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f'{var_in[i]} - {var_out[(i + self.amount) % len(var_in)]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f'{var_in[(i+self.amount)%len(var_in)]} - {var_out[i]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return  model_list
@@ -256,12 +256,12 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
     def generate_model(self, model_type='sat'):
         if model_type == 'sat':
             var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f"-{var_out[i]}" for i in range(self.amount)]
                 model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
                 model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]
                 model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
                 model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]
@@ -269,13 +269,13 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
             var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF"]) or (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
                 model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]
                 model_list += [f"{var_in[i]} - {var_in[i]} = 0" for i in range(len(var_in)-self.amount, len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", "DEFAULT"])  or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
+            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF"])  or (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_LINEAR"]):
                 model_list = [f"{var_in[i]} - {var_in[i]} = 0" for i in range(self.amount)]
                 model_list += [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
                 model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]

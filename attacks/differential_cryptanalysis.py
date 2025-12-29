@@ -51,6 +51,35 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
     return config_model, config_solver
 
 
+# -------------------- Predefined Additional Constraints --------------------
+def expand_var_ids(var, bitwise=False): # Expand variable IDs by bits if necessary.
+    if bitwise and var.bitsize > 1:
+        return [f"{var.ID}_{i}" for i in range(var.bitsize)]
+    return [var.ID]
+
+def gen_input_non_zero_constraints(cipher, goal, config_model): # Generate input non-zero constraints for the cipher based on the goal and model type.
+    cons_vars = [var for cons in cipher.inputs_constraints for var in cons.input_vars]
+    model_type = config_model.get("model_type", "milp").lower()
+    encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL") if model_type == "sat" else None
+    bitwise = "TRUNCATEDDIFF" not in goal
+    constraints = model_constraints.gen_predefined_constraints(
+        model_type=model_type,
+        cons_type="SUM_AT_LEAST",
+        cons_vars=cons_vars,
+        cons_value=1,
+        bitwise=bitwise,
+        encoding=encoding,
+    )
+    # MILP-specific: declare decision variables as binary
+    if model_type == "milp":
+        binary_vars = []
+        for var in cons_vars:
+            binary_vars += (expand_var_ids(var, bitwise=bitwise))
+        if binary_vars:
+            constraints.append("Binary\n" + " ".join(binary_vars))
+    return constraints
+
+
 # ------------------------ Differential Trail Search -------------------------
 def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model=None, config_solver=None):
     """
@@ -64,13 +93,15 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
             - DIFFERENTIAL_PROB
             - TRUNCATEDDIFF_SBOXCOUNT
         constraints (list of string): User-specified constraints to be added to the model.
-            - 'INPUT_NOT_ZERO' (str): Automatically add input non-zero constraints as required by the goal.
+            - ['INPUT_NOT_ZERO']: Automatically add input non-zero constraints as required by the goal.
+            - Specific variables constraints, e.g., ['v_1_0_0 = 1', 'v_2_1_0 = 0'] for MILP, ['v_1_0_0', '-v_2_1_0'] for SAT.
             - Any other user-defined constraints.
         objective_target (str): The target for the objective function, which can be:
-            - 'OPTIMAL' (str): Find the optimal solution.
-            - 'AT MOST X' (str): Find a solution with an objective value at most X.
-            - 'EXACTLY X' (str): Find a solution with an objective value exactly X.
-            - 'AT LEAST X' (str): Find a solution with an objective value at least X.
+            - 'OPTIMAL': Find the optimal solution.
+            - 'AT MOST X': Find a solution with an objective value at most X.
+            - 'EXACTLY X': Find a solution with an objective value exactly X.
+            - 'AT LEAST X': Find a solution with an objective value at least X.
+            - 'EXISTENCE': Find any feasible solution.
         show_mode (int): The level of solution/result visualization: 0, 1, 2.
         config_model (dict): Optional advanced arguments for modeling, see attacks.parse_and_set_configs() for details.
         config_solver (dict): Optional advanced arguments for solving, see attacks.parse_and_set_configs() for details.
@@ -80,8 +111,8 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
 
     assert any(goal.startswith(prefix) for prefix in ["DIFFERENTIAL_SBOXCOUNT", "DIFFERENTIALPATH_PROB", "DIFFERENTIAL_PROB", "TRUNCATEDDIFF_SBOXCOUNT"]), f"Invalid goal: {goal}. Expected one of ['DIFFERENTIAL_SBOXCOUNT', 'DIFFERENTIALPATH_PROB', 'DIFFERENTIAL_PROB', 'TRUNCATEDDIFF_SBOXCOUNT']"
     assert isinstance(constraints, list), f"Invalid constraints: {constraints}. Expected a list of strings."
-    assert any(objective_target.startswith(prefix) for prefix in ['OPTIMAL', 'AT MOST', 'EXACTLY', 'AT LEAST']), f"Invalid objective_target: {objective_target}. Expected one of ['OPTIMAL', 'AT MOST X', 'EXACTLY X', 'AT LEAST X']"
-    assert show_mode in [0, 1, 2], f"Invalid show_mode: {show_mode}. Expected one of [0, 1, 2]"
+    assert any(objective_target.startswith(prefix) for prefix in ['OPTIMAL', 'AT MOST', 'EXACTLY', 'AT LEAST', 'EXISTENCE']), f"Invalid objective_target: {objective_target}. Expected one of ['OPTIMAL', 'AT MOST X', 'EXACTLY X', 'AT LEAST X']"
+    assert show_mode in [0, 1, 2, 3], f"Invalid show_mode: {show_mode}. Expected one of [0, 1, 2]"
     assert isinstance(config_model, dict) or config_model is None, f"Invalid config_model: {config_model}. Expected a dictionary or None."
     assert isinstance(config_solver, dict) or config_solver is None, f"Invalid config_solver: {config_solver}. Expected a dictionary or None."
 
@@ -96,7 +127,7 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
     model_cons = []
     for cons in constraints:
         if cons == "INPUT_NOT_ZERO":  # Deal with specific additional constraints.
-            model_cons += model_constraints.gen_input_non_zero_constraints(cipher, goal, config_model)
+            model_cons += gen_input_non_zero_constraints(cipher, goal, config_model)
         else:
             model_cons += [cons]
     model_cons += round_constraints
@@ -129,8 +160,8 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
 def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, solutions):
     trails = []
     for i, sol in enumerate(solutions):
-        trail_values, trail_vars = extract_trail_values_and_vars(cipher, goal, sol)
-        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_vars": trail_vars, "trail_values": trail_values, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
+        trail_struct = extract_trail_structures(cipher, goal, sol)
+        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_struct": trail_struct, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
         trail = DifferentialTrail(data, solution_trace=sol)
         if i > 0:
             trail.json_filename = trail.json_filename.replace(".json", f"_{i}.json") if trail.json_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.json")
@@ -140,51 +171,80 @@ def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, soluti
         trails.append(trail)
     return trails
 
-def extract_trail_values_and_vars(cipher, goal, solution, hex_format=True):
+def extract_trail_structures(cipher, goal, solution):
+    """
+    Extract a structured differential trail (trail_struct) from a solver assignment.
+
+    Returned structure (example):
+    """
     bitwise = "TRUNCATEDDIFF" not in goal
-    trail_values, trail_vars = {}, {}
 
-    def expand_var_ids(var): # Expand variable IDs by bits if necessary.
-        if bitwise and var.bitsize > 1:
-            return [f"{var.ID}_{i}" for i in range(var.bitsize)]
-        return [var.ID]
+    def _get_solution_bit(var_id): # Map a variable id to '0'/'1'/'-'.
+        v = solution.get(var_id, None)
+        if v is None:
+            return "-"
+        try: # robust handling for bool/int/float
+            return "1" if int(round(v)) == 1 else "0"
+        except Exception:
+            return "-"
 
-    def get_value_str(var): # Get binary string value for one variable (expanded)
-        bits = ""
-        for v in expand_var_ids(var):
-            val = solution.get(v)
-            bits += str(int(round(val))) if val is not None else "-"
-        return bits
+    def _hex_bits(bits): # Format bits as hex (with "-" for unknown nibbles).
+        if len(bits) % 4 != 0:
+            pad = 4 - len(bits) % 4
+            bits += "0" * pad  # Pad with zeros to make length a multiple of 4
+            print(f"[WARNING] Padded {pad} trailing '0'(s) to align to 4-bit nibbles for hex formatting.")
+        hex_digits = []
+        # Convert each 4-bit group to hex, but keep "-" when any bit is unknown.
+        for i in range(0, len(bits), 4):
+            chunk = bits[i:i + 4]
+            if "-" in chunk:
+                if chunk != "----":
+                    print(f"[WARNING] Nibble '{chunk}' contains mixed unknown bits; using '-' as a lossy representation.")
+                hex_digits.append("-")
+            else:
+                hex_digits.append(hex(int(chunk, 2))[2:])
+        return "".join(hex_digits)
 
-    def format_bits(bits, hex_format=True): # Format a binary string into hex or binary representation, or return '-' if unknown.
-        if "-" in bits:
-            return "-" * (len(bits) // 4 if hex_format else len(bits))
-        if hex_format:
-            return "0x" + hex(int(bits, 2))[2:].zfill(len(bits) // 4)
-        return "0b" + bits
+    def node(var):
+        """Build a per-variable node."""
+        ids = expand_var_ids(var, bitwise=bitwise)
+        bits = "".join(_get_solution_bit(v_id) for v_id in ids)
+        hex = _hex_bits(bits)
+        return {
+            "var_ID": getattr(var, "ID", str(var)), # ID of var
+            "variables": ids, # List of extended word/bit variables from the given var
+            "bin_values": bits, # Binary string value
+            "hex_values": hex # Hex string value
+            }
 
+    # ------------------------------ Build trail_struct ------------------------------
+    trail_struct = {
+        "bitwise": bitwise,
+        "inputs": {},
+        "outputs": {},
+        "functions": {}
+    }
+
+    # ------------------------------ Inputs / Outputs ------------------------------
+    # Prefer cipher.inputs/cipher.outputs if present; otherwise fall back to constraints.
+    if hasattr(cipher, "inputs") and isinstance(cipher.inputs, dict):
+        for name, var_list in cipher.inputs.items():
+            trail_struct["inputs"][name] = [node(v) for v in var_list]
+    if hasattr(cipher, "outputs") and isinstance(cipher.outputs, dict):
+        for name, var_list in cipher.outputs.items():
+            trail_struct["outputs"][name] = [node(v) for v in var_list]
+
+    # ------------------------------ Functions / Rounds / Layers ------------------------------
     for fun in cipher.functions:
-        fun_vals, fun_vars = [], []
+        fun_store = {
+        "nbr_words": cipher.functions[fun].nbr_words if hasattr(cipher.functions[fun], "nbr_words") else None,
+        "nbr_temp_words": cipher.functions[fun].nbr_temp_words if hasattr(cipher.functions[fun], "nbr_temp_words") else None
+        }
         for r in range(1, cipher.functions[fun].nbr_rounds + 1):
-            round_vals, round_vars = [], []
+            round_store = {}
             for l in range(cipher.functions[fun].nbr_layers + 1):
-                vars_layer, value_bits = [], ""
-                for var in cipher.functions[fun].vars[r][l]:
-                    bits = get_value_str(var)
-                    ids = expand_var_ids(var)
-                    vars_layer.extend(ids)
-                    value_bits += bits
-                formatted = format_bits(value_bits, hex_format)
-                if formatted:
-                    round_vals.append(formatted)
-                if vars_layer:
-                    round_vars.append(vars_layer)
-            if round_vals:
-                fun_vals.append(round_vals)
-            if round_vars:
-                fun_vars.append(round_vars)
-        if fun_vals:
-            trail_values[fun] = fun_vals
-        if fun_vars:
-            trail_vars[fun] = fun_vars
-    return trail_values, trail_vars
+                layer_nodes = [node(v) for v in cipher.functions[fun].vars[r][l]]
+                round_store[l] = layer_nodes
+            fun_store[r] = round_store
+        trail_struct["functions"][fun] = fun_store
+    return trail_struct

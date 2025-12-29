@@ -5,10 +5,10 @@ from operators.boolean_operators import XOR, N_XOR
 
 
 def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
-    for candidate in range(2, 1 << degree):  
-        num_elements = (1 << degree) - 1 
-        generated = set()  
-        current_value = 1  
+    for candidate in range(2, 1 << degree):
+        num_elements = (1 << degree) - 1
+        generated = set()
+        current_value = 1
         for _ in range(num_elements):
             generated.add(current_value)
             current_value = gf2_multiply(current_value, candidate, mod_poly, degree)
@@ -30,14 +30,14 @@ def gf2_multiply(a, b, mod_poly, degree): #  Multiply two elements in GF(2^m) un
 
 
 def generate_gf2_elements_and_exponents(pri, mod_poly, degree): # Generate all elements of GF(2^m) and map them to their corresponding exponents (α^k).
-    num_elements = (1 << degree)  
+    num_elements = (1 << degree)
     elements_to_exponents = {}
     exponents_to_elements = {}
-    current_value = 1 
-    for k in range(num_elements - 1): 
+    current_value = 1
+    for k in range(num_elements - 1):
         elements_to_exponents[current_value] = k
         exponents_to_elements[k] = current_value
-        current_value = gf2_multiply(current_value, pri, mod_poly, degree) 
+        current_value = gf2_multiply(current_value, pri, mod_poly, degree)
     return elements_to_exponents, exponents_to_elements
 
 
@@ -114,9 +114,9 @@ def generate_bin_matrix(mat, bitsize):
     for i in range(len(mat)):
         row = []
         for j in range(len(mat[i])):
-            if mat[i][j] == 1: 
+            if mat[i][j] == 1:
                 row.append(np.eye(bitsize, dtype=int))
-            elif mat[i][j] == 0: 
+            elif mat[i][j] == 0:
                 row.append(np.zeros((bitsize, bitsize), dtype=int))
         bin_matrix.append(row)
     bin_matrix = np.block(bin_matrix)
@@ -127,7 +127,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                           # The optional "polynomial" allors to define the polynomial reduction (not implemted yet)
     def __init__(self, name, input_vars, output_vars, mat, polynomial = None, ID = None):
         r, c = len(mat), len(mat[0])
-        for i in mat: 
+        for i in mat:
             if len(i)!=c: raise Exception(str(self.__class__.__name__) + ": matrix size not consistent")
         if len(input_vars)!=c: raise Exception(str(self.__class__.__name__) + ": input vector does not match matrix size")
         if len(output_vars)!=r: raise Exception(str(self.__class__.__name__) + ": output vector does not match matrix size")
@@ -135,84 +135,84 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         self.name = name
         self.mat = mat
         self.polynomial = polynomial
-    
+
     def differential_branch_number(self): # Return differential branch number of the Matrix. TO DO
         return 5 # the branch number of matrix for aes is 5, to do for other ciphers
-        
+
     def generate_implementation(self, implementation_type='python', unroll=False):
-        if implementation_type == 'python': 
+        if implementation_type == 'python':
             return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
-        elif implementation_type == 'c': 
+        elif implementation_type == 'c':
             return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
 
-    def get_header_ID(self): 
+    def get_header_ID(self):
         return [self.__class__.__name__, self.model_version, self.input_vars[0].bitsize, self.mat, self.polynomial]
 
     def generate_implementation_header_unique(self, implementation_type='python'):
-        if implementation_type == 'python': 
+        if implementation_type == 'python':
             model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
-        elif implementation_type == 'c': 
+        elif implementation_type == 'c':
             model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
-        return model_list        
+        return model_list
 
     def generate_implementation_header(self, implementation_type='python'):
-        if implementation_type == 'python': 
+        if implementation_type == 'python':
             model_list= ["#Matrix Macro "]
-            model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")      
+            model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")
             for i, out_v in enumerate(self.output_vars):
-                model = '\t' + 'y' + str(i) + ' = ' 
+                model = '\t' + 'y' + str(i) + ' = '
                 first = True
                 for j, in_v in enumerate(self.input_vars):
-                    if self.mat[i][j] == 1: 
-                        if first: 
+                    if self.mat[i][j] == 1:
+                        if first:
                             model = model + "x" + str(j)
                             first = False
                         else: model = model + " ^ " + "x" + str(j)
                     elif self.mat[i][j] != 0:
-                        if first: 
-                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                        if first:
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
                             first = False
-                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
                 model_list.append(model)
             model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
             return model_list
-        elif implementation_type == 'c': 
+        elif implementation_type == 'c':
             model_list = ["//Matrix Macro "]
-            model_list.append("#define " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2] + ", "  + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2] + ")  { \\")      
+            model_list.append("#define " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2] + ", "  + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2] + ")  { \\")
             for i, out_v in enumerate(self.output_vars):
-                model = '\t' + 'y' + str(i) + ' = ' 
+                model = '\t' + 'y' + str(i) + ' = '
                 first = True
                 for j, in_v in enumerate(self.input_vars):
-                    if self.mat[i][j] == 1: 
-                        if first: 
+                    if self.mat[i][j] == 1:
+                        if first:
                             model = model + "x" + str(j)
                             first = False
                         else: model = model + " ^ " + "x" + str(j)
                     elif self.mat[i][j] != 0:
-                        if first: 
-                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                        if first:
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
                             first = False
-                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")" 
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
                 model_list.append(model + "; \\")
             model_list.append("} ")
             return model_list
-            
+
     def generate_model(self, model_type='sat', branch_num=None):
         model_list = []
         input_words = len(self.input_vars)
         output_words = len(self.output_vars)
         bits_per_input = self.input_vars[0].bitsize
-        bits_per_output = self.output_vars[0].bitsize                
-        if model_type == 'milp' or model_type == 'sat': 
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_LINEAR"]:
-                if self.polynomial: 
+        bits_per_output = self.output_vars[0].bitsize
+        if model_type == 'milp' or model_type == 'sat':
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_LINEAR"]:
+                if self.polynomial:
                     bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) > len(self.mat):
                     bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):
                     bin_matrix = self.mat
-            if self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
                 for i in range(output_words):  # Loop over the ith output word
                     for j in range(bits_per_output):  # Loop over the jth bit in the ith word
                         var_in = []
@@ -221,7 +221,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                                 if bin_matrix[bits_per_output*i+j][bits_per_input*k+l] == 1:
                                     vi = copy.deepcopy(self.input_vars[k])
                                     vi.bitsize = 1
-                                    if bits_per_output > 1: 
+                                    if bits_per_output > 1:
                                         vi.ID = self.input_vars[k].ID + '_' + str(l)
                                     var_in.append(vi)
                         vo = copy.deepcopy(self.output_vars[i])
@@ -249,7 +249,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                                 if bin_matrix[bits_per_input*i+j][bits_per_output*k+l] == 1:
                                     vi = copy.deepcopy(self.output_vars[k])
                                     vi.bitsize = 1
-                                    if bits_per_output > 1: 
+                                    if bits_per_output > 1:
                                         vi.ID = self.output_vars[k].ID + '_' + str(l)
                                     var_in.append(vi)
                         vo = copy.deepcopy(self.input_vars[i])
@@ -269,16 +269,16 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
                 var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
-                var_d = [f"{self.ID}_d"] 
-                if branch_num == None: branch_num =self.differential_branch_number() 
+                var_d = [f"{self.ID}_d"]
+                if branch_num == None: branch_num =self.differential_branch_number()
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1":
                 var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
-                var_d = [f"{self.ID}_d"] 
-                if branch_num == None: branch_num =self.differential_branch_number() 
+                var_d = [f"{self.ID}_d"]
+                if branch_num == None: branch_num =self.differential_branch_number()
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
@@ -315,8 +315,8 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
         assert len(mat) == len(mat[0]), "The matrix should be a square matrix."
         self.mat = mat
         self.constants = constants
-        
-    
+
+
     def generate_implementation(self, implementation_type='python', unroll=False):
         var_in = self.get_var_ID('in', 0, unroll)
         var_out = self.get_var_ID('out', 0, unroll)
@@ -337,7 +337,7 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                 else:
                     s += f") << {n-i-1}) | "
             s = s.rstrip(' | ')
-            return [s]                
+            return [s]
         elif implementation_type == 'c':
             n = len(self.mat)
             s = var_out + ' = '
@@ -355,12 +355,12 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                 else:
                     s += f") << {n-i-1} | "
             s = s.rstrip(' | ') + ';'
-            return [s]        
+            return [s]
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
-        
+
     def generate_model(self, model_type='sat'):
         model_list = []
-        if (model_type == 'sat' or model_type == 'milp') and (self.model_version in ["DEFAULT", self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
+        if (model_type == 'sat' or model_type == 'milp') and (self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
             var_in = []
             var_out = []
             for i in range(self.input_vars[0].bitsize):
@@ -386,11 +386,11 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                         unit_vectors.add(tuple(row))
                 if len(unit_vectors) >= len(self.mat) - 1:
                     model_list = [f'{var_in[0]} -{var_out[0]}', f'-{var_in[0]} {var_out[0]}']
-                return model_list            
+                return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
 
-        elif model_type == 'milp': 
-            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]: 
+        elif model_type == 'milp':
+            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 unit_vectors = set()
                 for row in self.mat:
@@ -399,7 +399,7 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                 if len(unit_vectors) >= len(self.mat) - 1:
                     model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                     model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list 
+                return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")    
+        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")

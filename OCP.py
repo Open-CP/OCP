@@ -56,7 +56,7 @@ def test_verilog_imp(cipher): # Generate Verilog implementation and test it with
     if not cipher.test_vectors:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1]) 
+    imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
 
 def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.sv", "verilog", True)
@@ -80,7 +80,7 @@ def test_visualisation(cipher): # Generate visualisation figure
 
 # ********************* Differential Cryptanalysis ********************* #
 def test_diff_attack_milp(cipher):
-    # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
+    # Example: default parameters. Refer to test/differential_cryptanalysis/ for more available parameters.
     goal="DIFFERENTIALPATH_PROB"
     constraints=["INPUT_NOT_ZERO"]
     objective_target="OPTIMAL"
@@ -91,8 +91,8 @@ def test_diff_attack_milp(cipher):
     # Search for the differential trail
     trails = attacks.diff_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
-def test_diff_attack_speck_sat(cipher):
-    # Example: default parameters. Refer to test/differential_cryptanalysis/test_diff_speck.py for more available parameters.
+def test_diff_attack_sat(cipher):
+    # Example: default parameters. Refer to test/differential_cryptanalysis/ for more available parameters.
     goal="DIFFERENTIALPATH_PROB"
     constraints=["INPUT_NOT_ZERO"]
     objective_target="OPTIMAL"
@@ -105,16 +105,18 @@ def test_diff_attack_speck_sat(cipher):
 
 
 if __name__ == "__main__":
-    #import primitives.aes as aes
-    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
-    #cipher = aes.AES_BLOCKCIPHER(version=[128,256])
+    # import primitives.aes as aes
+    # cipher = aes.AES_BLOCKCIPHER(version=[128,256])
+
+    # import primitives.speck as speck
+    # cipher = speck.SPECK_PERMUTATION(version=32)
+    # cipher = speck.SPECK_BLOCKCIPHER(r=6, version=[32,64])
 
     import primitives.simon as simon
-    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
-    cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
+    cipher = simon.SIMON_BLOCKCIPHER(r=5, version=[32,64])
 
     test_all_implementations(cipher)
     cipher.add_copy_operators()
     test_visualisation(cipher)
-    #test_diff_attack_milp(cipher)
-    #test_diff_attack_sat(cipher)
+    test_diff_attack_milp(cipher)
+    test_diff_attack_sat(cipher)

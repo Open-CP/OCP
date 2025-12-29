@@ -3,58 +3,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]  # this file -> implementation -> test -> <ROOT>
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-from primitives.shacal2 import SHACAL2_BLOCK_CIPHER
-import implementations.implementations as imp
-import visualisations.visualisations as vis
-
-FILES_DIR = ROOT / "files"
-FILES_DIR.mkdir(parents=True, exist_ok=True)
-
-
-def test_python_imp(cipher): # Generate Python implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.py", "python")
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    imp.test_implementation_python(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
-
-def test_python_unrolled_imp(cipher): # Generate unrolled Python implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.py", "python", True)
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    imp.test_implementation_python(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
-
-def test_c_imp(cipher): # Generate C implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.c", "c")
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    imp.test_implementation_c(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
-
-def test_c_unrolled_imp(cipher): # Generate unrolled C implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.c", "c", True)
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    imp.test_implementation_c(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
-
-def test_verilog_imp(cipher): # Generate Verilog implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.sv", "verilog")
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    # imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1]) # TO DO
-
-def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementation and test it with the test vectors
-    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.sv", "verilog", True)
-    if not cipher.test_vectors:
-        print("warning: no test vector defined!")
-        return False
-    # imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1]) # TO DO
-
-def test_visualisation(cipher): # Generate visualisation figure
-    vis.generate_figure(cipher, FILES_DIR / f"{cipher.name}.pdf")
+from primitives.shacal2 import SHACAL2_BLOCKCIPHER
+from OCP import test_all_implementations, test_visualisation
 
 
 def test_imp_shacal2():
@@ -63,21 +13,11 @@ def test_imp_shacal2():
 
     for version in versions:
 
-        cipher = SHACAL2_BLOCK_CIPHER(r=64, version=version, represent_mode=0)
+        cipher = SHACAL2_BLOCKCIPHER(r=64, version=version, represent_mode=0)
 
-        test_python_imp(cipher)
+        test_all_implementations(cipher)
 
-        test_python_unrolled_imp(cipher)
-
-        test_c_imp(cipher)
-
-        test_c_unrolled_imp(cipher)
-
-        # test_verilog_imp(cipher) # TO DO
-
-        # test_verilog_unrolled_imp(cipher) # TO DO
-
-        # test_visualisation(cipher)
+        test_visualisation(cipher)
 
 
 if __name__ == "__main__":
@@ -85,4 +25,4 @@ if __name__ == "__main__":
 
     test_imp_shacal2()
 
-    print("All implementation tests completed!")    
+    print("All implementation tests completed!")

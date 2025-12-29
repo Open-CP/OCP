@@ -20,7 +20,7 @@ class SHACAL2_block_cipher(Block_cipher):
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (10, 8, 4, wordSize),  (6, 16, 2, wordSize),  (1, 1, 0, wordSize)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
         self.test_vectors = self.gen_test_vectors()
-        
+
         S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
@@ -33,7 +33,7 @@ class SHACAL2_block_cipher(Block_cipher):
                     SK.ExtractionLayer("SK_EX", i, 0, [i-1], KS.vars[1][0])
                 else:
                     SK.ExtractionLayer("SK_EX", i, 0, [15], KS.vars[i-15][0])
-                   
+
                 if i<k_nbr_rounds:
                     KS.SingleOperatorLayer("Sigma0", i, 0, SHACAL2_Sigma0, [[1]], [16])
                     KS.SingleOperatorLayer("Sigma1", i, 1, SHACAL2_Sigma1, [[14]], [17])
@@ -41,12 +41,12 @@ class SHACAL2_block_cipher(Block_cipher):
                     KS.SingleOperatorLayer("Add2", i, 3, ModAdd, [[17, 16]], [17])
                     KS.SingleOperatorLayer("Add3", i, 4, ModAdd, [[17, 0]], [17])
                     KS.PermutationLayer("Key_Perm", i, 5, [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,17])
-                    
+
                 S.SingleOperatorLayer("Sum0", i, 0, SHACAL2_Sum0, [[0]], [8]) # SUM0 operator
                 S.SingleOperatorLayer("Sum1", i, 1, SHACAL2_Sum1, [[4]], [9]) # SUM1 operator
                 S.SingleOperatorLayer("Maj", i, 2, SHACAL2_Maj, [[0, 1, 2]], [10]) # Maj operator
                 S.SingleOperatorLayer("Ch", i, 3, SHACAL2_Ch, [[4, 5, 6]], [11]) # Ch operator
-                
+
                 S.SingleOperatorLayer("ADD1", i, 4, ModAdd, [[8, 10], [7, 11]], [8, 11])
                 S.SingleOperatorLayer("ADD2", i, 5, ModAdd, [[11, 9]], [11])
                 S.AddRoundKeyLayer("ARK", i, 6, ModAdd, SK, [0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0])
@@ -54,7 +54,7 @@ class SHACAL2_block_cipher(Block_cipher):
 
                 S.SingleOperatorLayer("ADD3", i, 8, ModAdd, [[3, 11], [8, 11]], [3, 8]) #Add to d
                 S.PermutationLayer("Perm", i, 9, [8, 0, 1, 2, 3, 4, 5, 6]) #Final permutation
-        
+
 
     def gen_rounds_constant_table(self, version):
         if version == 256:
@@ -70,9 +70,9 @@ class SHACAL2_block_cipher(Block_cipher):
             #TODO ADD table
             pass
         return constant_table
-    
-    def gen_test_vectors(self, version=256):   
-        # TODO: add test vectors that are non-all-zero and give link to them 
+
+    def gen_test_vectors(self, version=256):
+        # TODO: add test vectors that are non-all-zero and give link to them
         if version == 256:
             KEY = [0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]
             IN = [0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]
@@ -80,7 +80,7 @@ class SHACAL2_block_cipher(Block_cipher):
         elif version == 512:
             pass
         return [[IN, KEY], OUT]
-    
+
 
 def SHACAL2_BLOCKCIPHER(r=None, version=256, represent_mode=0):
     wordSize = 32 if version == 256 else 64

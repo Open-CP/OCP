@@ -52,7 +52,8 @@ class PRESENT_block_cipher(Block_cipher):
         """
         assert version in [[64,80], [64,128]], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
-        if nbr_rounds==None or nbr_rounds==31: nbr_rounds=32
+        if nbr_rounds==None or nbr_rounds==31: # If nbr_rounds is unspecified or set to 31, extend it to 32 rounds to add the final round key addition
+            nbr_rounds=32
         if represent_mode==0:
             (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, p_bitsize, 0, 1),  (3, k_bitsize, 0, 1),  (1, p_bitsize, 0, 1)
             perm_ks = [(61+i)%k_bitsize for i in range(k_bitsize)]
@@ -88,7 +89,7 @@ class PRESENT_block_cipher(Block_cipher):
                 if i < 32:
                     S.SboxLayer("SB", i, 1, PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer
                     S.PermutationLayer("P", i, 2, perm) # Permutation layer
-                elif i == 32:
+                elif i == 32: # After the 31 rounds, only add the final round key
                     S.AddIdentityLayer("ID", i, 1)
                     S.AddIdentityLayer("ID", i, 2)
 

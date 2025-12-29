@@ -93,7 +93,9 @@ class AES_block_cipher(Block_cipher):
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
 
-        constant_table =self.gen_rounds_constant_table()
+        constant_table = self.gen_rounds_constant_table()
+        matrix = [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]]
+        matrix_index = [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]]
 
         # create constraints
         if represent_mode==0:
@@ -138,8 +140,10 @@ class AES_block_cipher(Block_cipher):
                 S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer
                 S.SboxLayer("SB", i, 1, AES_Sbox) # Sbox layer
                 S.PermutationLayer("SR", i, 2, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
-                if i != (full_rounds-1): S.MatrixLayer("MC", i, 3, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
-                else: S.AddIdentityLayer("ID", i, 3) # Identity layer
+                if i != (nbr_rounds-1):
+                    S.MatrixLayer("MC", i, 3, matrix, matrix_index, "0x1B")  # Mixcolumns layer
+                else: # In the final round, MixColumn is omitted
+                    S.AddIdentityLayer("ID", i, 3) # Identity layer
             S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer
             S.AddIdentityLayer("ID", nbr_rounds, 1)     # Identity layer
             S.AddIdentityLayer("ID", nbr_rounds, 2)     # Identity layer

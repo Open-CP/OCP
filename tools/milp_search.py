@@ -114,17 +114,22 @@ def modeling_solving_milp(objective_target, constraints, objective_function, con
         model_cons += model_constraints.gen_matsui_constraints_milp(Round, best_obj, objective_function, cons_type)
 
     # Step 3. Generate the standard MILP model.
-    write_milp_model(model_cons, objective_function, config_model.get("filename"))
+    if objective_target == "EXISTENCE":
+        obj_fun = None  # For existence checking, no objective function is needed.
+    else:
+        obj_fun = objective_function[:]
+    write_milp_model(model_cons, obj_fun, config_model.get("filename"))
 
     # Step 4. Solve the MILP model.
     solutions = solving.solve_milp(config_model.get("filename"), config_solver)
     for sol in solutions:
         sol["rounds_obj_fun_values"] = model_objective.cal_round_obj_fun_values_from_solution(objective_function, sol)
-        if "obj_fun_value" not in sol: sol["obj_fun_value"] = sum(sol["rounds_obj_fun_values"])
+        if "obj_fun_value" not in sol or sol["obj_fun_value"] == 0: sol["obj_fun_value"] = sum(sol["rounds_obj_fun_values"])
 
     # Step 5. Print modeling and solving information.
     print("====== Modeling and Solving MILP Information ======")
     print(f"--- Found {len(solutions)} solution(s) ---")
     for key, value in {**config_model, **config_solver}.items():
-        print(f"--- {key} ---: {value}")
+        if key not in ["positions"]:
+            print(f"--- {key} ---: {value}")
     return solutions
