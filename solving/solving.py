@@ -92,14 +92,14 @@ def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurob
         return []
 
     # Case 2: Single optimal solution found
-    elif solution_number == 1 or getattr(model.Params, "PoolSearchMode", 0) == 0:
+    elif solution_number == 1 and getattr(model.Params, "PoolSearchMode", 0) == 0:
         sol = {v.VarName: v.X for v in model.getVars()}
         sol["obj_fun_value"] = model.ObjVal
         print(f"[INFO] Found 1 solution from Gurobi.")
         return [sol]
 
     # Case 3: Multiple solutions found
-    elif getattr(model.Params, "PoolSearchMode", 0) > 0:
+    elif solution_number > 1 or getattr(model.Params, "PoolSearchMode", 0) > 0:
         sol_list = []
         for i in range(model.SolCount):
             model.Params.SolutionNumber = i

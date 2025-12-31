@@ -97,7 +97,10 @@ def gen_obj_fun_variables(obj_fun, obj_fun_decimal=False): # In the case of a de
         return obj_fun_var_int
     else:
         decimal_vars = []
-        terms = [t.strip() for t in obj_fun[0][0].split('+')]
+        for obj_fun_r in obj_fun:
+            if obj_fun_r:
+                terms = [t.strip() for t in obj_fun_r[0].split('+')]
+                break
         for term in terms:
             parts = term.split()
             if len(parts) >= 2:

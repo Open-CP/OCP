@@ -10,6 +10,24 @@ FILES_DIR = ROOT / "files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
 
+def bin_to_hex(bits): # Format bits as hex (with "-" for unknown nibbles).
+    if len(bits) % 4 != 0:
+        pad = 4 - len(bits) % 4
+        bits += "0" * pad  # Pad with zeros to make length a multiple of 4
+        print(f"[WARNING] Padded {pad} trailing '0'(s) to align to 4-bit nibbles for hex formatting.")
+    hex_digits = []
+    # Convert each 4-bit group to hex, but keep "-" when any bit is unknown.
+    for i in range(0, len(bits), 4):
+        chunk = bits[i:i + 4]
+        if "-" in chunk:
+            if chunk != "----":
+                print(f"[WARNING] Nibble '{chunk}' contains mixed unknown bits; using '-' as a lossy representation.")
+            hex_digits.append("-")
+        else:
+            hex_digits.append(hex(int(chunk, 2))[2:])
+    return "".join(hex_digits)
+
+
 # Class that represents a trail derived from the solution.
 class Trail(ABC):
     def __init__(self, type, data, solution_trace=None):
@@ -97,26 +115,23 @@ class DifferentialTrail(Trail):
         elif show_mode == 1: lines += "Show Mode: First Layer of All Rounds (layer 0)\n"
         elif show_mode == 2: lines += "Show Mode: All Layers of All Rounds\n"
         elif show_mode == 3: lines += "Show Mode: All Layers of All Rounds (Including Temporary Words)\n"
-        if "diff_weight" in self.data and self.data["diff_weight"] is not None:
-            lines += f"Total Weight: {self.data['diff_weight']}\n"
-        if "rounds_diff_weight" in self.data and self.data["rounds_diff_weight"] is not None:
-            lines += f"rounds_diff_weight: {self.data['rounds_diff_weight']}\n"
 
         trail_struct = self.data['trail_struct']
 
         # Print inputs
         if "inputs" in trail_struct and isinstance(trail_struct["inputs"], dict):
+            lines += f"######## Input: ########\n"
             for name, node_list in trail_struct["inputs"].items():
-                lines += f"-------- Input: {name} --------\n"
+                diff = ""
                 for node in node_list:
-                    lines += f"{node['bin_values']}" if not hex_format else f"{node['hex_values']}"
+                    diff += f"{node['bin_values']}"
+                lines += f"{name}: " + (f"{bin_to_hex(diff)}" if hex_format else diff)
                 lines += "\n"
 
         # Print functions
         if "functions" in trail_struct and isinstance(trail_struct["functions"], dict):
-            print(trail_struct["functions"])
             for fun in self.data["functions"]:
-                lines += f"-------- Function: {fun} --------\n"
+                lines += f"######## Function: {fun} ########\n"
                 if show_mode == 0:
                     show_rounds = [self.data["rounds"][fun][0], self.data["rounds"][fun][-1]] if len(self.data["rounds"][fun]) > 1 else [self.data["rounds"][fun][0]]
                 elif show_mode == 1 or show_mode == 2 or show_mode == 3:
@@ -124,26 +139,37 @@ class DifferentialTrail(Trail):
                 for r in show_rounds:
                     lines += f"Round {r}:\n"
                     for l in trail_struct["functions"][fun][r]:
-                        if fun == "SUBKEYS" and l == 0: # For SUBKEYS, layer 0 is meaningless, so skip it
-                            continue
+                        # if fun == "SUBKEYS" and l == 0: # For SUBKEYS, layer 0 is meaningless, so skip it
+                        #     continue
                         if (show_mode == 0 or show_mode == 1) and l != 0 and fun != "SUBKEYS": # For show_mode 0 and 1, only layer 0 is printed
                             continue
-                        lines += f"Layer {l}:"
+                        lines += f"Layer {l}: "
+                        diff = ""
                         for i in range(trail_struct["functions"][fun]["nbr_words"]):
                             node = trail_struct["functions"][fun][r][l][i]
-                            lines += f"{node['bin_values']}" if not hex_format else f"{node['hex_values']}"
+                            diff += f"{node['bin_values']}"
+                        lines += f"{bin_to_hex(diff)}" if hex_format else diff
                         if show_mode == 3:
+                            diff = ""
                             for i in range(trail_struct["functions"][fun]["nbr_temp_words"]):
                                 node = trail_struct["functions"][fun][r][l][trail_struct["functions"][fun]["nbr_words"] + i]
-                                lines += f"{node['bin_values']}" if not hex_format else f"{node['hex_values']}"
+                                diff += f"{node['bin_values']}"
+                            lines += f"{bin_to_hex(diff)}" if hex_format else diff
                         lines += "\n"
 
         # Print outputs
         if "outputs" in trail_struct and isinstance(trail_struct["outputs"], dict):
+            lines += f"######## Output: ########\n"
             for name, node_list in trail_struct["outputs"].items():
-                lines += f"-------- Output: {name} --------\n"
+                diff = ""
                 for node in node_list:
-                    lines += f"{node['bin_values']}" if not hex_format else f"{node['hex_values']}"
+                    diff += f"{node['bin_values']}"
+                lines += f"{name}: " + (f"{bin_to_hex(diff)}" if hex_format else diff)
                 lines += "\n"
+
+        if "diff_weight" in self.data and self.data["diff_weight"] is not None:
+            lines += f"\nTotal Weight: {self.data['diff_weight']}\n"
+        if "rounds_diff_weight" in self.data and self.data["rounds_diff_weight"] is not None:
+            lines += f"rounds_diff_weight: {self.data['rounds_diff_weight']}\n"
         print(lines)
         return lines

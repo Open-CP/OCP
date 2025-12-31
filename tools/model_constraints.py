@@ -83,7 +83,7 @@ def set_model_versions(cipher, version, functions, rounds, layers, positions, op
     def _assgn_version(cons):
         if operator_name is None: # Assign model_version to all operators in the cipher.
             cons.model_version = cons.__class__.__name__ + "_" + version
-        elif operator_name is not None and operator_name in cons.__class__.__name__: # Assign model_version to operators with a specific name.
+        elif operator_name is not None and (operator_name == cons.__class__.__name__ or (operator_name=="Sbox" and cons.__class__.__name__.endswith("Sbox"))): # Assign model_version to operators with a specific name.
             cons.model_version = cons.__class__.__name__ + "_" + version
 
     # Assign model_version to input/output constraints
@@ -139,7 +139,7 @@ def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bit
             - "SUM_EXACTLY": Sum of selected variables == target value.
             - "SUM_AT_LEAST": Sum of selected variables >= target value.
             - "SUM_AT_MOST": Sum of selected variables <= target value.
-        cons_vars (list[str]): Variable names.
+        cons_vars (list): Variable names or Variables objects with ID and bitsize attributes.
         cons_value (int): Target value.
         bitwise (bool): If True, expand variables by bit.
 
@@ -193,7 +193,11 @@ def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        try:
+            cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        except Exception as e:
+            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.equals. Passing...")
+            return []
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
@@ -223,7 +227,11 @@ def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQ
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        try:
+            cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        except Exception as e:
+            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.atmost. Passing...")
+            return []
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
@@ -253,7 +261,11 @@ def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding=1):
         variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
         reverse_map = {v: k for k, v in variable_map.items()}
         lits = [variable_map[name] for name in cons_vars]
-        cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        try:
+            cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
+        except Exception as e:
+            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.atleast. Passing...")
+            return []
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)

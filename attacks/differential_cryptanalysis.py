@@ -164,6 +164,7 @@ def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, soluti
         data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_struct": trail_struct, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
         trail = DifferentialTrail(data, solution_trace=sol)
         if i > 0:
+            print(f"[INFO] Saving the {i+1}-th Trail.")
             trail.json_filename = trail.json_filename.replace(".json", f"_{i}.json") if trail.json_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.json")
             trail.txt_filename = trail.txt_filename.replace(".txt", f"_{i}.txt") if trail.txt_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.txt")
         trail.save_json()
@@ -188,33 +189,14 @@ def extract_trail_structures(cipher, goal, solution):
         except Exception:
             return "-"
 
-    def _hex_bits(bits): # Format bits as hex (with "-" for unknown nibbles).
-        if len(bits) % 4 != 0:
-            pad = 4 - len(bits) % 4
-            bits += "0" * pad  # Pad with zeros to make length a multiple of 4
-            print(f"[WARNING] Padded {pad} trailing '0'(s) to align to 4-bit nibbles for hex formatting.")
-        hex_digits = []
-        # Convert each 4-bit group to hex, but keep "-" when any bit is unknown.
-        for i in range(0, len(bits), 4):
-            chunk = bits[i:i + 4]
-            if "-" in chunk:
-                if chunk != "----":
-                    print(f"[WARNING] Nibble '{chunk}' contains mixed unknown bits; using '-' as a lossy representation.")
-                hex_digits.append("-")
-            else:
-                hex_digits.append(hex(int(chunk, 2))[2:])
-        return "".join(hex_digits)
-
     def node(var):
         """Build a per-variable node."""
         ids = expand_var_ids(var, bitwise=bitwise)
         bits = "".join(_get_solution_bit(v_id) for v_id in ids)
-        hex = _hex_bits(bits)
         return {
             "var_ID": getattr(var, "ID", str(var)), # ID of var
             "variables": ids, # List of extended word/bit variables from the given var
             "bin_values": bits, # Binary string value
-            "hex_values": hex # Hex string value
             }
 
     # ------------------------------ Build trail_struct ------------------------------
