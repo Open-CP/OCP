@@ -109,6 +109,10 @@ if __name__ == "__main__":
     #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
     cipher = aes.AES_BLOCKCIPHER(version=[128,128])
     imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
+    cipher = aes.AES_BLOCKCIPHER(version=[128,192])
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
+    cipher = aes.AES_BLOCKCIPHER(version=[128,256])
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
     import primitives.simon as simon
     #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
     #cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
