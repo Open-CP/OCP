@@ -105,18 +105,16 @@ def test_diff_attack_sat(cipher):
 
 
 if __name__ == "__main__":
-    # import primitives.aes as aes
-    # cipher = aes.AES_BLOCKCIPHER(version=[128,256])
-
-    # import primitives.speck as speck
-    # cipher = speck.SPECK_PERMUTATION(version=32)
-    # cipher = speck.SPECK_BLOCKCIPHER(r=6, version=[32,64])
-
+    import primitives.aes as aes
+    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
+    cipher = aes.AES_BLOCKCIPHER(version=[128,128])
+    imp.generate_implementation(cipher,"files/" + cipher.name + "_unrolled.py", "python", True)
     import primitives.simon as simon
-    cipher = simon.SIMON_BLOCKCIPHER(r=5, version=[32,64])
+    #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
+    #cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
 
-    test_all_implementations(cipher)
-    cipher.add_copy_operators()
-    test_visualisation(cipher)
-    test_diff_attack_milp(cipher)
-    test_diff_attack_sat(cipher)
+    #test_all_implementations(cipher)
+    #cipher.add_copy_operators()
+    #test_visualisation(cipher)
+    #test_diff_attack_milp(cipher)
+    #test_diff_attack_sat(cipher)

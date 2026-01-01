@@ -184,6 +184,18 @@ class Layered_Function:
                 in_vars = [self.vars[crt_round][crt_layer][index_in[index_out.index(j)]]]
                 out_vars = [self.vars[crt_round][crt_layer+1][j]]
                 self.constraints[crt_round][crt_layer].append(GF2Linear_Trans(in_vars, out_vars, mat, ID=generateID(name,crt_round,crt_layer+1,j), constants=constants))
+    #AES_TTABLE
+    def TTableLayer(self, name, crt_round, crt_layer, ttable_operator):
+        from math import sqrt
+        n = int(sqrt(self.nbr_words))
+        if  n*n != self.nbr_words: raise Exception("Layered Function: TTableLayer requires that tye nbr words is square rootable!")
+        for r in range(n):
+            tmp_in = []
+            tmp_out = [] 
+            for c in range(n):
+                tmp_in.append(self.vars[crt_round][crt_layer][r*n + c])
+                tmp_out.append(self.vars[crt_round][crt_layer+1][r*n+c])
+            self.constraints[crt_round][crt_layer].append(ttable_operator(tmp_in, tmp_out, ID=generateID(name,crt_round,crt_layer+1,r)))
 
     # apply a layer "name" of a Matrix "mat" (only square matrix), at the round "crt_round", at the layer "crt_layer", operating in the field GF(2^"bitsize") with polynomial "polynomial"
     def MatrixLayer(self, name, crt_round, crt_layer, mat, indexes_list, polynomial = None):
@@ -201,10 +213,10 @@ class Layered_Function:
     # extract a subkey from the external variable, determined by "extraction_mask"
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):
         for j, indexes in enumerate(extraction_indexes):
-            in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j]
+            in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j] 
+            if name=="TT_EX": print("HERE: ",op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
             self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
-
-    # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity
+    # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity  
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
         if sum(mask)!=sk_function.nbr_words: raise Exception("AddRoundKeyLayer: subkey size does not match the mask")
         if len(mask)<(self.nbr_words + self.nbr_temp_words): mask += [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
