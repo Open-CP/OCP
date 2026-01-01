@@ -88,14 +88,11 @@ class AES_block_cipher(Block_cipher):
                 full_rounds=15
             nk = int(k_bitsize/32)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
-        #add function here as well 
-        #self.functions["TTABLE"] = Layered_Function("TTABLE", 'tt', 1, 1, 16, 0, 8)
-        #self.functions_implementation_order = ["SUBKEYS", "KEY_SCHEDULE","TTABLE", "PERMUTATION"]
-        #self.functions_display_order = ["PERMUTATION","TTABLE", "KEY_SCHEDULE", "SUBKEYS"]
+        
         S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
         SK = self.functions["SUBKEYS"]
-        
+
         constant_table =self.gen_rounds_constant_table()
 
         # create constraints
@@ -151,10 +148,11 @@ class AES_block_cipher(Block_cipher):
             # Internal permutation
             
             for i in range(1,nbr_rounds): 
-                S.PermutationLayer("SR", i, 0, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
-                if i != (full_rounds-1): S.TTableLayer("TT", i, 1, AES_TTable)  #Mixcolumns layer, can shiftrwos here directely
-                else: S.AddIdentityLayer("ID", i, 1)
-                S.AddRoundKeyLayer("ARK", i, 2, XOR, SK, mask=[1 for i in range(16)])
+                S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, mask=[1 for i in range(16)])
+                S.PermutationLayer("SR", i, 1, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
+                if i != (nbr_rounds-1): S.TTableLayer("TT", i, 2, AES_TTable)  #Mixcolumns layer, can shiftrwos here directely
+                else: S.SboxLayer("SB", i, 2,AES_Sbox)#substitube
+                
             S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer
             S.AddIdentityLayer("ID", nbr_rounds, 1)     # Identity layer
             S.AddIdentityLayer("ID", nbr_rounds, 2)     # Identity layer
