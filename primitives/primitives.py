@@ -307,10 +307,10 @@ class Layered_Function(Function_Tracker, Layered_Function_Ttable):
     # extract a subkey from the external variable, determined by "extraction_mask"
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):
         for j, indexes in enumerate(extraction_indexes):
-            in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j]
-            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var],ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
-
-    # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity
+            in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j] 
+            if name=="TT_EX": print("HERE: ",op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+            self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], simple_connect=False, ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+    # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity  
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
         if sum(mask)!=sk_function.nbr_words: raise Exception("AddRoundKeyLayer: subkey size does not match the mask")
         if len(mask)<(self.nbr_words + self.nbr_temp_words): mask += [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
