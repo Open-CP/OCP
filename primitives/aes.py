@@ -75,15 +75,15 @@ class AES_block_cipher(Block_cipher):
         nbr_rounds += 1
         if represent_mode==0:
             if k_bitsize==128:
-                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, 16, 0, 8),  (7, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8)
+                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (2, 16, 0, 8),  (7, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8)
                 k_nbr_rounds, k_perm = nbr_rounds, [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,13,14,15,12]
                 full_rounds=11
-            if k_bitsize==192:#config not done yet
-                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, 16, 0, 8),  (9, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8)
+            if k_bitsize==192:
+                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (2, 16, 0, 8),  (9, int(16*k_bitsize / p_bitsize), 4, 8),  (1, 16, 0, 8)
                 k_nbr_rounds, k_perm = int((nbr_rounds+1)/1.5),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,21,22,23,20]
                 full_rounds=13
-            if k_bitsize==256:#config not done yet
-                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, 16, 0, 8),  (13, int(16*k_bitsize / p_bitsize), 8, 8),  (1, 16, 0, 8)
+            if k_bitsize==256:
+                (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (2, 16, 0, 8),  (13, int(16*k_bitsize / p_bitsize), 8, 8),  (1, 16, 0, 8)
                 k_nbr_rounds, k_perm = int((nbr_rounds+1)/2),  [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,29,30,31,28]
                 full_rounds=15
             nk = int(k_bitsize/32)
@@ -149,13 +149,10 @@ class AES_block_cipher(Block_cipher):
             
             for i in range(1,nbr_rounds): 
                 S.AddRoundKeyLayer("ARK", i, 0, XOR, SK, mask=[1 for i in range(16)])
-                S.PermutationLayer("SR", i, 1, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
-                if i != (nbr_rounds-1): S.TTableLayer("TT", i, 2, AES_TTable)  #Mixcolumns layer, can shiftrwos here directely
-                else: S.SboxLayer("SB", i, 2,AES_Sbox)#substitube
-                
-            S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer
-            S.AddIdentityLayer("ID", nbr_rounds, 1)     # Identity layer
-            S.AddIdentityLayer("ID", nbr_rounds, 2)     # Identity layer
+                if i != (nbr_rounds-1): S.TTableLayer("TT", i, 1, AES_TTable, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11])
+                else: S.SboxLayer("SB", i, 1,AES_Sbox)#substitube
+            S.PermutationLayer("SR", nbr_rounds, 0, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
+            S.AddRoundKeyLayer("ARK", nbr_rounds, 1, XOR, SK, mask=[1 for _ in range(16)])  # AddRoundKey layer
 
         self.test_vectors = self.gen_test_vectors(version)
 
