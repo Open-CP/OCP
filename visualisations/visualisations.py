@@ -48,7 +48,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
     
     ax = plt.gca()
     
-    ax.annotate(my_prim.name, xy=(-op_length, 4*elements_height), fontsize=3*var_font_size, ha="center")
+    ax.annotate(my_prim.name, xy=(-op_length, 5.15*elements_height), fontsize=3*var_font_size, ha="center")
     
     # computation of the maximum x-lenghth for each function
     max_length = [0]*len(my_prim.functions)
@@ -140,7 +140,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
                         # display the operator box
                         ax.add_patch(Rectangle((x_coord,-y_coord-elements_height/2), op_length, elements_height, facecolor=op_colors[(i)%len(op_colors)], label='Label'))
                         ax.annotate(constraints_table[i][r][l][w].ID, xy=(x_coord+op_length/2,-y_coord), fontsize=op_font_size, ha="center")
-                        if constraints_table[i][r][l][w].__class__.__name__ == "Rot": ax.annotate(str(constraints_table[i][r][l][w].direction) + " - " + str(constraints_table[i][r][l][w].amount), xy=(x_coord+op_length/2,-y_coord-elements_height/4), fontsize=op_font_size, ha="center")
+                        if constraints_table[i][r][l][w].__class__.__name__ == "Rot": ax.annotate(str(constraints_table[i][r][l][w].direction) + " - " + str(constraints_table[i][r][l][w].amount), xy=(x_coord+op_length/2,-y_coord-2*elements_height/5), fontsize=op_font_size, ha="center")
                         operators_coord.append((constraints_table[i][r][l][w].ID,(x_coord+op_length/2, -y_coord+elements_height/2)))
 
                         # display the links with the variables
@@ -200,30 +200,31 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
                 for w in range(len(vars_table[i][r][l])): 
                     my_var = vars_table[i][r][l][w]
                     if my_var.copied_vars != []:
-                        elements_to_draw=[]
+                        y_spread = list(linspace(-1,1,len(my_var.copied_vars)))
                         for cw in range(len(my_var.copied_vars)):
                             (var_x_coord, var_y_coord) = vars_coord[my_var.ID]
                             target_operator=my_var.copied_vars[cw][1]
-                            index=0
-                            while target_operator==my_var.copied_vars[cw][1]:
-                                target_operator = my_var.copied_vars[cw][1].output_vars[0].connected_vars[index][1]
-                                index=index+1
                             (op_x_coord, op_y_coord) = operators_coord[target_operator.ID]
-                            a = (var_y_coord - op_y_coord) / (var_x_coord - op_x_coord)
-                            b = var_y_coord - a*var_x_coord
-                            my_y = var_y_coord - y_space_layer  
-                            my_x = (my_y - b) / a
-                            elements_to_draw.append((my_x,my_y,my_var.copied_vars[cw][0].ID,a,b))
+                            
+                            # adjust x coordinate depending on the position of the variable in the input list of the target operator
+                            nbr_inputs = len(target_operator.input_vars)
+                            for index in range(nbr_inputs):
+                                if target_operator.input_vars[index].ID == my_var.copied_vars[cw][0].ID:    
+                                    break
+                            op_x_coord = op_x_coord - op_length/2 + (index+1)*(op_length/(nbr_inputs+1))
 
-                        y_spread = list(linspace(-1,1,len(my_var.copied_vars)))
-                        #elements_to_draw = sorted(elements_to_draw, key=lambda x: x[0])
-                        for cw in range(len(elements_to_draw)):  
-                            my_x,my_y,ID,a,b = elements_to_draw[cw]                    
-                            my_x = my_x - y_spread[cw]/a  
-                            my_y = my_y - y_spread[cw]
-                            #my_x,my_y = elements_to_draw[cw][0] + (- y_spread[cw] -b)/a, elements_to_draw[cw][1] - y_spread[cw]                      
-                            ax.add_patch(Circle(xy=(my_x,my_y), radius=1, facecolor=adjust_lightness(var_colors[(i)%len(var_colors)], (0.8 if w >= nbr_words_table[i] else 1))))
-                            ax.annotate("  " + ID, xy=(my_x,my_y), fontsize=op_font_size, ha="left")
+                            # compute the new coordinates for the copied variable    
+                            my_y = var_y_coord - y_space_layer
+                            my_y_new = my_y - y_spread[cw]
+                            if var_x_coord != op_x_coord:
+                                a = (var_y_coord - op_y_coord) / (var_x_coord - op_x_coord)
+                                b = var_y_coord - a*var_x_coord                                  
+                                my_x_new = (my_y - b- y_spread[cw])/a
+                            else:
+                                my_x_new = var_x_coord                                              
+                
+                            ax.add_patch(Circle(xy=(my_x_new,my_y_new), radius=1, facecolor=adjust_lightness(var_colors[(i)%len(var_colors)], (0.8 if w >= nbr_words_table[i] else 1))))
+                            ax.annotate("  " + my_var.copied_vars[cw][0].ID, xy=(my_x_new,my_y_new), fontsize=op_font_size, ha="left")
 
     #ax.autoscale_view()
     #ax.autoscale(tight=True)

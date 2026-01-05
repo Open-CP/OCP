@@ -291,20 +291,26 @@ class Primitive(ABC):
 
                         # if more than one unique operator is connected to that variable, then we need copy operators
                         if len(connected_vars_with_unique_operator)>1:
+                            
                             #if there is a direct Equal operator, in connected_vars_with_unique_operator, put it on first position
                             for i in range(1,len(connected_vars_with_unique_operator)):
                                 if connected_vars_with_unique_operator[i][1].__class__.__name__=="Equal":
                                     if connected_vars_with_unique_operator[i][1].simple_connect==True:
                                         connected_vars_with_unique_operator[0], connected_vars_with_unique_operator[i] = connected_vars_with_unique_operator[i], connected_vars_with_unique_operator[0]
                                     break
-                            for i in range(1, len(connected_vars_with_unique_operator)):
+
+                            # create new variables and the copy operator
+                            v_new = [var.Variable(v.bitsize, ID=v.ID + "_COPY_" + str(i)) for i in range(len(connected_vars_with_unique_operator))] 
+                            op_new = op.CopyOperator([v], v_new, ID= "COPYOPERATOR_" + v.ID)
+                            self.copy_constraints.append(op_new)      # save this new operator in the copy operator list
+                            for i in range(len(connected_vars_with_unique_operator)):
+                                v.copied_vars.append((v_new[i], connected_vars_with_unique_operator[i][1], op_new))     # save these new variables and operators
+                                
+                            # update the graph connections    
+                            for i in range(len(connected_vars_with_unique_operator)):
                                 (vv, opop, direction) = connected_vars_with_unique_operator[i]
-                                v_new = var.Variable(v.bitsize, ID=v.ID + "_COPY_" + str(i))
-                                op_new = op.CopyOperator([v], [v_new], ID= "COPY_" + v.ID + "_" + opop.ID)
-                                self.copy_constraints.append(op_new)      # save this new operator in the copy operator list
-                                v.copied_vars.append((v_new, op_new))     # save these new variables and operators
                                 for v_index in range(len(opop.input_vars)): # update the input of the operator with the new variable
-                                    if opop.input_vars[v_index]==vv: opop.input_vars[v_index] = v_new
+                                    if opop.input_vars[v_index]==vv: opop.input_vars[v_index] = v_new[i]
 
                                 ## remove vv from connected vars in v
                                 index = vv.connected_vars.index((v, opop, "out"))
@@ -315,10 +321,10 @@ class Primitive(ABC):
                                 v.connected_vars.pop(index)
 
                                 ## add v_new in connected vars of vv
-                                vv.connected_vars.append((v_new, opop, "out"))
+                                vv.connected_vars.append((v_new[i], opop, "out"))
 
                                 ## add vv in connected vars of v_new
-                                v_new.connected_vars.append((vv, opop, "in"))
+                                v_new[i].connected_vars.append((vv, opop, "in"))
 
 
 # ********************************************** FUNCTIONS **********************************************
