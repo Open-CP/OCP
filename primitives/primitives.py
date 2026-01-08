@@ -185,18 +185,18 @@ class Layered_Function:
                 out_vars = [self.vars[crt_round][crt_layer+1][j]]
                 self.constraints[crt_round][crt_layer].append(GF2Linear_Trans(in_vars, out_vars, mat, ID=generateID(name,crt_round,crt_layer+1,j), constants=constants))
     #AES_TTABLE
-    def TTableLayer(self, name, crt_round, crt_layer, ttable_operator, idxs):
+    def TTableLayer(self, name, crt_round, crt_layer, ttable_operator, idxs,oidxs=None):
         from math import sqrt
         n = int(sqrt(self.nbr_words))
+        if oidxs is None: oidxs=list(range(self.nbr_words))
         if  n*n != self.nbr_words: raise Exception("Layered Function: TTableLayer requires that tye nbr words is square rootable!")
-
         for r in range(n):
             tmp_in = []
             tmp_out = [] 
             for c in range(n):
                 tmp_in.append(self.vars[crt_round][crt_layer][idxs[r*n + c]])
                 #output is the transpose 
-                tmp_out.append(self.vars[crt_round][crt_layer+1][r*n+c])
+                tmp_out.append(self.vars[crt_round][crt_layer+1][oidxs[r*n+c]])
         #got to transpose one more time at the end 
 
             self.constraints[crt_round][crt_layer].append(ttable_operator(tmp_in, tmp_out, ID=generateID(name,crt_round,crt_layer+1,r)))

@@ -726,7 +726,24 @@ class AES_TTable(Sbox):
 
     def get_header_ID(self): 
         return [self.__class__.__name__, self.model_version, self.input_bitsize, self.output_bitsize, self.table]
-        
+
+class SKINNY_TTable(AES_TTable):
+    def __init__(self, input_vars, output_vars,ID = None):
+        """
+        split input var into 2d arrays 
+        input put into [[], [], [], []]
+        output into [,,,,,,] again 
+        but swigth the usula shift 
+        """
+        super().__init__(input_vars, output_vars, ID = ID)
+        self.mc = [ 
+            1,0,1,1,
+            1,0,0,0,
+            0,1,1,0,
+            1,0,1,0
+        ]
+        self.sbox = list(i for i in range(256)) 
+
 class AES_Sbox(Sbox):               # Operator of the AES 8-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 8, 8, ID = ID)
