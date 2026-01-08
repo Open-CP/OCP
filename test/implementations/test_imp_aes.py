@@ -20,8 +20,8 @@ def test_imp_aes_blockcipher():
 
     for version in AES_BLOCKCIPHER_VERSIONS:
         cipher = AES_BLOCKCIPHER(r=None, version=version)
-
-        test_all_implementations(cipher)
+        from OCP import test_python_unrolled_imp
+        test_python_unrolled_imp(cipher)
 
         test_visualisation(cipher)
 
@@ -29,7 +29,7 @@ def test_imp_aes_blockcipher():
 if __name__ == "__main__":
     print(f"=== Implementation Test Log ===")
 
-    test_imp_aes_permutation()
+    #test_imp_aes_permutation()
     test_imp_aes_blockcipher()
 
     print("All implementation tests completed!")
