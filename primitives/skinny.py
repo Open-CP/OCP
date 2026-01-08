@@ -1,5 +1,5 @@
 from primitives.primitives import Permutation, Block_cipher
-from operators.Sbox import Skinny_4bit_Sbox, Skinny_8bit_Sbox
+from operators.Sbox import Skinny_4bit_Sbox, Skinny_8bit_Sbox, SKINNY_TTable
 from operators.boolean_operators import XOR
 import variables.variables as var
 
@@ -86,9 +86,9 @@ class Skinny_block_cipher(Block_cipher):
         self.tweak_size = int(k_bitsize/p_bitsize)
         k_nbr_rounds = nbr_rounds if self.tweak_size == 1 else nbr_rounds + 1
         if represent_mode==0:
-            if self.tweak_size ==1: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 0, int(p_bitsize/16)), (1, int(16*k_bitsize / p_bitsize), 0, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
-            elif self.tweak_size == 2: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 0, int(p_bitsize/16)), (3, int(16*k_bitsize / p_bitsize), 8, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
-            elif self.tweak_size ==3: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 0, int(p_bitsize/16)), (5, int(16*k_bitsize / p_bitsize), 8, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
+            if self.tweak_size ==1: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, int(p_bitsize/16)), (1, int(16*k_bitsize / p_bitsize), 0, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
+            elif self.tweak_size == 2: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, int(p_bitsize/16)), (3, int(16*k_bitsize / p_bitsize), 8, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
+            elif self.tweak_size ==3: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, 16, 0, int(p_bitsize/16)), (5, int(16*k_bitsize / p_bitsize), 8, int(p_bitsize/16)), (1, 8, 0, int(p_bitsize/16))
             k_perm_T = [i + 16 * j for j in range(self.tweak_size) for i in [9,15,8,13,10,14,12,11,0,1,2,3,4,5,6,7]]
             if s_word_bitsize == 4:
                 mat1 = [[0,1,0,0],[0,0,1,0],[0,0,0,1],[1,1,0,0]]
@@ -144,12 +144,11 @@ class Skinny_block_cipher(Block_cipher):
 
             # Internal permutation
             for i in range(1,nbr_rounds+1):
+                #i can remove hte sbox layer but that means 2 ttables and in the end still 2 lookups so im going to keep this
                 S.SboxLayer("SB", i, 0, sbox) # Sbox layer
                 S.AddConstantLayer("C", i, 1, "xor", [True,None,None,None, True,None,None,None, True], round_constants)  # Constant layer
                 S.AddRoundKeyLayer("ARK", i, 2, XOR, SK, mask=[1 for i in range(8)])  # AddRoundKey layer
-                S.PermutationLayer("SR", i, 3, [0,1,2,3, 7,4,5,6, 10,11,8,9, 13,14,15,12]) # Shiftrows layer
-                S.MatrixLayer("MC", i, 4, [[1,0,1,1], [1,0,0,0], [0,1,1,0], [1,0,1,0]], [[0,4,8,12], [1,5,9,13], [2,6,10,14], [3,7,11,15]])  #Mixcolumns layer
-
+                S.TTableLayer("TT", i, 3, SKINNY_TTable, [0, 7, 10, 13, 1, 4, 11, 14, 2, 5, 8, 15, 3, 6, 9, 12], [0, 4, 8, 12, 1, 5, 9, 13, 2, 6, 10, 14, 3, 7, 11, 15])
 
     def gen_rounds_constant_table(self):
         constant_table = []
