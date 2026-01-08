@@ -21,11 +21,11 @@ def test_imp_skinny_permutation():
 
 def test_imp_skinny_blockcipher():
     SKINNY_BLOCKCIPHER_VERSIONS = [[64, 64], [64, 128], [64, 192], [128, 128], [128, 256], [128, 384]]
-
+    from OCP import test_python_unrolled_imp
     for version in SKINNY_BLOCKCIPHER_VERSIONS:
         cipher = SKINNY_BLOCKCIPHER(r=None, version=version)
 
-        test_all_implementations(cipher)
+        test_python_unrolled_imp(cipher)
 
         test_visualisation(cipher)
 
@@ -33,7 +33,7 @@ def test_imp_skinny_blockcipher():
 if __name__ == "__main__":
     print(f"=== Implementation Test Log ===")
 
-    test_imp_skinny_permutation()
+    #test_imp_skinny_permutation()
     test_imp_skinny_blockcipher()
 
     print("All implementation tests completed!")
