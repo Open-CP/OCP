@@ -117,11 +117,6 @@ if __name__ == "__main__":
     #cipher = primitives.speck.SPECK_PERMUTATION(version=32)
     #cipher = simon.SIMON_BLOCKCIPHER(r=8, version=[32,64])
 
-    #test_all_implementations(cipher)
-    #cipher.add_copy_operators()
-    #test_visualisation(cipher)
-    cipher = simon.SIMON_BLOCKCIPHER(r=5, version=[32,64])
-
     test_all_implementations(cipher)
     cipher.add_copy_operators()
     test_visualisation(cipher)
