@@ -205,14 +205,14 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         bits_per_input = self.input_vars[0].bitsize
         bits_per_output = self.output_vars[0].bitsize
         if model_type == 'milp' or model_type == 'sat':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_LINEAR"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
                 if self.polynomial:
                     bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) > len(self.mat):
                     bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
                 elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):
                     bin_matrix = self.mat
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
                 for i in range(output_words):  # Loop over the ith output word
                     for j in range(bits_per_output):  # Loop over the jth bit in the ith word
                         var_in = []
@@ -267,25 +267,40 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         cons = trans_op.generate_model(model_type)
                         model_list += cons
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
-                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF": # Refer: Nicky Mouha, Qingju Wang, Dawu Gu, and Bart Preneel. Differential and Linear Cryptanalysis Using Mixed-Integer Linear Programming.
+                var_in = []
+                for i in range(len(self.input_vars)):
+                    var_in += self.get_var_model('in', i, bitwise=False)
+                var_out = []
+                for i in range(len(self.output_vars)):
+                    var_out += self.get_var_model('out', i, bitwise=False)
                 var_d = [f"{self.ID}_d"]
                 if branch_num == None: branch_num =self.differential_branch_number()
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1":
-                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1": # Refer:
+                var_in = []
+                for i in range(len(self.input_vars)):
+                    var_in += self.get_var_model('in', i, bitwise=False)
+                var_out = []
+                for i in range(len(self.output_vars)):
+                    var_out += self.get_var_model('out', i, bitwise=False)
                 var_d = [f"{self.ID}_d"]
                 if branch_num == None: branch_num =self.differential_branch_number()
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_2":
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_2": # The matrix is represented as truncated binary
                 assert output_words == len(self.mat) and input_words == len(self.mat[0]), "Matrix size does not match input and output variable sizes."
-                var_in, var_out = [self.get_var_model('in', i, bitwise=False) for i in range(len(self.input_vars))], [self.get_var_model('out', i, bitwise=False) for i in range (len(self.output_vars))]
+                var_in = []
+                for i in range(len(self.input_vars)):
+                    var_in += self.get_var_model('in', i, bitwise=False)
+                var_out = []
+                for i in range(len(self.output_vars)):
+                    var_out += self.get_var_model('out', i, bitwise=False)
                 for i in range(output_words):  # Loop over the ith output word
                     var_in = []
                     for k in range(input_words): # Loop over the kth input word
