@@ -1,3 +1,5 @@
+import re 
+import inspect
 from abc import ABC
 import variables.variables as var
 import operators.operators as op
@@ -13,8 +15,96 @@ def generateID(name, round_nb, layer, position):
 # This object will contain the list of variables representing the functions at each stage of the computation
 # This object will contain the list of constraints linking the variables together
 
-class Layered_Function:
+class Function_Tracker:
+    def __init__(self, pat):
+        self.pat = re.compile(pat)
+        self._functions_called = [] 
+    
+    def __getattribute__(self, name):
+        attr = super().__getattribute__(name)
+        if callable(attr) and self.pat.search(name):
+            def wrapper(*args, **kwargs):
+                # get function signature
+                sig = inspect.signature(attr)
+                bound = sig.bind_partial(*args, **kwargs)
+                bound.apply_defaults()
+                self._functions_called.append({
+                    "function": attr,                 # actual function object
+                    "name": attr.__name__,             # optional metadata
+                    "args": bound.arguments            # OrderedDict: param -> value
+                })
+                return attr(*args, **kwargs)
+            return wrapper
+        return attr
+
+class Layered_Function_Ttable:
+    """
+    Do not initilize with this class, this is a class 
+    translates LayeredFucntion to have TTable Layer functionalities
+
+    the main diffrence is all operators will hold this shape
+    #lut: look up table
+    #ttable is about table look up 
+    [v1, v2, v3 ,v4] = int(lut[0][] ^ lut[1][] ^ lut[2][] ^ lut[3][]).to_bytes("big", 4)
+    [v5, v6, v7 ,v8] = int(lut[0][] ^ lut[1][] ^ lut[2][] ^ lut[3][]).to_bytes("big", 4)
+    [v9, v10, v11 ,v12] = int(lut[0][] ^ lut[][] ^ lut[][] ^ lut[][]).to_bytes("big", 4) # u get the idea
+    [v13, v14, v15 ,v16] = int(lut[0][] ^ lut[][] ^ lut[][] ^ lut[][]).to_bytes("big", 4)
+    
+    """
+    def MatrixLayer(self, name, crt_round, crt_layer,mc,sbox,table_name, ttable_operator, idxs,oidxs=None):
+        from math import sqrt
+        n = int(sqrt(self.nbr_words))
+        if oidxs is None: oidxs=list(range(self.nbr_words))
+        if  n*n != self.nbr_words: raise Exception("Layered Function: TTableLayer requires that tye nbr words is square rootable!")
+        for r in range(n):
+            tmp_in = []
+            tmp_out = [] 
+            for c in range(n):
+                tmp_in.append(self.vars[crt_round][crt_layer][idxs[r*n + c]])
+                tmp_out.append(self.vars[crt_round][crt_layer+1][oidxs[r*n+c]])
+            self.constraints[crt_round][crt_layer].append(ttable_operator(tmp_in, tmp_out,self.word_bitsize,self.word_bitsize,mc,sbox,table_name,ID=generateID(name,crt_round,crt_layer+1,r)))
+    
+    """
+    def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, ttable_operator, idxs, oidxs, modulo=None):
+        if len(constant)<(self.nbr_words + self.nbr_temp_words): constant = constant + [None]*(self.nbr_words + self.nbr_temp_words - len(constant))
+        i = 0
+        from math import sqrt
+        n = int(sqrt(self.nbr_words))
+        if oidxs is None: oidxs=list(range(self.nbr_words))
+        if  n*n != self.nbr_words: raise Exception("Layered Function: TTableLayer requires that tye nbr words is square rootable!")
+        for r in range(n):
+            tmp_in = [] 
+            tmp_out = [] 
+            for c in range(n):
+                tmp_in.append(self.vars[crt_round][crt_layer][idxs[r*n+c]])
+                tmp_out.append(self.vars[crt_round][crt_layer+1][oidxs[r*n+c]])
+            self.constraints[crt_round][crt_layer].append(ttable_operator(tmp_in, tmp_out, ID=generateID(name,crt_round,crt_layer+1,r)))
+
+        for j in range(self.nbr_words + self.nbr_temp_words):
+            in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
+            if constant[j]!=None:
+                if add_type == 'xor':
+                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer+1,j)))
+                elif add_type == 'modadd':
+                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer+1,j)))
+                i += 1
+            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+
+    def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, ttable_operator, idxs, oidxs mask = None):
+        if sum(mask)!=sk_function.nbr_words: raise Exception("AddRoundKeyLayer: subkey size does not match the mask")
+        if len(mask)<(self.nbr_words + self.nbr_temp_words): mask += [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
+        cpt = 0
+        for j in range(self.nbr_words + self.nbr_temp_words):
+            in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
+            if mask[j]==1:
+                sk_var = sk_function.vars[crt_round][-1][cpt]
+                self.constraints[crt_round][crt_layer].append(my_operator([in_var, sk_var], [out_var], ID=generateID(name,crt_round,crt_layer+1,j)))
+                cpt = cpt + 1
+            else: self.constraints[crt_round][crt_layer].append(op.Equal([in_var], [out_var], ID=generateID(name + "_EQ",crt_round,crt_layer+1,j)))
+    """
+class Layered_Function(Function_Tracker, Layered_Function_Ttable):
     def __init__(self, name, label, nbr_rounds, nbr_layers, nbr_words, nbr_temp_words, word_bitsize):
+        super().__init__(r"(Layer)$")
         self.name = name                      # name of the function
         self.label = label                    # label for display when refering that function
         self.nbr_rounds = nbr_rounds          # number of rounds in that function
