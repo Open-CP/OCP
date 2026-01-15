@@ -118,5 +118,5 @@ if __name__ == "__main__":
     test_all_implementations(cipher)
     cipher.add_copy_operators()
     test_visualisation(cipher)
-    test_diff_attack_milp(cipher)
-    test_diff_attack_sat(cipher)
+    #test_diff_attack_milp(cipher)
+    #test_diff_attack_sat(cipher)

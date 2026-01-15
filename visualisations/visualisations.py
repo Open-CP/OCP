@@ -136,7 +136,7 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
                 for w in range(len(constraints_table[i][r][l])):
                     x_coord = x_shift_state + factor*w*(x_space + op_length) - op_length/2
                     # for all operators except NoneOperator and Equal, display the operator box and the links with the variables
-                    if constraints_table[i][r][l][w].__class__.__name__ != "NoneOperator" and constraints_table[i][r][l][w].__class__.__name__ != "Equal":
+                    if constraints_table[i][r][l][w].__class__.__name__ != "NoneOperator" and constraints_table[i][r][l][w].__class__.__name__ != "Equal" and constraints_table[i][r][l][w].__class__.__name__ != "CopyOperator":
                         # display the operator box
                         ax.add_patch(Rectangle((x_coord,-y_coord-elements_height/2), op_length, elements_height, facecolor=op_colors[(i)%len(op_colors)], label='Label'))
                         ax.annotate(constraints_table[i][r][l][w].ID, xy=(x_coord+op_length/2,-y_coord), fontsize=op_font_size, ha="center")
@@ -151,7 +151,12 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
                         for j in range(len(my_inputs)):
                             if not isinstance(my_inputs[j], list): my_inputs[j] = [my_inputs[j]]
                             for jj in range(len(my_inputs[j])):
-                                (var_x_coord, var_y_coord) = vars_coord[my_inputs[j][jj].ID]
+                                # if the input of this operator is not a copy variable
+                                if my_inputs[j][jj].copyorigin == None:
+                                    (var_x_coord, var_y_coord) = vars_coord[my_inputs[j][jj].ID]
+                                # if it is a copy variable
+                                else:  
+                                    (var_x_coord, var_y_coord) = vars_coord[my_inputs[j][jj].copyorigin.ID]
                                 if find_function_index_from_x_coord(var_x_coord,function_x_limits) != find_function_index_from_x_coord(in_x_coord[j],function_x_limits):
                                     ax.arrow(var_x_coord, var_y_coord, in_x_coord[j]-var_x_coord, in_y_coord-var_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5, linestyle=(5, (3,24)), color='gray')
                                 else: 
@@ -168,14 +173,19 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
                         
                     # for the Equal operators, just display the link between the input and output variables
                     elif constraints_table[i][r][l][w].__class__.__name__ == "Equal":
-                        (var_in_x_coord, var_in_y_coord) = vars_coord[constraints_table[i][r][l][w].input_vars[0].ID]
+                        # if the input of this Equal operator is not a copy variable
+                        if constraints_table[i][r][l][w].input_vars[0].copyorigin == None:
+                            (var_in_x_coord, var_in_y_coord) = vars_coord[constraints_table[i][r][l][w].input_vars[0].ID]
+                        # if it is a copy variable
+                        else:
+                            (var_in_x_coord, var_in_y_coord) = vars_coord[constraints_table[i][r][l][w].input_vars[0].copyorigin.ID]
                         (var_out_x_coord, var_out_y_coord) = vars_coord[constraints_table[i][r][l][w].output_vars[0].ID]
                         if find_function_index_from_x_coord(var_in_x_coord,function_x_limits) != find_function_index_from_x_coord(var_out_x_coord,function_x_limits):
                             ax.arrow(var_in_x_coord, var_in_y_coord, var_out_x_coord-var_in_x_coord, var_out_y_coord-var_in_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5, linestyle=(5, (3,24)), color='gray')  
                         else:
                             ax.arrow(var_in_x_coord, var_in_y_coord, var_out_x_coord-var_in_x_coord, var_out_y_coord-var_in_y_coord, linewidth=0.3, length_includes_head=True, width= 0.15, head_width= 1 , zorder=0.5)
                         operators_coord.append((constraints_table[i][r][l][w].ID,(var_out_x_coord,var_out_y_coord)))
-
+                        
             y_shift_round = y_shift_round + y_space_rounds + 2*(max(nbr_layers_table)+1)*(y_space_layer + elements_height)
            
         x_shift_state = x_shift_state + x_space_state + max_length[i]
