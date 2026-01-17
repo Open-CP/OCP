@@ -120,5 +120,10 @@ if __name__ == "__main__":
     #test_all_implementations(cipher)
     #cipher.add_copy_operators()
     #test_visualisation(cipher)
+    cipher = simon.SIMON_BLOCKCIPHER(r=5, version=[32,64])
+
+    test_all_implementations(cipher)
+    cipher.add_copy_operators()
+    test_visualisation(cipher)
     #test_diff_attack_milp(cipher)
     #test_diff_attack_sat(cipher)

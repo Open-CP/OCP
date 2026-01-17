@@ -254,9 +254,8 @@ class CopyOperator(Operator):  # Operator that duplicates one input into multipl
 
 
 class Equal(UnaryOperator):  # Operator assigning equality between the input variable and output variable (must be of same bitsize)
-    def __init__(self, input_vars, output_vars, simple_connect=True, ID = None):
+    def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
-        self.simple_connect = simple_connect # "True" if this is an equality constraint here just to go to the next layer
 
     def generate_implementation(self, implementation_type='python', unroll=False):
         if implementation_type == 'python':

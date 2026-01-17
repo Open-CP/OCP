@@ -3,12 +3,13 @@
 # A Variable node can only be linked to a Constraint node in the graph representation 
 
 class Variable:
-    def __init__(self, bitsize, value = None, ID = None):
+    def __init__(self, bitsize, value = None, ID = None, copyorigin = None):
         self.bitsize = bitsize    # bitsize of that variable
         self.value = value        # value of that variable (not necessarily set)
         self.ID = ID              # ID of that variable
-        self.connected_vars = []  # list of variables connected, with corresponding operator each time (not counting the copy operators) and the input/output role
+        self.connected_vars = []  # list of variables connected, with corresponding operator each time and the input/output role
         self.copied_vars = []     # list of variables that are copies of that variable - stored as tuples (variable, target operator for that variable, copy operator used to link that variable)
+        self.copyorigin = copyorigin    # variable that is the origin of the copy (if this variable is a copy, None otherwise)
 
     def display_value(self, representation='binary'):   # method that displays the value of that variable, depending on the representation requested
         if representation == 'binary' and self.value:
