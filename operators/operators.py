@@ -45,13 +45,14 @@ class Operator(ABC):
                     self.output_vars[i][j].display()
         return self.__class__.__name__
 
-    def get_var_ID(self, in_out, index, unroll=False, index2=None):    # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
+    # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
+    def get_var_ID(self, in_out, index, unroll=False):    
         if in_out == 'out':
-            if index2 is not None: return self.output_vars[index][index2].ID if unroll else self.output_vars[index][index2].remove_round_from_ID()
-            else: return self.output_vars[index].ID if unroll else self.output_vars[index].remove_round_from_ID()
-        if in_out == 'in':
-            if index2 is not None: return self.input_vars[index][index2].ID if unroll else self.input_vars[index][index2].remove_round_from_ID()
-            else: return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
+            return self.output_vars[index].ID if unroll else self.output_vars[index].remove_round_from_ID()
+        elif in_out == 'in':
+            return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
+        else:
+            raise Exception(str(self.__class__.__name__) + ": unknown in_out type '" + in_out + "'")    
 
     def get_header_ID(self):
         return [self.__class__.__name__, self.model_version]
@@ -59,24 +60,13 @@ class Operator(ABC):
     def generate_implementation_header(self, implementation_type='python'):    # generic method that generates the code for the header of the modeling of that operator
         return None
 
-    def get_var_model(self, in_out, index, bitwise=True):
+    # method that returns the ID of the variable located at "index" of either the input or output of the operator, with options for bitwise listing and dimension unrolling
+    def get_var_model(self, in_out, index, bitwise=True, dim=1):
         var = self.input_vars[index] if in_out == 'in' else self.output_vars[index]
-        if not isinstance(var, list):
-            var_ID = self.get_var_ID(in_out, index, unroll=True)
-            if bitwise and var.bitsize > 1:
-                return [f"{var_ID}_{i}" for i in range(var.bitsize)]
-            return [var_ID]
-        elif isinstance(var, list):
-            vars = []
-            for i, v in enumerate(var):
-                var_ID = self.get_var_ID(in_out, index, unroll=True, index2=i)
-                if bitwise and v.bitsize > 1:
-                    vars.extend([f"{var_ID}_{j}" for j in range(v.bitsize)])
-                else:
-                    vars.append(var_ID)
-            return vars
+        if bitwise and var.bitsize > 1:
+            return [f"{var.ID}_{i}_{j}" for i in range(var.bitsize) for j in range(dim)] if dim > 1 else [f"{var.ID}_{i}" for i in range(var.bitsize)]  
         else:
-            raise TypeError(f"{self.__class__.__name__}: Expected Variable or list of Variable at index {index}, "f"got {type(var)} instead.")
+            return [f"{var.ID}_{j}" for j in range(dim)] if dim > 1 else [f"{var.ID}"]
 
     @abstractmethod
     def generate_implementation(self, implementation_type='python'):  # generic method (abstract) that generates the code for the implementation of that operator
