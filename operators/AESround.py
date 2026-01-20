@@ -1,4 +1,3 @@
-import copy
 from operators.operators import Operator, Equal, RaiseExceptionVersionNotExisting
 from operators.Sbox import AES_Sbox
 from operators.matrix import Matrix

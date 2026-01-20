@@ -98,6 +98,9 @@ def set_model_versions(cipher, version, functions, rounds, layers, positions, op
             for l in layers[f][r]:
                 for cons in cipher.functions[f].constraints[r][l]: # Only support all constraints in a layer for now.
                     _assgn_version(cons)
+        # Assign model_version to operators outside the rounds. For example, copy operators after the last round.
+        for cons in cipher.functions[f].constraints[r+1:]: 
+            _assgn_version(cons)
 
 
 def gen_round_model_constraint_obj_fun(cipher, goal, model_type, config_model): # Generate constraints for a given cipher based on user-specified parameters.
@@ -123,6 +126,13 @@ def gen_round_model_constraint_obj_fun(cipher, goal, model_type, config_model): 
                     constraint += cons.generate_model(model_type=model_type, **params)
                     if hasattr(cons, 'weight'):
                         obj_fun[r-1] += cons.weight
+        # Generate constraints for operators outside the rounds. For example, copy operators after the last round.
+        for cons in cipher.functions[f].constraints[r+1:]: 
+            cons_class_name = cons.__class__.__name__
+            params = (config_model.get("model_params") or {}).get(cons_class_name, {}) 
+            constraint += cons.generate_model(model_type=model_type, **params)
+            if hasattr(cons, 'weight'):
+                obj_fun[r-1] += cons.weight
     return constraint, obj_fun
 
 
