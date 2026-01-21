@@ -202,7 +202,7 @@ def modeling_solving_at_most(constraints, objective_function, config_model, conf
                 print("[INFO] Trying decimal combination with true_obj =", true_obj, ", int_obj =", obj_integer, ", obj_decimal =", obj_decimal)
                 obj_constraints = gen_sat_constraints_from_objective_target(objective_function, config_model, "SUM_AT_MOST", int_obj_val, obj_val_decimal=obj_decimal)
                 decimal_solutions = modeling_solving(constraints+obj_constraints, objective_function, config_model, config_solver)
-                if isinstance(decimal_solutions, list) and len(decimal_solutions) > 0:
+                if isinstance(decimal_solutions, list) and len(decimal_solutions) > 0: # Support searching only a subset of solutions in the multiple-solution setting. TO DO.
                     return decimal_solutions
             int_obj_val -= 1
             obj_constraints = gen_sat_constraints_from_objective_target(objective_function, config_model, "SUM_AT_MOST", int_obj_val, obj_val_decimal=None)
