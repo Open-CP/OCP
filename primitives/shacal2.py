@@ -19,7 +19,6 @@ class SHACAL2_block_cipher(Block_cipher):
         if nbr_rounds==None: (nbr_rounds, k_nbr_rounds) = (64, 49) if version==256 else (80, 65)
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (10, 8, 4, wordSize),  (6, 16, 2, wordSize),  (1, 1, 0, wordSize)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
-        self.test_vectors = self.gen_test_vectors()
 
         S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
@@ -77,14 +76,17 @@ class SHACAL2_block_cipher(Block_cipher):
             KEY = [0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]
             IN = [0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]
             OUT = [0x361AB632, 0x2FA9E7A7, 0xBB23818D, 0x839E01BD, 0xDAFDF473, 0x05426EDD, 0x297AEDB9, 0xF6202BAE]
+            self.test_vectors.append([[IN, KEY], OUT])
         elif version == 512:
             pass
-        return [[IN, KEY], OUT]
 
 
-def SHACAL2_BLOCKCIPHER(r=None, version=256, represent_mode=0):
+def SHACAL2_BLOCKCIPHER(r=None, version=256, represent_mode=0, copy_operator=False):
     wordSize = 32 if version == 256 else 64
     my_plaintext, my_key, my_ciphertext = [var.Variable(wordSize,ID="in"+str(i)) for i in range(8)], [var.Variable(wordSize,ID="k"+str(i)) for i in range(16)], [var.Variable(wordSize,ID="out"+str(i)) for i in range(8)]
     my_cipher = SHACAL2_block_cipher(f"SHACAL2_{wordSize*8}_{wordSize*16}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     my_cipher.clean_graph()
+    if copy_operator: my_cipher.add_copy_operators()
+    my_cipher.build_dictionaries()
+    my_cipher.gen_test_vectors(version=version)
     return my_cipher

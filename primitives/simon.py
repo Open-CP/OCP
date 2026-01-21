@@ -21,7 +21,6 @@ class Simon_permutation(Permutation):
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (5, 2, 3, p_bitsize>>1)
         elif represent_mode==1: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 2, 3, p_bitsize>>1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
-        self.test_vectors = self.gen_test_vectors(version)
 
         S = self.functions["PERMUTATION"]
 
@@ -34,7 +33,6 @@ class Simon_permutation(Permutation):
                 S.SingleOperatorLayer("XOR2", i, 3, XOR, [[1, 4]], [1]) # XOR layer
                 S.PermutationLayer("PERM", i, 4, [1,0]) # Permutation layer
 
-
         elif represent_mode==1:
             for i in range(1,nbr_rounds+1):
                 S.RotationLayer("ROT", i, 0, [['l', 1, 0, 2], ['l', 8, 0, 3], ['l', 2, 0, 4]]) # Rotation layer
@@ -42,31 +40,36 @@ class Simon_permutation(Permutation):
                 S.SingleOperatorLayer("XOR", i, 2, XOR, [[1, 4]], [1]) # XOR layer
                 S.PermutationLayer("PERM", i, 3, [1,0]) # Permutation layer
 
-
     def gen_test_vectors(self, version):
         if version == 32:
             IN = [0x6565, 0x6877]
             OUT = [0xdb3c, 0x569b]
+            self.test_vectors.append([[IN], OUT])
         elif version == 48:
             IN = [0x612067, 0x6e696c]
             OUT = [0x911b84, 0x11c29c]
+            self.test_vectors.append([[IN], OUT])
         elif version == 64:
             IN = [0x6f722067, 0x6e696c63]
             OUT = [0xb3dbca80, 0x840afe75]
+            self.test_vectors.append([[IN], OUT])
         elif version == 96:
             IN = [0x2072616c6c69, 0x702065687420]
             OUT = [0x6b6ccce37858, 0x41aa41637590]
+            self.test_vectors.append([[IN], OUT])
         elif version == 128:
             IN = [0x6373656420737265, 0x6c6c657661727420]
             OUT = [0x10b9a695d8bb2564, 0xcf80a07ebfa62541]
-        return [[IN], OUT]
-
-
-def SIMON_PERMUTATION(r=None, version=32, represent_mode=0):
+            self.test_vectors.append([[IN], OUT])
+        
+def SIMON_PERMUTATION(r=None, version=32, represent_mode=0, copy_operator=False):
     p_bitsize, word_size = version, int(version/2)
     my_input, my_output = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_permutation = Simon_permutation(f"SIMON{p_bitsize}_PERM", p_bitsize, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
     my_permutation.clean_graph()
+    if copy_operator: my_permutation.add_copy_operators()
+    my_permutation.build_dictionaries()
+    my_permutation.gen_test_vectors(version=version)
     return my_permutation
 
 
@@ -89,7 +92,6 @@ class Simon_block_cipher(Block_cipher):
         if k_nbr_words == 4: k_nbr_layers += 1
         k_nbr_rounds = max(1, nbr_rounds - k_nbr_words + 1)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
-        self.test_vectors = self.gen_test_vectors(version)
 
         S = self.functions["PERMUTATION"]
         KS = self.functions["KEY_SCHEDULE"]
@@ -154,48 +156,59 @@ class Simon_block_cipher(Block_cipher):
             plaintext = [0x6565, 0x6877]
             key = [0x1918, 0x1110, 0x0908, 0x0100]
             ciphertext = [0xc69b, 0xe9bb]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [48, 72]:
             plaintext = [0x612067, 0x6e696c]
             key = [0x121110, 0x0a0908, 0x020100]
             ciphertext = [0xdae5ac, 0x292cac]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [48, 96]:
             plaintext = [0x726963, 0x20646e]
             key = [0x1a1918, 0x121110, 0x0a0908, 0x020100]
             ciphertext = [0x6e06a5, 0xacf156]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [64, 96]:
             plaintext = [0x6f722067, 0x6e696c63]
             key = [0x13121110, 0x0b0a0908, 0x03020100]
             ciphertext = [0x5ca2e27f, 0x111a8fc8]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [64, 128]:
             plaintext = [0x656b696c, 0x20646e75]
             key = [0x1b1a1918, 0x13121110, 0x0b0a0908, 0x03020100]
             ciphertext = [0x44c8fc20, 0xb9dfa07a]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [96, 96]:
             plaintext = [0x2072616c6c69, 0x702065687420]
             key = [0x0d0c0b0a0908, 0x050403020100]
             ciphertext = [0x602807a462b4, 0x69063d8ff082]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [96, 144]:
             plaintext = [0x746168742074, 0x73756420666f]
             key = [0x151413121110, 0x0d0c0b0a0908, 0x050403020100]
             ciphertext =  [0xecad1c6c451e, 0x3f59c5db1ae9]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [128, 128]:
             plaintext = [0x6373656420737265, 0x6c6c657661727420]
             key = [0x0f0e0d0c0b0a0908, 0x0706050403020100]
             ciphertext = [0x49681b1e1e54fe3f, 0x65aa832af84e0bbc]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [128, 192]:
             plaintext = [0x206572656874206e, 0x6568772065626972]
             key = [0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100]
             ciphertext = [0xc4ac61effcdc0d4f, 0x6c9c8d6e2597b85b]
+            self.test_vectors.append([[plaintext, key], ciphertext])
         elif version == [128, 256]:
             plaintext = [0x74206e69206d6f6f, 0x6d69732061207369]
             key = [0x1f1e1d1c1b1a1918, 0x1716151413121110, 0x0f0e0d0c0b0a0908, 0x0706050403020100]
             ciphertext = [0x8d2b5579afc8a3a0, 0x3bf72a87efe7b868]
-        return [[plaintext, key], ciphertext]
-
-
-def SIMON_BLOCKCIPHER(r=None, version=[32,64], represent_mode=0):
+            self.test_vectors.append([[plaintext, key], ciphertext])
+        
+def SIMON_BLOCKCIPHER(r=None, version=[32,64], represent_mode=0, copy_operator=False):
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(2)]
     my_cipher = Simon_block_cipher(f"SIMON{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     my_cipher.clean_graph()
+    if copy_operator: my_cipher.add_copy_operators()
+    my_cipher.build_dictionaries()
+    my_cipher.gen_test_vectors(version=version)
     return my_cipher

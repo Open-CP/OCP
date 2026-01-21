@@ -1,6 +1,7 @@
 import os, os.path
 import subprocess
 import ctypes
+import traceback
 import numpy as np
 import importlib
 from contextlib import redirect_stdout
@@ -89,7 +90,6 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
             for my_output in my_prim.outputs: myfile.write("#   " + my_output + ": a list of " + str(len(my_prim.outputs[my_output])) + " words of " + str(my_prim.outputs[my_output][0].bitsize) + " bits \n") 
             myfile.write("def " + my_prim.name + "(" + ", ".join(my_prim.inputs) + ", " + ", ".join(my_prim.outputs) + "): \n")
             myfile.write("\n\t# Input \n")
-
             
             cpt, cptw = 0, 0
             my_input_name = sum([[i]*len(my_prim.inputs[i]) for i in my_prim.inputs], [])
@@ -104,7 +104,6 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                 if cpt>=sum(len(my_prim.inputs[a]) for a in my_prim.inputs): break
                 myfile.write("\n")
             myfile.write("\n")
-            
             
             for s in my_prim.functions: 
                 if my_prim.functions[s].nbr_temp_words!=0: myfile.write("\t")
@@ -367,6 +366,7 @@ def test_implementation_python(cipher, cipher_name, input, output):
         return False
     except Exception as e:
         print(f"[ERROR] Function {cipher.name} failed: {e}.\n")
+        traceback.print_exc() 
         return False    
 
 

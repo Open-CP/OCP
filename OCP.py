@@ -25,50 +25,50 @@ FILES_DIR.mkdir(parents=True, exist_ok=True)
 # ********************* IMPLEMENTATIONS ********************* #
 def test_python_imp(cipher): # Generate Python implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.py", "python")
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_python(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_python(cipher, cipher.name, tv[0], tv[1])
 
 def test_python_unrolled_imp(cipher): # Generate unrolled Python implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.py", "python", True)
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_python(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_python(cipher, cipher.name + "_unrolled", tv[0], tv[1])
 
 def test_c_imp(cipher): # Generate C implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.c", "c")
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_c(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_c(cipher, cipher.name, tv[0], tv[1])
 
 def test_c_unrolled_imp(cipher): # Generate unrolled C implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.c", "c", True)
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_c(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_c(cipher, cipher.name + "_unrolled", tv[0], tv[1])
 
 def test_verilog_imp(cipher): # Generate Verilog implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.sv", "verilog")
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_verilog(cipher, cipher.name, cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_verilog(cipher, cipher.name, tv[0], tv[1])
 
 def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_unrolled.sv", "verilog", True)
-    if not cipher.test_vectors:
+    if cipher.test_vectors==[]:
         print("warning: no test vector defined!")
         return False
-    imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", cipher.test_vectors[0], cipher.test_vectors[1])
+    for tv in cipher.test_vectors: imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", tv[0], tv[1])
 
 def test_all_implementations(cipher): # Generate all implementations
-    test_python_imp(cipher)
+    #test_python_imp(cipher)
     test_python_unrolled_imp(cipher)
-    test_c_imp(cipher)
+    #test_c_imp(cipher)
     test_c_unrolled_imp(cipher)
     #test_verilog_imp(cipher)
     #test_verilog_unrolled_imp(cipher)
@@ -110,13 +110,12 @@ if __name__ == "__main__":
 
     # import primitives.speck as speck
     # cipher = speck.SPECK_PERMUTATION(version=32)
-    # cipher = speck.SPECK_BLOCKCIPHER(r=6, version=[32,64])
+    # cipher = speck.SPECK_BLOCKCIPHER(version=[32,64])
 
     import primitives.simon as simon
-    cipher = simon.SIMON_BLOCKCIPHER(r=12, version=[32,64])
+    cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
 
     test_all_implementations(cipher)
-    cipher.add_copy_operators()
     test_visualisation(cipher)
     test_diff_attack_milp(cipher)
-    #test_diff_attack_sat(cipher)
+    test_diff_attack_sat(cipher)

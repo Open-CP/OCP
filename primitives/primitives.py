@@ -22,9 +22,9 @@ class Layered_Function:
         self.nbr_words = nbr_words            # number of words in that function
         self.nbr_temp_words = nbr_temp_words  # number of temporary words in that function
         self.word_bitsize = word_bitsize      # number of bits per word in that function
-        self.vars = []
-        self.constraints = []
-
+        self.vars = []                        # list of variables for that function                        
+        self.constraints = []                 # list of constraints for that function
+        
         # list of variables for that function (indexed with vars[r][l][n] where r is the round number, l the layer number, n the word number)
         self.vars = [[[] for i in range(nbr_layers+1)] for j in range(nbr_rounds+1)]
 
@@ -39,7 +39,7 @@ class Layered_Function:
         # create initial constraints
         for i in range(0,nbr_rounds):
             self.constraints[i][nbr_layers] = [op.Equal([self.vars[i][nbr_layers][j]], [self.vars[i+1][0][j]], ID=generateID('LINK_EQ_' + label,i,nbr_layers+1,j)) for j in range(nbr_words + nbr_temp_words)]
-
+        
     def display(self, representation='binary'):   # method that displays in details the function
         print("Name: " + str(self.name), " / nbr_words: " + str(self.nbr_words), " / word_bitsize: " + str(self.word_bitsize))
         print("Vars: [" + str([ len(self.vars[i]) for i in range(len(self.vars))])   + "]")
@@ -206,6 +206,7 @@ class Layered_Function:
 
     # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
+        if mask is None: mask = [1]*sk_function.nbr_words
         if sum(mask)!=sk_function.nbr_words: raise Exception("AddRoundKeyLayer: subkey size does not match the mask")
         if len(mask)<(self.nbr_words + self.nbr_temp_words): mask += [0]*(self.nbr_words + self.nbr_temp_words - len(mask))
         cpt = 0
@@ -232,6 +233,26 @@ class Primitive(ABC):
         self.inputs_constraints = []    # constraints linking the primitive inputs to the functions input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the functions output variables
         self.test_vectors = []
+        self.vars_dictionary = {}             # dictionary of the variables of all the functions in that primitive, indexed by their ID   
+        self.constraints_dictionary = {}      # dictionary of the constraints of all the functions in that primitive, indexed by their ID
+
+    # method that builds the variables and constraints dictionaries
+    def build_dictionaries(self):
+        self.vars_dictionary = {}
+        self.constraints_dictionary = {}
+        for f in self.functions.values():       # for all functions of the primitive
+            for r in range(f.nbr_rounds+1):       # for all the rounds
+                for l in range(f.nbr_layers+1):   # for all the layers
+                    for v in f.vars[r][l]:      # for all variables in that function
+                        self.vars_dictionary[v.ID] = v
+                        for v_copy in v.copied_vars:
+                            self.vars_dictionary[v_copy[0].ID] = v_copy[0]
+                    for n in range(len(f.constraints[r][l])):   # for all constraints in that function
+                        self.constraints_dictionary[f.constraints[r][l][n].ID] = f.constraints[r][l][n]
+        for n in range(len(self.inputs_constraints)):
+            self.constraints_dictionary[self.inputs_constraints[n].ID] = self.inputs_constraints[n]
+        for n in range(len(self.outputs_constraints)):
+            self.constraints_dictionary[self.outputs_constraints[n].ID] = self.outputs_constraints[n]   
 
     # method that cleans the graph from dead-end variables linked only to Equal operators
     def clean_graph(self):
@@ -300,7 +321,7 @@ class Primitive(ABC):
                             # create new variables and the copy operator
                             v_new = [var.Variable(v.bitsize, ID=v.ID + "_COPY_" + str(i), copyorigin=v) for i in range(len(connected_vars_with_unique_operator))] 
                             op_new = op.CopyOperator([v], v_new, ID= "COPYOPERATOR_" + v.ID)
-                            f.constraints.append(op_new)      # save this new operator in the operator list
+                            f.constraints[r][l].append(op_new)      # save this new operator in the operator list
                             for i in range(len(connected_vars_with_unique_operator)):
                                 v.copied_vars.append((v_new[i], connected_vars_with_unique_operator[i][1], op_new))     # save these new variables and operators
                                 

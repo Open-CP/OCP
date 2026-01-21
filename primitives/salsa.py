@@ -59,29 +59,27 @@ class Salsa_permutation(Permutation):
                 S.SingleOperatorLayer("Add4", i, 9, ModAdd, [[QR1[2], QR1[3]], [QR2[2], QR2[3]], [QR3[2], QR3[3]], [QR4[2], QR4[3]]], [TW[0], TW[1], TW[2], TW[3]])
                 S.RotationLayer("Rot4", i, 10, [['l', 18, TW[0], TW[0]], ['l', 18, TW[1], TW[1]], ['l', 18, TW[2], TW[2]], ['l', 18, TW[3], TW[3]]])
                 S.SingleOperatorLayer("XOR4", i, 11, XOR, [[TW[0], QR1[0]], [TW[1], QR2[0]], [TW[2], QR3[0]], [TW[3], QR4[0]]], [QR1[0], QR2[0], QR3[0], QR4[0]])
-                                      
-        self.test_vectors = self.gen_test_vectors()
-
+                                     
     def gen_test_vectors(self):
         # Test vectors from https://cr.yp.to/snuffle/salsafamily-20071225.pdf
-
         IN = [  0x61707865, 0x04030201, 0x08070605, 0x0c0b0a09,
                 0x100f0e0d, 0x3320646e, 0x01040103, 0x06020905,
                 0x00000007, 0x00000000, 0x79622d32, 0x14131211,
-                0x18171615, 0x1c1b1a19, 0x201f1e1d, 0x6b206574]
-        
+                0x18171615, 0x1c1b1a19, 0x201f1e1d, 0x6b206574]        
         OUT = [ 0x58318d3e, 0x0292df4f, 0xa28d8215, 0xa1aca723,
                 0x697a34c7, 0xf2f00ba8, 0x63e9b0a1, 0x27250e3a,
                 0xb1c7f1f3, 0x62066edc, 0x66d3ccf1, 0xb0365cf3,
                 0x091ad09e, 0x64f0c40f, 0xd60d95ea, 0x00be78c9]
-        
-        return [[IN], OUT]
+        self.test_vectors.append([[IN], OUT])
     
 
-def SALSA_PERMUTATION(r=None, represent_mode=0): 
+def SALSA_PERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Salsa_permutation("SALSA_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
     my_permutation.clean_graph()
+    if copy_operator: my_permutation.add_copy_operators()
+    my_permutation.build_dictionaries()
+    my_permutation.gen_test_vectors()
     return my_permutation    
     
 
@@ -158,27 +156,25 @@ class Salsa_keypermutation(Permutation):
                     S.RotationLayer("Rot4", i, 11, [['l', 18, TW[0], TW[0]], ['l', 18, TW[1], TW[1]], ['l', 18, TW[2], TW[2]], ['l', 18, TW[3], TW[3]]])
                     S.SingleOperatorLayer("XOR4", i, 12, XOR, [[TW[0], QR1[0]], [TW[1], QR2[0]], [TW[2], QR3[0]], [TW[3], QR4[0]]], [QR1[0], QR2[0], QR3[0], QR4[0]])
 
-        self.test_vectors = self.gen_test_vectors()
-
     def gen_test_vectors(self):
         # Test vectors from https://cr.yp.to/snuffle/salsafamily-20071225.pdf
-
         IN = [  0x61707865, 0x04030201, 0x08070605, 0x0c0b0a09,
                 0x100f0e0d, 0x3320646e, 0x01040103, 0x06020905,
                 0x00000007, 0x00000000, 0x79622d32, 0x14131211,
                 0x18171615, 0x1c1b1a19, 0x201f1e1d, 0x6b206574]
-        
         OUT = [ 0xb9a205a3, 0x0695e150, 0xaa94881a, 0xadb7b12c,
                 0x798942d4, 0x26107016, 0x64edb1a4, 0x2d27173f,
                 0xb1c7f1fa, 0x62066edc, 0xe035fa23, 0xc4496f04,
                 0x2131e6b3, 0x810bde28, 0xf62cb407, 0x6bdede3d]
-        
-        return [[IN], OUT]
+        self.test_vectors.append([[IN], OUT])
     
-def SALSA_KEYPERMUTATION(r=None, represent_mode=0): 
+def SALSA_KEYPERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Salsa_keypermutation("SALSA_KEYPERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
     my_permutation.clean_graph()
+    if copy_operator: my_permutation.add_copy_operators()
+    my_permutation.build_dictionaries()
+    my_permutation.gen_test_vectors()
     return my_permutation    
 
 
