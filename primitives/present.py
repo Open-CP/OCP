@@ -35,10 +35,8 @@ class PRESENT_permutation(Permutation):
 def PRESENT_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(64)], [var.Variable(1,ID="out"+str(i)) for i in range(64)]
     my_permutation = PRESENT_permutation(f"PRESENT_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.clean_graph()
-    if copy_operator: my_permutation.add_copy_operators()
-    my_permutation.build_dictionaries()
     my_permutation.gen_test_vectors()
+    my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
 
@@ -122,6 +120,7 @@ class PRESENT_block_cipher(Block_cipher):
             key = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
             ciphertext = [0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 0, 1, 0, 0, 1, 0]
             self.test_vectors.append([[plaintext, key], ciphertext])
+        
         elif version == [64, 128]:
             plaintext = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
@@ -148,8 +147,6 @@ def PRESENT_BLOCKCIPHER(r=None, version = [64, 80], represent_mode=0, copy_opera
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = PRESENT_block_cipher(f"PRESENT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, )
-    my_cipher.clean_graph()
-    if copy_operator: my_cipher.add_copy_operators()
-    my_cipher.build_dictionaries()
     my_cipher.gen_test_vectors(version=version)
+    my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

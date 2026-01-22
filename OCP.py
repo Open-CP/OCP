@@ -10,7 +10,6 @@ For examples of other ciphers, refer to the following folders:
 - test/differential_cryptanalysis
 """
 
-import copy
 from pathlib import Path
 
 from kiwisolver import Variable
@@ -20,7 +19,6 @@ import attacks.attacks as attacks
 
 FILES_DIR = Path("files")
 FILES_DIR.mkdir(parents=True, exist_ok=True)
-
 
 # ********************* IMPLEMENTATIONS ********************* #
 def test_python_imp(cipher): # Generate Python implementation and test it with the test vectors
@@ -114,7 +112,7 @@ if __name__ == "__main__":
 
     import primitives.simon as simon
     cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
-
+     
     test_all_implementations(cipher)
     test_visualisation(cipher)
     test_diff_attack_milp(cipher)

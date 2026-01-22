@@ -61,7 +61,6 @@ class LED_permutation(Permutation):
                 S.SboxLayer("SB", i, 1, PRESENT_Sbox)  # SubCells layer (uses PRESENT S-box)
                 S.PermutationLayer("SR", i, 2, shift_rows)  # ShiftRows layer
                 S.MatrixLayer("MC", i, 3, mix_columns_matrix, mix_columns_index, "0x3")  # MixColumnsSerial layer (over GF(2^4) with irreducible polynomial x^4 + x + 1)
-                
 
     def gen_test_vectors(self, version = None):
         # Test vectors for LED permutation (same as LED64 with all-zero key)
@@ -74,10 +73,8 @@ def LED_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
     my_input = [var.Variable(4, ID="in"+str(i)) for i in range(16)]
     my_output = [var.Variable(4, ID="out"+str(i)) for i in range(16)]
     my_permutation = LED_permutation("LED_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.clean_graph()
-    if copy_operator: my_permutation.add_copy_operators()
-    my_permutation.build_dictionaries()
     my_permutation.gen_test_vectors()
+    my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
 
@@ -167,6 +164,7 @@ class LED_block_cipher(Block_cipher):
             K = [0x0, 0x4, 0x8, 0xC, 0x1, 0x5, 0x9, 0xD, 0x2, 0x6, 0xA, 0xE, 0x3, 0x7, 0xB, 0xF]
             C = [0xA, 0x5, 0x3, 0xF, 0x0, 0x5, 0x8, 0xC, 0x0, 0x1, 0x9, 0x5, 0x3, 0xE, 0x3, 0x8]
             self.test_vectors.append([[P, K], C])
+
         elif version == [64, 128]:
             # LED-128 test vector (all zeros)
             P = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
@@ -194,8 +192,6 @@ def LED_BLOCKCIPHER(r=None, version=[64, 64], represent_mode=0, copy_operator=Fa
     my_key = [var.Variable(4, ID="k"+str(i)) for i in range(16 if version[1] == 64 else 32)]
     my_ciphertext = [var.Variable(4, ID="c"+str(i)) for i in range(16)]
     my_cipher = LED_block_cipher(f"LED{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.clean_graph()
-    if copy_operator: my_cipher.add_copy_operators()
-    my_cipher.build_dictionaries()
     my_cipher.gen_test_vectors(version=version)
+    my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

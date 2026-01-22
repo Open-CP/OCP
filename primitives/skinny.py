@@ -61,10 +61,8 @@ class Skinny_permutation(Permutation):
 def SKINNY_PERMUTATION(r=None, version=64, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(int(version/16),ID="in"+str(i)) for i in range(16)], [var.Variable(int(version/16),ID="out"+str(i)) for i in range(16)]
     my_permutation = Skinny_permutation(f"SKINNY{version}_PERM", version, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.clean_graph()
-    if copy_operator: my_permutation.add_copy_operators()
-    my_permutation.build_dictionaries()
     my_permutation.gen_test_vectors(version=version)
+    my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
 
@@ -203,8 +201,6 @@ def SKINNY_BLOCKCIPHER(r=None, version=[64, 64], represent_mode=0, copy_operator
     p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/16), int(version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="in"+str(i)) for i in range(16)], [var.Variable(word_size,ID="k"+str(i)) for i in range(16*m)], [var.Variable(word_size,ID="out"+str(i)) for i in range(16)]
     my_cipher = Skinny_block_cipher(f"SKINNY{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.clean_graph()
-    if copy_operator: my_cipher.add_copy_operators()
-    my_cipher.build_dictionaries()
     my_cipher.gen_test_vectors(version=version)
+    my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

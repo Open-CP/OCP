@@ -20,7 +20,7 @@ def find_function_index_from_x_coord(in_x_coord, function_x_limits):
 
 # function that generates the figure describing the primitive  
 def generate_figure(my_prim, filename, display_unused_variables=False, display_copied_variables=True): 
-
+    print("\nGenerating visualisation figure for " + my_prim.name + " in " + str(filename) + " ...", end="", flush=True)
     os.makedirs(os.path.dirname(filename), exist_ok=True)      
     
     var_font_size = 2    # controls the font size of the variables
@@ -246,4 +246,5 @@ def generate_figure(my_prim, filename, display_unused_variables=False, display_c
     my_fig = plt.gcf()
     my_fig.set_size_inches(0.02*(x_shift_state+max(op_length,op_length)),0.02*(2*elements_height+y_space_in_out+y_out_coord))
     my_fig.savefig(filename, bbox_inches='tight')
-    #plt.show()            
+    #plt.show() 
+    print(" done.") 

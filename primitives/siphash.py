@@ -45,8 +45,6 @@ class SipHash_permutation(Permutation):
 def SIPHASH_PERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
     my_permutation = SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.clean_graph()
-    if copy_operator: my_permutation.add_copy_operators()
-    my_permutation.build_dictionaries()
     my_permutation.gen_test_vectors()
+    my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation

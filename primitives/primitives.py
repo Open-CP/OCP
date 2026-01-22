@@ -236,6 +236,12 @@ class Primitive(ABC):
         self.vars_dictionary = {}             # dictionary of the variables of all the functions in that primitive, indexed by their ID   
         self.constraints_dictionary = {}      # dictionary of the constraints of all the functions in that primitive, indexed by their ID
 
+    # method that performs various operations after the primitive has been fully defined
+    def post_initialization(self, copy_operator=False):
+        self.clean_graph()
+        if copy_operator: self.add_copy_operators()
+        self.build_dictionaries()  
+
     # method that builds the variables and constraints dictionaries
     def build_dictionaries(self):
         self.vars_dictionary = {}
@@ -364,13 +370,12 @@ class Function(Primitive):
         for i in range(len(s_input)): self.inputs_constraints.append(op.Equal([s_input[i]], [self.functions["FUNCTION"].vars[1][0][i]], ID='IN_LINK_EQ_'+str(i)))
 
         if len(s_output)!=nbr_words_output: raise Exception("Function: the number of output words does not match the number of output words in function")
-        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_EQ_'+str(i)))
-
+        for i in range(len(s_output)): self.outputs_constraints.append(op.Equal([self.functions["FUNCTION"].vars[nbr_rounds][nbr_layers][i]], [s_output[i]], ID='OUT_LINK_EQ_'+str(i)))      
+        
 
 # ********************************************** PERMUTATIONS **********************************************
 # Subclass that represents a permutation object
 # A permutation is composed of a single function
-
 class Permutation(Primitive):
     def __init__(self, name, s_input, s_output, nbr_rounds, config):
         super().__init__(name, {"IN_":s_input}, {"OUT_":s_output})
@@ -414,3 +419,31 @@ class Block_cipher(Primitive):
         for i in range(len(c_output)): self.outputs_constraints.append(op.Equal([self.functions["PERMUTATION"].vars[nbr_rounds][s_nbr_layers][i]], [c_output[i]], ID='OUT_LINK_C_EQ_'+str(i)))
 
 
+
+# ********************************************** STREAM CIPHERS **********************************************
+# Subclass that represents a stream cipher object
+# A stream cipher is composed of three functions: a initialization function (to initialize the internal state), a state update function (to update the internal state), and a keystream generation function (to generate the keystream from the internal state)
+
+class Stream_cipher(Primitive):
+    def __init__(self, name, iv_input, k_input, keystream_output, nbr_rounds_init, nbr_rounds_update, nbr_rounds_keystream, init_config, update_config, keystream_config):
+        super().__init__(name, {"IV":iv_input, "key":k_input}, {"keystream":keystream_output})
+        init_nbr_layers, init_nbr_words, init_nbr_temp_words, init_word_bitsize = init_config[0], init_config[1], init_config[2], init_config[3]
+        update_nbr_layers, update_nbr_words, update_nbr_temp_words, update_word_bitsize = update_config[0], update_config[1], update_config[2], update_config[3]
+        keystream_nbr_layers, keystream_nbr_words, keystream_nbr_temp_words, keystream_word_bitsize = keystream_config[0], keystream_config[1], keystream_config[2], keystream_config[3]
+        self.nbr_rounds_init = nbr_rounds_init
+        self.nbr_rounds_update = nbr_rounds_update
+        self.nbr_rounds_keystream = nbr_rounds_keystream
+        self.functions = {"INITIALIZATION": Layered_Function("INITIALIZATION", 'init', nbr_rounds_init, init_nbr_layers, init_nbr_words, init_nbr_temp_words, init_word_bitsize), "STATE_UPDATE": Layered_Function("STATE_UPDATE", 'upd', nbr_rounds_update, update_nbr_layers, update_nbr_words, update_nbr_temp_words, update_word_bitsize), "KEYSTREAM_GEN": Layered_Function("KEYSTREAM_GEN", 'ks', nbr_rounds_keystream, keystream_nbr_layers, keystream_nbr_words, keystream_nbr_temp_words, keystream_word_bitsize)}
+        self.functions_implementation_order = ["INITIALIZATION", "STATE_UPDATE", "KEYSTREAM_GEN"]
+        self.functions_display_order = ["INITIALIZATION", "STATE_UPDATE", "KEYSTREAM_GEN"]
+
+        if (len(iv_input)!=init_nbr_words) or (len(k_input)!=init_nbr_words): raise Exception("Stream_cipher: the number of input IV/key words does not match the number of IV/key words in initialization function")
+
+        if len(iv_input)!=init_nbr_words: raise Exception("Stream_cipher: the number of IV words does not match the number of words in the initialization function")
+        for i in range(len(iv_input)): self.inputs_constraints.append(op.Equal([iv_input[i]], [self.functions["INITIALIZATION"].vars[1][0][i]], ID='IN_LINK_IV_EQ_'+str(i)))
+
+        if len(k_input)!=init_nbr_words: raise Exception("Stream_cipher: the number of key words does not match the number of words in the initialization function")
+        for i in range(len(k_input)): self.inputs_constraints.append(op.Equal([k_input[i]], [self.functions["INITIALIZATION"].vars[1][0][i + init_nbr_words]], ID='IN_LINK_K_EQ_'+str(i)))
+
+        if len(keystream_output)!=keystream_nbr_words: raise Exception("Stream_cipher: the number of keystream words does not match the number of words in the keystream generation function")
+        for i in range(len(keystream_output)): self.outputs_constraints.append(op.Equal([self.functions["KEYSTREAM_GEN"].vars[nbr_rounds_keystream][keystream_nbr_layers][i]], [keystream_output[i]], ID='OUT_LINK_KS_EQ_'+str(i)))

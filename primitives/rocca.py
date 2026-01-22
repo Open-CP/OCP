@@ -49,8 +49,6 @@ class Rocca_AD_permutation(Permutation):
 def ROCCA_AD_PERMUTATION(r=5, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(8,ID="in"+str(i)) for i in range(128+32*r)], [var.Variable(8,ID="out"+str(i)) for i in range(128+32*r)]
     my_permutation = Rocca_AD_permutation("ROCCA_AD", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.clean_graph()
-    if copy_operator: my_permutation.add_copy_operators()
-    my_permutation.build_dictionaries()
     my_permutation.gen_test_vectors()
+    my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
