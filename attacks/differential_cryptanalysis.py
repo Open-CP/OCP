@@ -49,7 +49,7 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
         # Set the model "filename".
         config_model["filename"] = str(FILES_DIR / f"{cipher.name}_{goal}_{objective_target}_{config_solver['solver']}_model.cnf")
 
-    # Set solution_number to a large value if not defined when searching for differential trails
+    # Set solution_number to a large value if not defined when searching for differentials
     if goal == "DIFFERENTIAL_PROB":
         config_solver.setdefault("solution_number", 1000000)
 

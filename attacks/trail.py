@@ -173,3 +173,96 @@ class DifferentialTrail(Trail):
             lines += f"rounds_diff_weight: {self.data['rounds_diff_weight']}\n"
         print(lines)
         return lines
+
+
+class LinearTrail(Trail):
+    def __init__(self, data, solution_trace=None):
+        """
+        Parameters:
+        - data: A dictionary containing:
+            "cipher": str, The name of the cipher (e.g., "AES")
+            "functions": List[str], The list of functions involved in the cipher (e.g., ["PERMUTATION", "KEY_SCHEDULE"])
+            "rounds": Dict[str, List[int] | int], For each function, the number of rounds or a list of round indices (e.g., {"PERMUTATION": 3} or {"PERMUTATION": [1, 2, 3]})
+            "linear_weight": float | int | None, The weight (defined as the negetive of logarithm base 2 of the linear correlation) of the linear trail (e.g., 2)
+            "rounds_linear_weight": List[float] | None, The list of weigts of each round (e.g., [0, 1, 1])
+            "trail_struct": Dict, The structure of the trail
+        """
+        super().__init__("linear", data, solution_trace=solution_trace)
+
+
+    def print_trail(self, show_mode=2, hex_format=True):
+        """
+        Print the trail in a human-readable format.
+
+        Parameters:
+        - mode:
+            0 - Print only the first and last round (first layer) states excluding temporary variables.
+            1 - Print all rounds (first layer) excluding temporary variables.
+            2 - Print all rounds and all layers excluding temporary variables.
+            3 - Print all rounds and all layers including temporary variables.
+        - hex_format: If True, print the values in hexadecimal format; otherwise, print in binary format.
+        """
+        lines = super().print_trail(show_mode)
+        lines += f"Print the linear trail in {'hexadecimal' if hex_format else 'binary'} format.\n"
+        if show_mode == 0: lines += "Show Mode: First Layer of First and Last Round.\n"
+        elif show_mode == 1: lines += "Show Mode: First Layer of All Rounds (layer 0)\n"
+        elif show_mode == 2: lines += "Show Mode: All Layers of All Rounds\n"
+        elif show_mode == 3: lines += "Show Mode: All Layers of All Rounds (Including Temporary Words)\n"
+
+        trail_struct = self.data['trail_struct']
+
+        # Print inputs
+        if "inputs" in trail_struct and isinstance(trail_struct["inputs"], dict):
+            lines += f"######## Input: ########\n"
+            for name, node_list in trail_struct["inputs"].items():
+                linear = ""
+                for node in node_list:
+                    linear += f"{node['bin_values']}"
+                lines += f"{name}: " + (f"{bin_to_hex(linear)}" if hex_format else linear)
+                lines += "\n"
+
+        # Print functions
+        if "functions" in trail_struct and isinstance(trail_struct["functions"], dict):
+            for fun in self.data["functions"]:
+                lines += f"######## Function: {fun} ########\n"
+                if show_mode == 0:
+                    show_rounds = [self.data["rounds"][fun][0], self.data["rounds"][fun][-1]] if len(self.data["rounds"][fun]) > 1 else [self.data["rounds"][fun][0]]
+                elif show_mode == 1 or show_mode == 2 or show_mode == 3:
+                    show_rounds = list(range(self.data["rounds"][fun][0], self.data["rounds"][fun][-1] + 1))
+                for r in show_rounds:
+                    lines += f"Round {r}:\n"
+                    for l in trail_struct["functions"][fun][r]:
+                        # if fun == "SUBKEYS" and l == 0: # For SUBKEYS, layer 0 is meaningless, so skip it
+                        #     continue
+                        if (show_mode == 0 or show_mode == 1) and l != 0 and fun != "SUBKEYS": # For show_mode 0 and 1, only layer 0 is printed
+                            continue
+                        lines += f"Layer {l}: "
+                        linear = ""
+                        for i in range(trail_struct["functions"][fun]["nbr_words"]):
+                            node = trail_struct["functions"][fun][r][l][i]
+                            linear += f"{node['bin_values']}"
+                        lines += f"{bin_to_hex(linear)}" if hex_format else linear
+                        if show_mode == 3:
+                            linear = ""
+                            for i in range(trail_struct["functions"][fun]["nbr_temp_words"]):
+                                node = trail_struct["functions"][fun][r][l][trail_struct["functions"][fun]["nbr_words"] + i]
+                                linear += f"{node['bin_values']}"
+                            lines += f"{bin_to_hex(linear)}" if hex_format else linear
+                        lines += "\n"
+
+        # Print outputs
+        if "outputs" in trail_struct and isinstance(trail_struct["outputs"], dict):
+            lines += f"######## Output: ########\n"
+            for name, node_list in trail_struct["outputs"].items():
+                linear = ""
+                for node in node_list:
+                    linear += f"{node['bin_values']}"
+                lines += f"{name}: " + (f"{bin_to_hex(linear)}" if hex_format else linear)
+                lines += "\n"
+
+        if "linear_weight" in self.data and self.data["linear_weight"] is not None:
+            lines += f"\nTotal Weight: {self.data['linear_weight']}\n"
+        if "rounds_linear_weight" in self.data and self.data["rounds_linear_weight"] is not None:
+            lines += f"rounds_linear_weight: {self.data['rounds_linear_weight']}\n"
+        print(lines)
+        return lines

@@ -1,6 +1,6 @@
 import numpy as np
 from operators.operators import Operator, UnaryOperator, RaiseExceptionVersionNotExisting
-from operators.boolean_operators import xor_constraints, word_xor_constraints, nxor_constraints, word_nxor_constraints
+from tools.model_constraints import gen_matrix_constraints, gen_word_xor_constraints, gen_word_nxor_constraints
 
 
 def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
@@ -122,23 +122,6 @@ def generate_bin_matrix(mat, bitsize):
     return bin_matrix
 
 
-def matrix_constraints(vin, vout, model_type, v_dummy=None):
-    assert isinstance(vin, list), "Input variables should be provided as a list in matrix_constraints."
-    assert isinstance(vout, str), "Output variable should be provided as a string in matrix_constraints."
-    if len(vin) == 1:
-        if model_type == 'milp':
-            return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
-        elif model_type == 'sat':
-            return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
-    elif len(vin) == 2:
-        return xor_constraints(vin[0], vin[1], vout, model_type)
-    elif len(vin) >= 3:
-        if model_type == 'milp':
-            assert isinstance(v_dummy, str), "Dummy variables must be provided for MILP model with more than 2 inputs."
-        return nxor_constraints(vin, vout, model_type, v_dummy=v_dummy)
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
-
 class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the matrix "mat" (stored as a list of lists) to the input vector of variables, towards the output vector of variables
                           # The optional "polynomial" allors to define the polynomial reduction (not implemted yet)
     def __init__(self, name, input_vars, output_vars, mat, polynomial = None, ID = None):
@@ -246,7 +229,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                             d = self.ID + '_d_' + str(i) + '_' + str(j)
                         else:
                             d = None
-                        model_list.extend(matrix_constraints(var_in, var_out, model_type, v_dummy=d))
+                        model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
                 return model_list
             elif self.model_version in [self.__class__.__name__ + "_LINEAR"]:
                 bin_matrix = np.transpose(bin_matrix)
@@ -268,7 +251,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                             d = self.ID + '_d_' + str(i) + '_' + str(j)
                         else:
                             d = None
-                        model_list.extend(matrix_constraints(var_in, var_out, model_type, v_dummy=d))
+                        model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
                 return model_list
         elif model_type == 'milp' and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDDIFF_2"]:
             var_in = []
@@ -308,9 +291,9 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         elif model_type == 'sat':
                             model_list += [f"{vin[0]}, -{vout}", f"-{vin[0]} {vout}"]
                     elif len(vin) == 2:
-                        model_list.extend(word_xor_constraints(vin[0], vin[1], vout, model_type))
+                        model_list.extend(gen_word_xor_constraints(vin[0], vin[1], vout, model_type))
                     elif len(vin) >= 3:
-                        model_list.extend(word_nxor_constraints(vin, vout, model_type))
+                        model_list.extend(gen_word_nxor_constraints(vin, vout, model_type))
                 return model_list
             else:  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
@@ -375,7 +358,7 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     if self.mat[i][j] == 1:
                         var_in.append(self.input_vars[0].ID + '_' + str(j))
                 var_out = self.output_vars[0].ID + '_' + str(i)
-                model_list.extend(matrix_constraints(var_in, var_out, model_type))
+                model_list.extend(gen_matrix_constraints(var_in, var_out, model_type))
             return model_list
         elif model_type in ['sat', 'milp'] and (self.model_version in [self.__class__.__name__ + "_LINEAR"]):
             mat = np.transpose(self.mat)
@@ -385,7 +368,7 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     if mat[i][j] == 1:
                         var_in.append(self.output_vars[0].ID + '_' + str(j))
                 var_out = self.input_vars[0].ID + '_' + str(i)
-                model_list.extend(matrix_constraints(var_in, var_out, model_type))
+                model_list.extend(gen_matrix_constraints(var_in, var_out, model_type))
             return model_list
         elif model_type == 'sat':
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:

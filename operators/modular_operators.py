@@ -190,7 +190,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize+1)]
                 model_list = [f'{var_p[0]} = 0']
-                for i in range(self.input_vars[0].bitsize) :
+                for i in range(self.input_vars[0].bitsize):
                     a = [var_out[i],var_in1[i],var_in2[i]]
                     model_list += [var_p[i]+' - '+a[0]+' - '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' >= 0']
                     model_list += [var_p[i]+' + '+a[0]+' + '+a[1]+' - '+a[2]+' - '+var_p[i+1]+' >= 0']
@@ -201,7 +201,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     model_list += [a[0]+' - '+var_p[i]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' >= 0']
                     model_list += [var_p[i]+' + '+a[0]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' <= 4']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
-                self.weight = [" + ".join(var_p)]
+                self.weight = [" + ".join(var_p[:self.input_vars[0].bitsize])]
                 return model_list
             else:
                 RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
