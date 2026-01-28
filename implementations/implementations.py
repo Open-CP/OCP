@@ -6,6 +6,7 @@ import numpy as np
 import importlib
 from contextlib import redirect_stdout
 import shutil
+from implementations.t_table.convertion import TTable_Conversion
 
 # function to check if a C compiler is available
 def is_c_compiler_available():
@@ -42,7 +43,7 @@ def get_var_def_c(word_bitsize):
     else: return 'uint128_t'
 
 # function that generates the implementation of the primitive
-def generate_implementation(my_prim, filename, language = 'python', unroll = False):  
+def generate_implementation(my_prim, filename, language = 'python', unroll = False, ttable=False):  
     
     nbr_rounds = my_prim.nbr_rounds
     
@@ -80,7 +81,13 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                            if header != None: 
                                for line in header: myfile.write(line + '\n')
                                myfile.write('\n')
-                        
+        #initialization of ttable conversion object 
+        if ttable and ("PERMUTATION" in my_prim.functions): obj = TTable_Conversion(my_prim.functions["PERMUTATION"])
+        else:ttable=False 
+        #generate headers
+        if ttable: 
+            for line in obj.generate_headers(language): myfile.write(line+'\n')
+        myfile.write('\n')
         if language == 'python':
                                            
             myfile.write("# Function implementing the " + my_prim.name + " function\n")
@@ -119,8 +126,16 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                     for s in my_prim.functions_implementation_order: 
                         if r <= my_prim.functions[s].nbr_rounds:
                             for l in range(my_prim.functions[s].nbr_layers+1):                        
-                                for cons in my_prim.functions[s].constraints[r][l]:
-                                    for line in cons.generate_implementation("python", unroll=True): myfile.write("\t" + line + "\n")      
+                                for c,cons in enumerate(my_prim.functions[s].constraints[r][l]):
+                                    if s == "PERMUTATION" and ttable:
+                                        c_flag = obj.states[r][l][c]
+                                        if c_flag==0:
+                                            for line in cons.generate_implementation("python", unroll=True): myfile.write("\t" + line + "\n")
+                                        elif c_flag==1: continue 
+                                        else: 
+                                            myfile.write("\t" + obj.con_list[r][l][c] + "\n")
+                                    else:
+                                        for line in cons.generate_implementation("python", unroll=True): myfile.write("\t" + line + "\n")      
                             myfile.write("\n")
             else: 
                 myfile.write("\t# Round function \n")
