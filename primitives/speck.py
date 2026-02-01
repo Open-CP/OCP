@@ -176,7 +176,7 @@ class Speck_block_cipher(Block_cipher):
             self.test_vectors.append([[plaintext, key], ciphertext])
         
 def SPECK_BLOCKCIPHER(r=None, version = [32, 64], represent_mode=0, copy_operator=False):
-    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(version[1]/version[0])
+    p_bitsize, k_bitsize, word_size, m = version[0], version[1], int(version[0]/2), int(2*version[1]/version[0])
     my_plaintext, my_key, my_ciphertext = [var.Variable(word_size,ID="p"+str(i)) for i in range(2)], [var.Variable(word_size,ID="k"+str(i)) for i in range(m)], [var.Variable(word_size,ID="c"+str(i)) for i in range(2)]
     my_cipher = Speck_block_cipher(f"SPECK{p_bitsize}_{k_bitsize}", [p_bitsize, k_bitsize], my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
     my_cipher.gen_test_vectors(version=version)

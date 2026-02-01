@@ -102,6 +102,32 @@ def test_diff_attack_sat(cipher):
     trails = attacks.diff_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
 
+# ********************* Linear Cryptanalysis ********************* #
+def test_linear_attack_milp(cipher):
+    # Example: default parameters. Refer to test/linear_cryptanalysis/ for more available parameters.
+    goal="LINEARPATH_CORRE"
+    constraints=["INPUT_NOT_ZERO"]
+    objective_target="OPTIMAL"
+    show_mode=0
+    config_model=None
+    config_solver=None
+
+    # Search for the linear trail
+    trails = attacks.linear_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+
+def test_linear_attack_sat(cipher):
+    # Example: default parameters. Refer to test/linear_cryptanalysis/ for more available parameters.
+    goal="LINEARPATH_CORRE"
+    constraints=["INPUT_NOT_ZERO"]
+    objective_target="OPTIMAL"
+    show_mode=0
+    config_model={"model_type": "sat"}
+    config_solver=None
+
+    # Search for the linear trail
+    trails = attacks.linear_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+
+
 if __name__ == "__main__":
     # import primitives.aes as aes
     # cipher = aes.AES_BLOCKCIPHER(version=[128,256])
@@ -117,3 +143,5 @@ if __name__ == "__main__":
     test_visualisation(cipher)
     test_diff_attack_milp(cipher)
     test_diff_attack_sat(cipher)
+    test_linear_attack_milp(cipher)
+    test_linear_attack_sat(cipher)
