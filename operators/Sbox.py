@@ -481,6 +481,7 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
                 temp = temp_0 + f"- 10000 {var_p[w]} >= {temp_1-10000}"
                 model_list += [temp]
             weight += " + " + "{:0.04f} ".format(abs(float(math.log(diff_spectrum[w]/(2**self.input_bitsize), 2)))) + var_p[w]
+        weight = weight[3:]
         model_list += [' + '.join(var_p) + ' = 1\n']
         model_list += self._declare_vars_type_milp('Binary', var_in + var_out + var_p)
         self.weight = [weight]

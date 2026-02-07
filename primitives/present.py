@@ -29,7 +29,7 @@ class PRESENT_permutation(Permutation):
                 S.SboxLayer("SB", i, 0, PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer
                 S.PermutationLayer("P", i, 1, perm) # Permutation layer
 
-    def gen_test_vectors(self, version): 
+    def gen_test_vectors(self):
         pass
 
 def PRESENT_PERMUTATION(r=None, represent_mode=0, copy_operator=False):

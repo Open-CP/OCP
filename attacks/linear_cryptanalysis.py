@@ -240,7 +240,7 @@ def extract_and_format_linear_trails(cipher, goal, config_model, show_mode, solu
         trail.save_trail_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
         trails.append(trail)
         pr += 2 ** ( - trail.data['linear_weight'] ) if trail.data['linear_weight'] is not None else 0
-    if solutions:
+    if solutions and goal == "LINEARHULL_CORRE":
         print(f"[INFO] Total correlation of all found trails: 2^{log2(pr) if pr > 0 else 'undefined'}")
     return trails
 

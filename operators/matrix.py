@@ -1,6 +1,6 @@
 import numpy as np
 from operators.operators import Operator, UnaryOperator, RaiseExceptionVersionNotExisting
-from tools.model_constraints import gen_matrix_constraints, gen_word_xor_constraints, gen_word_nxor_constraints
+from tools.model_constraints import gen_matrix_constraints, gen_word_matrix_constraints
 
 
 def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
@@ -210,6 +210,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                 bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
             elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat): # Example: SKINNY 64*64 binary matrix
                 bin_matrix = self.mat
+            # Modeling for differential cryptanalysis
             if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
                 for i in range(output_words):  # Loop over the ith output word
                     for j in range(bits_per_output):  # Loop over the jth bit in the ith word
@@ -231,6 +232,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                             d = None
                         model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
                 return model_list
+            # Modeling for linear cryptanalysis
             elif self.model_version in [self.__class__.__name__ + "_LINEAR"]:
                 bin_matrix = np.transpose(bin_matrix)
                 for i in range(input_words):  # Loop over the ith input word
@@ -253,7 +255,14 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                             d = None
                         model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
                 return model_list
-        elif model_type == 'milp' and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDDIFF_2"]:
+        # Modeling for truncated differential cryptanalysis
+        elif model_type == 'milp' and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
+            if branch_num == None: # TO DO: implement branch number calculation
+                # if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
+                    # branch_num =self.differential_branch_number()
+                # elif self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
+                    # branch_num =self.linear_branch_number()
+                raise ValueError("[WARNING] Please provide branch number as its calculation is not implemented yet.")
             var_in = []
             for i in range(len(self.input_vars)):
                 var_in += self.get_var_model('in', i, bitwise=False)
@@ -261,41 +270,37 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             for i in range(len(self.output_vars)):
                 var_out += self.get_var_model('out', i, bitwise=False)
             var_d = [f"{self.ID}_d"]
-            if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":
-                if branch_num == None: 
-                    # branch_num =self.differential_branch_number()
-                    raise ValueError("[WARNING] Please provide branch number as its calculation is not implemented yet.")
+            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_1": # Refer:
-                if branch_num == None: 
-                    # branch_num =self.differential_branch_number()
-                    raise ValueError("[WARNING] Please provide branch number as its calculation is not implemented yet.")
+            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]: # Refer:
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
                 model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_2": # The matrix is represented as truncated binary
-                assert output_words == len(self.mat) and input_words == len(self.mat[0]), "Matrix size does not match input and output variable sizes."
-                for i in range(output_words):  # Loop over the ith output word
-                    vin = []
-                    for k in range(input_words): # Loop over the kth input word
-                        if self.mat[i][k] == 1:
-                            vin.append(self.input_vars[k].ID)
-                    vout = self.output_vars[i].ID
-                    if len(vin) == 1:
-                        if model_type == 'milp':
-                                model_list += [f"{vout} - {vin[0]} = 0"]
-                        elif model_type == 'sat':
-                            model_list += [f"{vin[0]}, -{vout}", f"-{vin[0]} {vout}"]
-                    elif len(vin) == 2:
-                        model_list.extend(gen_word_xor_constraints(vin[0], vin[1], vout, model_type))
-                    elif len(vin) >= 3:
-                        model_list.extend(gen_word_nxor_constraints(vin, vout, model_type))
-                return model_list
-            else:  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type in ['milp', 'sat'] and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_2": # The matrix is represented as truncated binary
+            assert output_words == len(self.mat) and input_words == len(self.mat[0]), "Matrix size does not match input and output variable sizes."
+            for i in range(output_words):  # Loop over the ith output word
+                vin = []
+                for k in range(input_words): # Loop over the kth input word
+                    if self.mat[i][k] == 1:
+                        vin.append(self.input_vars[k].ID)
+                vout = self.output_vars[i].ID
+                model_list.extend(gen_word_matrix_constraints(vin, vout, model_type))
+            return model_list
+        elif model_type in ['milp', 'sat'] and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR_2":
+            matrix_t = np.transpose(self.mat)
+            assert output_words == len(self.mat) and input_words == len(self.mat[0]), "Matrix size does not match input and output variable sizes."
+            for i in range(input_words):  # Loop over the ith input word
+                vin = []
+                for k in range(output_words): # Loop over the kth output word
+                    if matrix_t[i][k] == 1:
+                        vin.append(self.output_vars[k].ID)
+                vout = self.input_vars[i].ID
+                model_list.extend(gen_word_matrix_constraints(vin, vout, model_type))
+            return model_list
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
 

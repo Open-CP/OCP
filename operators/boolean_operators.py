@@ -221,7 +221,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                     model_list.extend(gen_nxor_constraints(var_in[i], var_out[i], model_type, v_dummy=d, version=version))
                 return model_list
             # Modeling for word truncated differential cryptanalysis
-            elif model_type == "milp" and len(self.input_vars) >= 2 and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":  # Reference: Related-Key Differential Analysis of the AES.
+            elif len(self.input_vars) >= 2 and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":  # Reference: Related-Key Differential Analysis of the AES.
                 var_in, var_out = ([self.get_var_model("in", i, bitwise=False) for i in range(len(self.input_vars))], self.get_var_model("out", 0, bitwise=False))
                 inputs = [iv[0] for iv in var_in]
                 output = var_out[0]

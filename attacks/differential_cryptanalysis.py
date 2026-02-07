@@ -122,9 +122,9 @@ def gen_fixed_input_output_constraints(in_out, fix_diff, cipher, config_model):
     for i in range(len(cons_vars)):
         for j in range(cons_vars[i].bitsize):
             if model_type == "sat":
-                if diff[i] == '1':
+                if diff[i*cons_vars[i].bitsize+j] == '1':
                     constraints.append(f"{cons_vars[i].ID}_{j}")
-                elif diff[i] == '0':
+                elif diff[i*cons_vars[i].bitsize+j] == '0':
                     constraints.append(f"-{cons_vars[i].ID}_{j}")
             elif model_type == "milp":
                 constraints.append(f"{cons_vars[i].ID}_{j} = {diff[i*cons_vars[i].bitsize+j]}")            
@@ -237,8 +237,8 @@ def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, soluti
         trail.save_trail_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
         trails.append(trail)
         pr += 2 ** ( - trail.data['diff_weight'] ) if trail.data['diff_weight'] is not None else 0
-    if solutions:
-        print(f"[INFO] Total probability of all found trails: 2^{log2(pr) if pr > 0 else 'undefined'}")
+    if solutions and goal == "DIFFERENTIAL_PROB":
+        print(f"[INFO] Total probability of all {len(trails)} found trails: 2^{log2(pr) if pr > 0 else 'undefined'}")
     return trails
 
 def extract_trail_structures(cipher, goal, solution):

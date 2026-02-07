@@ -71,6 +71,10 @@ def configure_model_version(cipher, goal, config_model): # Configure the model v
         set_model_versions(cipher, "TRUNCATEDDIFF", functions, rounds, layers, positions) # Set model_version = "TRUNCATEDDIFF" for all operators
         set_model_versions(cipher, "TRUNCATEDDIFF_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "TRUNCATEDDIFF_A" for all Sbox operators
 
+    elif goal == "TRUNCATEDLINEAR_SBOXCOUNT":
+        set_model_versions(cipher, "TRUNCATEDLINEAR", functions, rounds, layers, positions) # Set model_version = "TRUNCATEDLINEAR" for all operators
+        set_model_versions(cipher, "TRUNCATEDLINEAR_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "TRUNCATEDLINEAR_A" for all Sbox operators
+
     else:
         raise ValueError(f"Invalid goal: {goal}.")
 
@@ -501,6 +505,12 @@ def gen_word_nxor_constraints(vin, vout, model_type, v_dummy=None, version=0):
             constraints.append(f"{' + '.join(others)} + {vout} - {ik} >= 0")
         constraints.append('Binary\n' +  ' '.join(vin + [vout]))
         return constraints
+    elif model_type == "sat":
+        constraints.append(" ".join([f"-{vout}"] + list(vin)))
+        for k, ik in enumerate(vin):
+            others = [x for j, x in enumerate(vin) if j != k]
+            constraints.append(f"{' '.join(others)} {vout} -{ik}")
+        return constraints
     else:
         raise ValueError(f"[WARNING] Unknown model type {model_type} for word-wise n-ary XOR.")
 
@@ -518,5 +528,20 @@ def gen_matrix_constraints(vin, vout, model_type, v_dummy=None):
         if model_type == 'milp':
             assert isinstance(v_dummy, str), "Dummy variables must be provided for MILP model with more than 2 inputs."
         return gen_nxor_constraints(vin, vout, model_type, v_dummy=v_dummy)
+    else:
+        raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
+    
+def gen_word_matrix_constraints(vin, vout, model_type, v_dummy=None):
+    assert isinstance(vin, list), "Input variables should be provided as a list in word_matrix_constraints."
+    assert isinstance(vout, str), "Output variable should be provided as a string in word_matrix_constraints."
+    if len(vin) == 1:
+        if model_type == 'milp':
+            return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
+        elif model_type == 'sat':
+            return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
+    elif len(vin) == 2:
+        return gen_word_xor_constraints(vin[0], vin[1], vout, model_type)
+    elif len(vin) >= 3:
+        return gen_word_nxor_constraints(vin, vout, model_type)
     else:
         raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
