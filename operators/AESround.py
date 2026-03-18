@@ -32,7 +32,7 @@ class AESround(Operator): # Operator for the AES round
 
         mat = [[2, 3, 1, 1], [1, 2, 3, 1], [1, 1, 2, 3], [3, 1, 1, 2]] # MixColumns Layer
         for indexes in [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11], [12, 13, 14, 15]]:
-            self.layers.append([Matrix("MC", [self.vars[2][x] for x in indexes], [self.vars[3][x] for x in indexes], mat=mat, polynomial="0x1B", ID=ID + "_MC")])
+            self.layers.append([Matrix("aes_matrix", [self.vars[2][x] for x in indexes], [self.vars[3][x] for x in indexes], mat=mat, polynomial="0x1B", ID=ID + "_MC")])
 
         if subkey: # AddRoundKey Layer (only if subkey is provided)
             self.layers.append([XOR([self.vars[3][i], subkey[i]], [self.vars[4][i]], ID + "_AK") for i in range(16)])
@@ -70,13 +70,21 @@ class AESround(Operator): # Operator for the AES round
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
 
     def generate_model(self, model_type='sat'):
+        model_list = []
+        self.weight = []
         if model_type == 'sat' or model_type == 'milp':
-            model_list = []
             for i in range(len(self.layers)):
                 for j in range(len(self.layers[i])):
                     cons = self.layers[i][j]
                     cons.model_version = self.model_version.replace(self.__class__.__name__, cons.__class__.__name__)
-                    model_list += cons.generate_model(model_type)
+                    if "Sbox" in cons.__class__.__name__ and cons.model_version == cons.__class__.__name__+"_TRUNCATEDDIFF":
+                        cons.model_version += "_A"
+                    if cons.__class__.__name__ == "Matrix" and ["TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version]:
+                        model_list += cons.generate_model(model_type, branch_num=5)
+                    else:
+                        model_list += cons.generate_model(model_type)
+                    if hasattr(cons, 'weight'):
+                        self.weight += cons.weight
             return model_list
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")

@@ -1,3 +1,13 @@
+import ast
+import os
+import sys
+import time
+import re
+import platform
+from pathlib import Path
+import subprocess
+from tools.minimize_logic import ttb_to_ineq_logic
+from tools.polyhedron import ttb_to_ineq_convex_hull
 from itertools import combinations
 try:
     from pysat.card import CardEnc
@@ -417,7 +427,7 @@ def gen_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version=0):
                     f'{vin2} + {vout} - {vin1} >= 0',
                     f'{vin1} + {vout} - {vin2} >= 0',
                     f'{vin1} + {vin2} + {vout} <= 2',
-                    'Binary\n' + ' '.join([vin1, vin2, vout])]            
+                    'Binary\n' + ' '.join([vin1, vin2, vout])]
         elif version == 1:
             assert isinstance(v_dummy, str), "[WARNING] v_dummy must be provided as a string for XOR in MILP version 1."
             return [f'{vin1} + {vin2} + {vout} - 2 {v_dummy} >= 0',
@@ -530,7 +540,7 @@ def gen_matrix_constraints(vin, vout, model_type, v_dummy=None):
         return gen_nxor_constraints(vin, vout, model_type, v_dummy=v_dummy)
     else:
         raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
-    
+
 def gen_word_matrix_constraints(vin, vout, model_type, v_dummy=None):
     assert isinstance(vin, list), "Input variables should be provided as a list in word_matrix_constraints."
     assert isinstance(vout, str), "Output variable should be provided as a string in word_matrix_constraints."
@@ -545,3 +555,170 @@ def gen_word_matrix_constraints(vin, vout, model_type, v_dummy=None):
         return gen_word_nxor_constraints(vin, vout, model_type)
     else:
         raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
+
+
+# ---------------- Common utilities in SAT and MILP modeling ---------------- #
+def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_variables, output_variables, weight_variables=None, objective_fun=None, model_filename=None):
+    """
+    Generate template constraints/objective function and save them to self.model_filename.
+
+    Returns:
+        tuple[list[str], str]: (constraints, objective_fun)
+    """
+    variables = input_variables + output_variables + weight_variables if weight_variables else input_variables + output_variables
+    time_start = time.time()
+
+    if tool_type == "minimize_logic": # Generate inequalities from the truth table using Espresso via pyeda
+        backend_name = "espresso_pyeda"
+        try:
+            import pyeda
+            backend_version = getattr(pyeda, "__version__", "unknown")
+        except Exception:
+            backend_version = "unknown"
+        inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode, backend=backend_name)
+
+    elif tool_type == "minimize_logic_espresso": # Generate inequalities from the truth table using Espresso software
+        backend_name = "espresso"
+        espresso_path = Path.home() / "espresso-logic" / "bin" / "espresso" # Adjust this path to where espresso is installed on your system
+        if espresso_path is None:
+            raise FileNotFoundError("Cannot find 'espresso' in PATH.")
+        try:
+            result = subprocess.run([espresso_path, "-v"], capture_output=True, text=True, check=False)
+            version_text = (result.stdout + result.stderr).strip()
+            if version_text:
+                backend_version = version_text.splitlines()[0]
+        except Exception:
+            backend_version = "unknown"
+        inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode, backend=backend_name)
+
+    elif tool_type == "polyhedron": # Generate inequalities from the truth table using Convex Hull
+        backend_name = "convex_hull_cdd"
+        try:
+            import cdd
+            backend_version = getattr(cdd, "__version__", "unknown")
+        except Exception:
+            backend_version = "unknown"
+        inequalities = ttb_to_ineq_convex_hull(ttable, variables)
+    else:
+        raise ValueError(f"unknown tool type {tool_type}")
+    print("inequalities", inequalities, len(inequalities))
+
+    if model_type == 'milp': # Generate MILP constraints from inequalities
+        constraints = [inequality_to_constraint_milp(ineq, variables) for ineq in inequalities]
+        constraints.append('Binary\n' + ' '.join(variables))
+    elif model_type == 'sat':  # Generate SAT constraints from inequalities
+        constraints = [inequality_to_constraint_sat(ineq, variables) for ineq in inequalities]
+    else:
+        raise ValueError(f"unknown model type {model_type}")
+
+    time_used = time.time() - time_start
+    if model_filename is not None:
+        with open(model_filename, "w", encoding="utf-8") as file:
+            file.write(f"Input: {'||'.join(input_variables)}; msb: {input_variables[0]}\n")
+            file.write(f"Output: {'||'.join(output_variables)}; msb: {output_variables[0]}\n")
+            file.write(f"Time used to simplify the constraints: {time_used:.4f} s\n")
+            file.write(f"Number of constraints: {len(constraints)}\n")
+            file.write(f"Constraints: {constraints}\n")
+            if objective_fun:
+                file.write(f"Weight: {objective_fun}\n")
+            file.write(f"\n\nInformation\n")
+            file.write(f"Model type: {model_type}\n")
+            file.write(f"Tool type: {tool_type}\n")
+            file.write(f"Backend: {backend_name}\n")
+            file.write(f"Backend version: {backend_version}\n")
+            file.write(f"Mode: {mode}\n")
+            file.write(f"Python version: {sys.version.split()[0]}\n")
+            file.write(f"Platform: {platform.platform()}\n")
+
+def load_constraints_template(filename):
+    """
+    Load template constraints/objective function from file.
+
+    Returns:
+        tuple[list[str] | None, str | None]: (constraints, objective_fun)
+    """
+    constraints, objective_fun = None, None
+    if not os.path.exists(filename):
+        return None, None
+    with open(filename, "r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if line.startswith("Constraints:"):
+                constraints_str = line.split(":", 1)[1].strip()
+                try:
+                    constraints = ast.literal_eval(constraints_str)
+                except (SyntaxError, ValueError) as e:
+                    raise ValueError(f"Failed to parse constraints from {filename}: {constraints_str}") from e
+            elif line.startswith("Weight:"):
+                objective_fun = line.split(":", 1)[1].strip()
+    return constraints, objective_fun
+
+def gen_constraints_obj_func_from_template(filename, var_in, var_out, var_p=None):
+    """
+    Load template constraints/objective function from file, then instantiate them by replacing template variables:
+        a0, a1, ... -> var_in[i]
+        b0, b1, ... -> var_out[i]
+        p0, p1, ... -> var_p[i] (optional)
+
+    Returns:
+        tuple[list[str], str]: (mapped_constraints, mapped_objective_fun)
+    """
+    constraints, objective_fun = load_constraints_template(filename)
+
+    if constraints is None:
+        raise ValueError(f"Failed to load constraints or objective function from {filename}.")
+
+    def replace_vars(expr, prefix, repl_vars):
+        if repl_vars is None:
+            return expr
+        for i, var in enumerate(repl_vars):
+            expr = re.sub(rf"\b{prefix}{i}\b", str(var), expr)
+        return expr
+
+    mapped_constraints = []
+    for con in constraints:
+        con_map = con
+        con_map = replace_vars(con_map, "a", var_in)
+        con_map = replace_vars(con_map, "b", var_out)
+        con_map = replace_vars(con_map, "p", var_p)
+        mapped_constraints.append(con_map)
+
+    mapped_objective_fun = objective_fun
+    mapped_objective_fun = replace_vars(mapped_objective_fun, "p", var_p)
+
+    return mapped_constraints, mapped_objective_fun
+
+
+def inequality_to_constraint_sat(inequality, variables): # Convert an inequality (coefficients + RHS) into the constraint into SAT format.
+    """
+    Example:
+        inequality = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
+        Return: 'x1 -x2 -x4'
+    """
+    terms = []
+    for coeff, var in zip(inequality[:-1], variables):
+        if coeff == 1:
+            terms.append(f"{var}")
+        elif coeff == -1:
+            terms.append(f"-{var}")
+        # coeff == 0 → variable not used
+    return " ".join(terms).strip()
+
+
+def inequality_to_constraint_milp(inequality, variables): #  Convert an inequality (coefficients + RHS) into the constraint into MILP format.
+    """
+    Example:
+        ineq = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
+        Return: 'x1 - x2 - x4 >= -1'
+    """
+    terms = []
+    rhs = inequality[-1]
+    for coeff, var in zip(inequality[:-1], variables):
+        sign = '+' if coeff > 0 else '-'
+        abs_coeff = abs(coeff)
+        if abs_coeff == 1:
+            terms.append(f"{sign} {var}")
+        elif abs_coeff > 0:
+            terms.append(f"{sign} {abs_coeff} {var}")
+        # coeff == 0 → variable not used
+    return " ".join(terms).lstrip('+ ').strip() + f" >= {rhs}"

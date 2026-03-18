@@ -29,7 +29,7 @@ class AES_permutation(Permutation):
             for i in range(1,nbr_rounds+1):
                 S.SboxLayer("SB", i, 0, AES_Sbox) # Sbox layer
                 S.PermutationLayer("SR", i, 1, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
-                if i != full_rounds: S.MatrixLayer("MC", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
+                if i != full_rounds: S.MatrixLayer("aes_matrix", i, 2, [[2,3,1,1], [1,2,3,1], [1,1,2,3], [3,1,1,2]], [[0,1,2,3], [4,5,6,7], [8,9,10,11], [12,13,14,15]], "0x1B")  #Mixcolumns layer
                 else: S.AddIdentityLayer("ID", i, 2)     # Identity layer
                 S.AddConstantLayer("AC", i, 3, "xor", [True]*16, constant_table)  # Constant layer. The constants are derived from the Rcon table
 
@@ -139,7 +139,7 @@ class AES_block_cipher(Block_cipher):
                 S.SboxLayer("SB", i, 1, AES_Sbox) # Sbox layer
                 S.PermutationLayer("SR", i, 2, [0,5,10,15, 4,9,14,3, 8,13,2,7, 12,1,6,11]) # Shiftrows layer
                 if i != (nbr_rounds-1):
-                    S.MatrixLayer("MC", i, 3, matrix, matrix_index, "0x1B")  # Mixcolumns layer
+                    S.MatrixLayer("aes_matrix", i, 3, matrix, matrix_index, "0x1B")  # Mixcolumns layer
                 else: # In the final round, MixColumn is omitted
                     S.AddIdentityLayer("ID", i, 3) # Identity layer
             S.AddRoundKeyLayer("ARK", nbr_rounds, 0, XOR, SK, mask=[1 for i in range(16)])  # AddRoundKey layer

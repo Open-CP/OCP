@@ -1,9 +1,4 @@
-import sys
 import os
-from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1] # this file -> tools -> <ROOT>
-sys.path.insert(0, str(ROOT))
 
 import tools.model_constraints as model_constraints
 import tools.model_objective as model_objective

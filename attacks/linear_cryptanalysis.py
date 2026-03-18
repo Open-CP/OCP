@@ -1,9 +1,5 @@
-import sys
 from pathlib import Path
 from math import log2
-
-ROOT = Path(__file__).resolve().parents[1] # linear_cryptanalysis.py -> attacks -> <ROOT>
-sys.path.insert(0, str(ROOT))
 
 from attacks.trail import LinearTrail
 import tools.model_constraints as model_constraints
@@ -12,6 +8,7 @@ import tools.milp_search as milp_search
 import tools.sat_search as sat_search
 import visualisations.visualisations as vis
 
+ROOT = Path(__file__).resolve().parents[1] # linear_cryptanalysis.py -> attacks -> <ROOT>
 FILES_DIR = ROOT / "files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -104,7 +101,7 @@ def gen_fixed_input_output_constraints(in_out, fix_mask, cipher, config_model):
         mask = bin(int(s, 16))[2:].zfill(n)
     else:
         raise ValueError(f"[WARNING] Invalid fix_mask format: {fix_mask}. Expected binary (0b...) or hexadecimal (0x...) string.")
-    
+
     model_type = config_model.get("model_type", "milp").lower()
     constraints = []
     if cons_vars[0].bitsize == 1:
@@ -126,7 +123,7 @@ def gen_fixed_input_output_constraints(in_out, fix_mask, cipher, config_model):
                 elif mask[i] == '0':
                     constraints.append(f"-{cons_vars[i].ID}_{j}")
             elif model_type == "milp":
-                constraints.append(f"{cons_vars[i].ID}_{j} = {mask[i*cons_vars[i].bitsize+j]}")            
+                constraints.append(f"{cons_vars[i].ID}_{j} = {mask[i*cons_vars[i].bitsize+j]}")
                 constraints.append("Binary\n" + f"{cons_vars[i].ID}_{j}")
     return constraints
 

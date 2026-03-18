@@ -1,11 +1,9 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-import sys
 import json
 from datetime import datetime, timezone
-ROOT = Path(__file__).resolve().parent.parent # this file -> attacks -> <ROOT>
-sys.path.append(str(ROOT))
 
+ROOT = Path(__file__).resolve().parents[1] # this file -> attacks -> <ROOT>
 FILES_DIR = ROOT / "files"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -27,6 +25,8 @@ def bin_to_hex(bits): # Format bits as hex (with "-" for unknown nibbles).
             hex_digits.append(hex(int(chunk, 2))[2:])
     return "".join(hex_digits)
 
+# class Attack_Trace(ABC):
+    # pass
 
 # Class that represents a trail derived from the solution.
 class Trail(ABC):
@@ -56,8 +56,7 @@ class Trail(ABC):
             "type": str(self.type).upper(),
             "data": dict(self.data),
             "solution_trace": dict(self.solution_trace),
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "tool": "OCP",
+            "tool": "OCP1.0", # TO DO: Add more information, milp/sat, all libiary version, solver version, seeds, setting of solver, time generated, cpu, ram, num_cores used, etc.
             }
         with open(self.json_filename, "w") as f:
             json.dump(trail_dict, f, ensure_ascii=False, indent='\t')
