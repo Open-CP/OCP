@@ -4,8 +4,6 @@ import sys
 import time
 import re
 import platform
-from pathlib import Path
-import subprocess
 from tools.minimize_logic import ttb_to_ineq_logic
 from tools.polyhedron import ttb_to_ineq_convex_hull
 from itertools import combinations
@@ -568,46 +566,21 @@ def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_var
     variables = input_variables + output_variables + weight_variables if weight_variables else input_variables + output_variables
     time_start = time.time()
 
-    if tool_type == "minimize_logic": # Generate inequalities from the truth table using Espresso via pyeda
-        backend_name = "espresso_pyeda"
-        try:
-            import pyeda
-            backend_version = getattr(pyeda, "__version__", "unknown")
-        except Exception:
-            backend_version = "unknown"
-        inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode, backend=backend_name)
-
-    elif tool_type == "minimize_logic_espresso": # Generate inequalities from the truth table using Espresso software
-        backend_name = "espresso"
-        espresso_path = Path.home() / "espresso-logic" / "bin" / "espresso" # Adjust this path to where espresso is installed on your system
-        if espresso_path is None:
-            raise FileNotFoundError("Cannot find 'espresso' in PATH.")
-        try:
-            result = subprocess.run([espresso_path, "-v"], capture_output=True, text=True, check=False)
-            version_text = (result.stdout + result.stderr).strip()
-            if version_text:
-                backend_version = version_text.splitlines()[0]
-        except Exception:
-            backend_version = "unknown"
-        inequalities = ttb_to_ineq_logic(ttable, variables, mode=mode, backend=backend_name)
+    if tool_type == "minimize_logic" or tool_type == "minimize_logic_espresso":
+        inequalities, information = ttb_to_ineq_logic(ttable, variables, mode=mode, tool_type=tool_type)
 
     elif tool_type == "polyhedron": # Generate inequalities from the truth table using Convex Hull
-        backend_name = "convex_hull_cdd"
-        try:
-            import cdd
-            backend_version = getattr(cdd, "__version__", "unknown")
-        except Exception:
-            backend_version = "unknown"
-        inequalities = ttb_to_ineq_convex_hull(ttable, variables)
+        inequalities, information = ttb_to_ineq_convex_hull(ttable, variables)
     else:
         raise ValueError(f"unknown tool type {tool_type}")
-    print("inequalities", inequalities, len(inequalities))
 
     if model_type == 'milp': # Generate MILP constraints from inequalities
         constraints = [inequality_to_constraint_milp(ineq, variables) for ineq in inequalities]
+        num_cons = len(constraints)
         constraints.append('Binary\n' + ' '.join(variables))
     elif model_type == 'sat':  # Generate SAT constraints from inequalities
         constraints = [inequality_to_constraint_sat(ineq, variables) for ineq in inequalities]
+        num_cons = len(constraints)
     else:
         raise ValueError(f"unknown model type {model_type}")
 
@@ -617,16 +590,15 @@ def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_var
             file.write(f"Input: {'||'.join(input_variables)}; msb: {input_variables[0]}\n")
             file.write(f"Output: {'||'.join(output_variables)}; msb: {output_variables[0]}\n")
             file.write(f"Time used to simplify the constraints: {time_used:.4f} s\n")
-            file.write(f"Number of constraints: {len(constraints)}\n")
+            file.write(f"Number of constraints: {num_cons}\n")
             file.write(f"Constraints: {constraints}\n")
             if objective_fun:
                 file.write(f"Weight: {objective_fun}\n")
             file.write(f"\n\nInformation\n")
+            for key, value in information.items():
+                file.write(f"{key}: {value}\n")
             file.write(f"Model type: {model_type}\n")
             file.write(f"Tool type: {tool_type}\n")
-            file.write(f"Backend: {backend_name}\n")
-            file.write(f"Backend version: {backend_version}\n")
-            file.write(f"Mode: {mode}\n")
             file.write(f"Python version: {sys.version.split()[0]}\n")
             file.write(f"Platform: {platform.platform()}\n")
 

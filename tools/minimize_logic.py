@@ -1,11 +1,6 @@
 import subprocess
 from pathlib import Path
 
-try:
-    from pyeda.inter import espresso_tts
-except ImportError:
-    print("[WARNING] PyEDA is not installed, installing it by 'pip3 install pyeda', https://pyeda.readthedocs.io/en/latest/")
-
 ROOT = Path(__file__).resolve().parents[1] # this file -> tools -> <ROOT>
 FILES_DIR = ROOT / "files" / "sbox_modeling"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
@@ -45,7 +40,7 @@ def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list
     return coeffs + [rhs + 1]
 
 
-def ttb_to_ineq_logic(ttable, variables, mode=0, backend="espresso_pyeda", timeout=72000): # Convert a truth table to CNF or MILP constraints using the Espresso logic minimization tool via PyEDA.
+def ttb_to_ineq_logic(ttable, variables, mode=0, tool_type="espresso_pyeda", timeout=720000): # Convert a truth table to CNF or MILP constraints using the Espresso logic minimization tool via PyEDA.
     # Prepare truth table in PLA (Programmable Logic Array) format
     """
     Convert a truth table in PLA (Programmable Logic Array) format to inequalities using logic minimization.
@@ -92,15 +87,32 @@ def ttb_to_ineq_logic(ttable, variables, mode=0, backend="espresso_pyeda", timeo
     # Define espresso command-line options based on mode. Refer to Espresso documentation for details on these options.
     espresso_options =  [['-estrong', '-eonset'], [], ['-eonset']] # Espresso Script of Pyeda provides the parameters: "-e {fast,ness,nirr,nunwrap,onset,strong}"
 
-    if backend == "espresso_pyeda":
-        # Use PyEDA to call espresso internally
+    if tool_type == "minimize_logic": # Generate inequalities from the truth table using Espresso via pyeda
+        backend_name = "espresso_pyeda"
+        try:
+            import pyeda
+            backend_version = getattr(pyeda, "__version__", "unknown")
+        except Exception:
+            backend_version = "unknown"
+            print("[WARNING] Failed to import PyEDA. Please check whether PyEDA is installed correctly. Install it by 'pip3 install pyeda', refer tohttps://pyeda.readthedocs.io/en/latest/")
         espresso_command = ['espresso', *espresso_options[mode], pla_file]
-    elif backend == "espresso":
-        # Use external espresso software
+
+    elif tool_type == "minimize_logic_espresso": # Generate inequalities from the truth table using external Espresso software
+        backend_name = "espresso"
         espresso_path = Path.home() / "espresso-logic" / "bin" / "espresso" # Adjust this path to where espresso is installed on your system
         if espresso_path is None:
-            raise FileNotFoundError("Cannot find 'espresso' in PATH. Please install Espresso or switch backend='espresso_pyeda'.")
+            print("[WARNING] Cannot find 'espresso' in PATH. Please check whether the Espresso software is installed correctly.")
+        try:
+            result = subprocess.run([espresso_path, "-v"], capture_output=True, text=True, check=False)
+            version_text = (result.stdout + result.stderr).strip()
+            if version_text:
+                backend_version = version_text.splitlines()[0]
+        except Exception:
+            backend_version = "unknown"
         espresso_command = [espresso_path, *espresso_options[mode], pla_file]
+    else:
+        raise ValueError(f"unknown tool type {tool_type}")
+
     try:
         result = subprocess.run(espresso_command, capture_output=True, text=True, timeout=timeout)
         if result.returncode != 0:
@@ -116,4 +128,5 @@ def ttb_to_ineq_logic(ttable, variables, mode=0, backend="espresso_pyeda", timeo
 
     # Convert logic lines to target constraints
     inequalities = [espresso_pattern_to_ineq(p[:len(variables)]) for p in raw_patterns]
-    return inequalities
+    information = {"Backend": backend_name, "Backend version": backend_version, "Mode": espresso_options[mode]}
+    return inequalities, information

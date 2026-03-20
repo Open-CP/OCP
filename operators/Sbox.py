@@ -319,7 +319,7 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
             var_out += self.get_var_model("out", i)
 
         if self.filename_load and os.path.exists(self.model_filename):
-            model_list = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
+            model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
         else:
             if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_A"]:
                 ttable = self.star_ddt_to_truthtable()
@@ -329,7 +329,7 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
                  RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
             input_variables, output_variables = [f"a{i}" for i in range(len(var_in))], [f"b{i}" for i in range(len(var_out))]
             generate_and_save_constraints(model_type, tool_type, mode, ttable, input_variables, output_variables, model_filename=self.model_filename)
-            model_list = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
+            model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
 
         if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]: # to calculate the minimum number of active S-boxes
             var_At = [self.ID + '_At']

@@ -1,12 +1,7 @@
-import os
 import copy
 from fractions import Fraction
 from math import gcd
 from functools import reduce
-try:
-    import cdd
-except ImportError:
-    print("[WARNING] pycddlib is not installed, installing it by 'pip install pycddlib', https://pypi.org/project/pycddlib/")
 
 
 def cdd_ineq_to_coeff_rhs(ineq): # Convert a cddlib-style inequality of the form: [b, a1, a2, ..., an] to the coefficients [a1, a2, ..., an, -b], which represents 'a1*x1 + ... + an*xn >= -b'
@@ -94,4 +89,12 @@ def ttb_to_ineq_convex_hull(ttable, variables): # Convert a truth table to CNF o
         raw_ineqs.extend(cdd_eq_to_coeff_rhs(list(eq)))
     processed_ineqs = [normalize_inequality(ineq) for ineq in raw_ineqs]
     minmized_ineqs = minimize_constraints_greedy(processed_ineqs, variables, ttable)
-    return minmized_ineqs
+    try:
+        import cdd
+        backend_version = getattr(cdd, "__version__", "unknown")
+    except Exception:
+        backend_version = "unknown"
+        print("[WARNING] Failed to import cdd. Please check whether pycddlib is installed correctly. Install it by 'pip install pycddlib', refer to https://pypi.org/project/pycddlib/")
+
+    information = {"Backend": "convex_hull_cdd", "Backend version": backend_version}
+    return minmized_ineqs, information
