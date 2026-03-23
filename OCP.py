@@ -12,7 +12,7 @@ For examples of other ciphers, refer to the following folders:
 
 from pathlib import Path
 
-from kiwisolver import Variable
+#from kiwisolver import Variable
 import implementations.implementations as imp
 import visualisations.visualisations as vis
 import attacks.attacks as attacks
@@ -145,9 +145,11 @@ if __name__ == "__main__":
     test_all_implementations(cipher)
     cipher = aes.AES_BLOCKCIPHER(version=[128,256])
     test_all_implementations(cipher)
+    
     import primitives.skinny as skinny
     cipher = skinny.SKINNY_BLOCKCIPHER(version=[64,64])
     test_all_implementations(cipher)
+    
     cipher = skinny.SKINNY_BLOCKCIPHER(version=[128, 128])
     test_all_implementations(cipher)
     cipher = skinny.SKINNY_BLOCKCIPHER(version=[64,128])
@@ -158,6 +160,7 @@ if __name__ == "__main__":
     test_all_implementations(cipher)
     cipher = skinny.SKINNY_BLOCKCIPHER(version=[128,384])
     test_all_implementations(cipher)
+    
     import primitives.led as led
     cipher = led.LED_BLOCKCIPHER(version=[64,64])
     test_all_implementations(cipher)

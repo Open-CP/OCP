@@ -1,4 +1,4 @@
-from implementations.t_table.initializer import generate_ttable
+from implementations.t_table.helper import generate_ttable
 
 class TTable:
     def __init__(self, mc, sbox,table_name, word_size, poly):
@@ -37,10 +37,8 @@ class TTable:
         #if it is cont hte input_var is a list of integers 
         #input either is string or integer
         if implementation_type == 'python': 
-            
             name = self.table_name
-            a = "int("+'^'.join([ name+f"[{i}]"+"["+input_vars[i]+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')"
-            
+            a = "int("+'^'.join([ name+f"[{i}]"+"["+"^".join(input_vars[i])+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')"
             b="[" + ",".join([output_vars[i].ID for i in range(len(output_vars))]) +"]"
             rhs = f" = [a^b for a,b in zip({a},{b})]"
             lhs = b

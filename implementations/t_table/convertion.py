@@ -29,7 +29,7 @@ delelte : 1
 ttable : 2 
 
 """
-from implementations.t_table.initializer import flatten, permute, transpose 
+from implementations.t_table.helper import flatten, permute, transpose 
 from primitives.primitives import Layered_Function
 import operators.operators as op
 from operators.boolean_operators import ConstantXOR, XOR
@@ -40,6 +40,9 @@ from implementations.t_table.implementation import TTable
 DELETE = 1 
 TTABLE = 2 
 class TTable_Conversion:
+    #these layers pairwise commutative(under composition) and the functions are additive
+    #additional we know only commutative if all same operator(i.e. (equal and ^ only) or (equal and & only))
+    COMMUTATIVE_LAYERS = ["ConstantXor", "AddRoundKey"] 
     def __init__(self, layer: Layered_Function):
         self.layer = layer 
         con = self.layer.constraints
@@ -110,7 +113,7 @@ class TTable_Conversion:
                 tmp_in.append(input_vars[in_idx[r*n + c]])
                 tmp_out.append(output_vars[out_idx[r*n + c]])
             self.con_list[round][layer][r] = obj.generate_implementation(tmp_in, tmp_out)
-    def xor_conversion(self, output_vars, input_vars, in_idx, out_idx, have_sbox, round, layer):
+    def xor_conversion(self, output_vars, input_variables, in_idx, out_idx, have_sbox, round, layer):
         #my_constant=hex(self.table[self.table_r-1][self.table_i])
         #if constant the generaterimpleentent taio is hex of hte table
         #other wise 
@@ -121,7 +124,7 @@ class TTable_Conversion:
         for r in range(n):
             tmp_in,tmp_out = [],[]
             for c in range(n):
-                tmp_in.append(input_vars[in_idx[r*n + c]])
+                tmp_in.append([input_variables[o][in_idx[o][r*n + c]] for o in range(len(input_variables))]  )
                 tmp_out.append(output_vars[out_idx[r*n + c]])
             self.con_list[round][layer][r] = obj.generate_implementation_xor(tmp_in, tmp_out)
                 
@@ -137,23 +140,6 @@ class TTable_Conversion:
             self.states[rd][lyr][c] = status[c]
              
     def convert_round(self, round):
-        """
-        Docstring for convert_round
-        
-        :param self: Description
-        :param round: The round i want to convert 
-        
-        for now just assume each appears only once 
-        wnat to squeeze perm sbox matrix -> ttablelayer
-
-        will delete sbox, perm,
-        replace matrix layer 
-
-        mutsl also determine how many ttable must ge gneerateraed 
-        will create a ttable layer here 
-        but will throw its own con list
-        so have a contlist here as well 
-        """
         layer_names = [self.getLayerName(round, lyr) for lyr in range(self.layer.nbr_layers)] 
         if "Matrix" in layer_names:
             midx = layer_names.index("Matrix")
@@ -193,28 +179,38 @@ class TTable_Conversion:
                     input_vars = self.sort_vars(flatten(con.input_vars for con in self.layer.constraints[round][sidx]))
                     output_vars = self.sort_vars(flatten(con.output_vars for con in self.layer.constraints[round][midx]))
                     self.matrix_ttable_conversion(output_vars, input_vars, idxs,oidx,sbox_case,round, sidx)
-                #for those cases that will not need sbox help
+                input_variables = []
+                input_idxs = []
+                output_vars = self.sort_vars(flatten(con.output_vars for con in self.layer.constraints[round][midx]))
+                chosen_layer = -1
                 for lyr in range(sidx+1, midx):
-                    if lyr==pidx:continue 
                     name = self.getLayerName(round, lyr)
-                    if name == "ConstantXor" or name == "AddRoundKey":
-                        #the input should be all strings  
-                        self.set_layer(round, lyr, [TTABLE]*4 + [DELETE]*12)
+                    if name in self.COMMUTATIVE_LAYERS:  #linearity here assumed 
+                        chosen_layer = lyr
+                        #the input should be all strings
+                        self.set_layer(round, lyr, [DELETE]*16)
                         cons = [con for con in self.layer.constraints[round][lyr]]
+                        input_vars = []
                         if name=="ConstantXor":
-                            input_vars = []
                             for c in cons:
                                 if type(c) is ConstantXOR: input_vars.append(hex(c.table[c.table_r-1][c.table_i]))
                                 elif type(c) is op.Equal: input_vars.append(hex(0))
-                        else:
-                            input_vars = []
+                        elif name=="AddRoundKey":
                             for c in cons:
-                                if type(c) is XOR: input_vars.append(c.get_var_ID("in", 1, True))#onlhy the sk varaibel 
+                                if type(c) is XOR: input_vars.append(c.get_var_ID("in", 1, True))
                                 elif type(c) is op.Equal: input_vars.append(hex(0))
-                        output_vars = self.sort_vars(flatten(con.output_vars for con in self.layer.constraints[round][midx]))
-                        self.xor_conversion(output_vars, input_vars, idxs, oidx,False,round,lyr)
-                    else: continue     
-
+                        else:
+                            raise Exception(f"{name} Layer is not supported for TTable conversion yet")
+                        input_variables.append(input_vars)
+                        input_idxs.append(idxs.copy())
+                    else:
+                        if name=="Permutation": idxs = mc_idx.copy()
+                        else:
+                            raise Exception(f"{name} Layer is not supported for TTAble conversion yet")
+                if chosen_layer!=-1:
+                    self.set_layer(round, chosen_layer, [TTABLE]*4 + [DELETE]*12)
+                    self.xor_conversion(output_vars, input_variables, input_idxs, oidx,False,round,chosen_layer)
+                
     def generate_headers(self, language="python"):
         word_size = self.layer.word_bitsize
         rtn = [] 
