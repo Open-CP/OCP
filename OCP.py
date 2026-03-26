@@ -136,12 +136,9 @@ if __name__ == "__main__":
     # cipher = speck.SPECK_PERMUTATION(version=32)
     # cipher = speck.SPECK_BLOCKCIPHER(version=[32,64])
 
-    import primitives.simon as simon
-    cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
-     
+    import primitives.midori as midori
+    cipher = midori.MIDORI_BLOCKCIPHER(version=[128,128])
     test_all_implementations(cipher)
-    test_visualisation(cipher)
-    test_diff_attack_milp(cipher)
-    test_diff_attack_sat(cipher)
-    test_linear_attack_milp(cipher)
-    test_linear_attack_sat(cipher)
+    cipher = midori.MIDORI_BLOCKCIPHER(version=[64,128])
+    test_all_implementations(cipher)
+    
