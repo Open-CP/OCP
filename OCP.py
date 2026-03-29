@@ -138,7 +138,7 @@ def test_linear_attack_sat(cipher):
 
 if __name__ == "__main__":
     import primitives.aes as aes
-    """
+    
     cipher = aes.AES_BLOCKCIPHER(version=[128,128])
     test_all_implementations(cipher)
     cipher = aes.AES_BLOCKCIPHER(version=[128,192])
@@ -160,21 +160,15 @@ if __name__ == "__main__":
     test_all_implementations(cipher)
     cipher = skinny.SKINNY_BLOCKCIPHER(version=[128,384])
     test_all_implementations(cipher)
-    
+
     import primitives.led as led
     cipher = led.LED_BLOCKCIPHER(version=[64,64])
     test_all_implementations(cipher)
     cipher = led.LED_BLOCKCIPHER(version=[64,128])
     test_all_implementations(cipher)
-    """
     
-    # import primitives.speck as speck
-    # cipher = speck.SPECK_PERMUTATION(version=32)
-    # cipher = speck.SPECK_BLOCKCIPHER(version=[32,64])
-
     import primitives.midori as midori
     cipher = midori.MIDORI_BLOCKCIPHER(version=[128,128])
     test_all_implementations(cipher)
     cipher = midori.MIDORI_BLOCKCIPHER(version=[64,128])
     test_all_implementations(cipher)
-    

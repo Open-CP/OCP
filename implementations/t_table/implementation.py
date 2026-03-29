@@ -24,21 +24,19 @@ class TTable:
                 else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
         else: return None 
     
-    def generate_implementation(self, input_vars, output_vars, implementation_type='python', unroll=True):
+    def generate_implementation(self, input_vars, output_vars,name_list, implementation_type='python', unroll=True):
         if implementation_type == 'python': 
-            name = self.table_name
-            return '[' + ','.join([output_vars[i].ID for i in range(len(output_vars))]) + "] = " + "int("+'^'.join([ name+f"[{i}]"+"["+input_vars[i].ID+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')" 
+            return '[' + ','.join([output_vars[i].ID for i in range(len(output_vars))]) + "] = " + "int("+'^'.join([ name_list[i]+f"[{i}]"+"["+input_vars[i].ID+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')" 
         elif implementation_type == 'c': 
             raise Exception(str(self.__class__.__name__) + ": NOT SUPPORTED YET LATER DO '" + implementation_type + "'")
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
 
-    def generate_implementation_xor(self, input_vars, output_vars, implementation_type='python', unroll=True):
+    def generate_implementation_xor(self, input_vars, output_vars,name_list, implementation_type='python', unroll=True):
         #will ^= the out put varaibels 
         #if it is cont hte input_var is a list of integers 
         #input either is string or integer
         if implementation_type == 'python': 
-            name = self.table_name
-            a = "int("+'^'.join([ name+f"[{i}]"+"["+"^".join(input_vars[i])+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')"
+            a = "int("+'^'.join([ name_list[i]+f"[{i}]"+"["+"^".join(input_vars[i])+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')"
             b="[" + ",".join([output_vars[i].ID for i in range(len(output_vars))]) +"]"
             rhs = f" = [a^b for a,b in zip({a},{b})]"
             lhs = b
