@@ -1,0 +1,15 @@
+Input: a0||a1||a2||a3; msb: a0
+Output: b0||b1||b2||b3; msb: b0
+Time used to simplify the constraints: 0.0068 s
+Number of constraints: 11
+Constraints: ['a2 b1 -b3', 'a2 -b1 b3', '-a2 b1 b3', '-a3 b0 b3', 'a3 -b0 b3', 'a3 b0 -b3', 'a1 -a2 b2', '-a1 a2 b2', 'a1 a2 -b2', 'a0 -b1', '-a0 b1']
+
+
+Information
+Backend: espresso
+Backend version: UC Berkeley, Espresso Version #2.3, Release date 01/31/88
+Mode: ['-estrong', '-eonset']
+Model type: sat
+Tool type: minimize_logic_espresso
+Python version: 3.8.20
+Platform: Linux-6.14.0-37-generic-x86_64-with-glibc2.17

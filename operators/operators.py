@@ -47,13 +47,13 @@ class Operator(ABC):
         return self.__class__.__name__
 
     # obtain the ID of the variable located at "index" of input or output (in_out) for that operator. Compresses the ID if unroll is False
-    def get_var_ID(self, in_out, index, unroll=False):    
+    def get_var_ID(self, in_out, index, unroll=False):
         if in_out == 'out':
             return self.output_vars[index].ID if unroll else self.output_vars[index].remove_round_from_ID()
         elif in_out == 'in':
             return self.input_vars[index].ID if unroll else self.input_vars[index].remove_round_from_ID()
         else:
-            raise Exception(str(self.__class__.__name__) + ": unknown in_out type '" + in_out + "'")    
+            raise Exception(str(self.__class__.__name__) + ": unknown in_out type '" + in_out + "'")
 
     def get_header_ID(self):
         return [self.__class__.__name__, self.model_version]
@@ -65,7 +65,7 @@ class Operator(ABC):
     def get_var_model(self, in_out, index, bitwise=True, dim=1):
         var = self.input_vars[index] if in_out == 'in' else self.output_vars[index]
         if bitwise and var.bitsize > 1:
-            return [f"{var.ID}_{i}_{j}" for i in range(var.bitsize) for j in range(dim)] if dim > 1 else [f"{var.ID}_{i}" for i in range(var.bitsize)]  
+            return [f"{var.ID}_{i}_{j}" for i in range(var.bitsize) for j in range(dim)] if dim > 1 else [f"{var.ID}_{i}" for i in range(var.bitsize)]
         else:
             return [f"{var.ID}_{j}" for j in range(dim)] if dim > 1 else [f"{var.ID}"]
 
@@ -172,13 +172,13 @@ class CopyOperator(Operator):  # Operator that duplicates one input into multipl
                 if len(var_out) == 2: # Two outputs: out1, out2 = in
                     for i in range(self.input_vars[0].bitsize):
                         model_list.extend(gen_xor_constraints(var_in[i], var_out[0][i], var_out[1][i], model_type))
-                elif len(var_out) >= 3: # n outputs: out1, out2, ..., outn = in   
+                elif len(var_out) >= 3: # n outputs: out1, out2, ..., outn = in
                     for i in range(self.input_vars[0].bitsize):
                         if model_type == 'milp':
                             v_dummy = f"{self.ID}_d_{i}"
                         else:
                             v_dummy = None
-                        model_list.extend(gen_nxor_constraints([var_out[j][i] for j in range(len(var_out))], var_in[i], model_type=model_type, v_dummy=v_dummy)) 
+                        model_list.extend(gen_nxor_constraints([var_out[j][i] for j in range(len(var_out))], var_in[i], model_type=model_type, v_dummy=v_dummy))
                 return model_list
             # Modeling for truncated linear cryptanalysis
             elif len(self.output_vars) == 2 and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":

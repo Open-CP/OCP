@@ -4,6 +4,11 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1] # this file -> tools -> <ROOT>
 FILES_DIR = ROOT / "files" / "sbox_modeling"
 FILES_DIR.mkdir(parents=True, exist_ok=True)
+try:
+    import pyeda
+except ImportError:
+    print("[WARNING] Failed to import PyEDA. Please check whether PyEDA is installed correctly. Install it by 'pip3 install pyeda', refer to https://pyeda.readthedocs.io/en/latest/")
+
 
 def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list of integer coefficients representing a linear inequality of the form: sum_i (coeff_i * x_i) >= rhs
     """
@@ -90,11 +95,9 @@ def ttb_to_ineq_logic(ttable, variables, mode=0, tool_type="espresso_pyeda", tim
     if tool_type == "minimize_logic": # Generate inequalities from the truth table using Espresso via pyeda
         backend_name = "espresso_pyeda"
         try:
-            import pyeda
             backend_version = getattr(pyeda, "__version__", "unknown")
         except Exception:
             backend_version = "unknown"
-            print("[WARNING] Failed to import PyEDA. Please check whether PyEDA is installed correctly. Install it by 'pip3 install pyeda', refer tohttps://pyeda.readthedocs.io/en/latest/")
         espresso_command = ['espresso', *espresso_options[mode], pla_file]
 
     elif tool_type == "minimize_logic_espresso": # Generate inequalities from the truth table using external Espresso software

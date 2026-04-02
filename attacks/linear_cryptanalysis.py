@@ -1,7 +1,7 @@
 from pathlib import Path
 from math import log2
 
-from attacks.trail import LinearTrail
+from attacks.attack_trace import LinearTrail
 import tools.model_constraints as model_constraints
 import tools.model_objective as model_objective
 import tools.milp_search as milp_search
@@ -40,14 +40,14 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
 
     if config_model["model_type"] == "milp":
         # Set the model "filename".
-        config_model["filename"] = str(FILES_DIR / f"{cipher.name}_{goal}_{objective_target}_{config_solver['solver']}_model.lp")
+        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_milp_model.lp")
 
     elif config_model["model_type"] == "sat":
         # Set the model "filename".
-        config_model["filename"] = str(FILES_DIR / f"{cipher.name}_{goal}_{objective_target}_{config_solver['solver']}_model.cnf")
+        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_sat_model.cnf")
 
     # Set solution_number to a large value if not defined when searching for linear hull
-    if goal == "LINEARHULL_CORRE":
+    if goal == "LINEARHULL_CORR":
         config_solver.setdefault("solution_number", 1000000)
 
     return config_model, config_solver
@@ -129,7 +129,7 @@ def gen_fixed_input_output_constraints(in_out, fix_mask, cipher, config_model):
 
 
 # ------------------------ Linear Trail Search -------------------------
-def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model=None, config_solver=None):
+def search_linear_trail(cipher, goal="LINEARPATH_CORR", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model=None, config_solver=None):
     """
     Perform linear attacks on a given cipher using the specified model_type.
 
@@ -137,8 +137,8 @@ def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT
         cipher (Cipher): The cipher object to analyze.
         goal (str): The specific cryptanalysis goal: GOAL or GOAL_OPERATOR_NUMBER
             - LINEAR_SBOXCOUNT
-            - LINEARPATH_CORRE
-            - LINEARHULL_CORRE
+            - LINEARPATH_CORR
+            - LINEARHULL_CORR
             - TRUNCATEDLINEAR_SBOXCOUNT
         constraints (list of string): User-specified constraints to be added to the model.
             - ['INPUT_NOT_ZERO']: Automatically add input non-zero constraints as required by the goal.
@@ -157,7 +157,7 @@ def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT
     Returns: A list of linear trail objects.
     """
 
-    assert any(goal.startswith(prefix) for prefix in ["LINEAR_SBOXCOUNT", "LINEARPATH_CORRE", "LINEARHULL_CORRE", "TRUNCATEDLINEAR_SBOXCOUNT"]), f"Invalid goal: {goal}. Expected one of ['LINEAR_SBOXCOUNT', 'LINEARPATH_CORRE', 'LINEARHULL_CORRE', 'TRUNCATEDLINEAR_SBOXCOUNT']"
+    assert any(goal.startswith(prefix) for prefix in ["LINEAR_SBOXCOUNT", "LINEARPATH_CORR", "LINEARHULL_CORR", "TRUNCATEDLINEAR_SBOXCOUNT"]), f"Invalid goal: {goal}. Expected one of ['LINEAR_SBOXCOUNT', 'LINEARPATH_CORR', 'LINEARHULL_CORR', 'TRUNCATEDLINEAR_SBOXCOUNT']"
     assert isinstance(constraints, list), f"Invalid constraints: {constraints}. Expected a list of strings."
     assert any(objective_target.startswith(prefix) for prefix in ['OPTIMAL', 'AT MOST', 'EXACTLY', 'AT LEAST', 'EXISTENCE']), f"Invalid objective_target: {objective_target}. Expected one of ['OPTIMAL', 'AT MOST X', 'EXACTLY X', 'AT LEAST X']"
     assert show_mode in [0, 1, 2, 3], f"Invalid show_mode: {show_mode}. Expected one of [0, 1, 2]"
@@ -184,13 +184,15 @@ def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT
     model_cons += round_constraints
 
     # For the goal of searching for linear hulls, fix the input and output masks
-    if goal == "LINEARHULL_CORRE":
+    if goal == "LINEARHULL_CORR":
         input_mask = config_model.get("input_mask", None)
         output_mask = config_model.get("output_mask", None)
-        if input_mask == None or output_mask == None:
-            raise ValueError("For goal='LINEARHULL_CORRE', both input_mask and output_mask must be specified in config_model.")
-        model_cons += gen_fixed_input_output_constraints("input", input_mask, cipher, config_model)
-        model_cons += gen_fixed_input_output_constraints("output", output_mask, cipher, config_model)
+        if input_mask == None and output_mask == None:
+            raise ValueError("For goal='LINEARHULL_CORR', either input_mask or output_mask must be specified in config_model.")
+        if input_mask is not None:
+            model_cons += gen_fixed_input_output_constraints("input", input_mask, cipher, config_model)
+        if output_mask is not None:
+            model_cons += gen_fixed_input_output_constraints("output", output_mask, cipher, config_model)
 
 
     # Step 4: Modeling and Solving.
@@ -198,11 +200,11 @@ def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT
         solutions = milp_search.modeling_solving_milp(objective_target, model_cons, obj_fun, config_model, config_solver)
 
     elif model_type == "sat":
-        if goal in ["LINEARPATH_CORRE", "LINEAR_CORRE"] and model_objective.has_Sbox_with_decimal_weights(cipher, goal):
+        if goal in ["LINEARPATH_CORR", "LINEAR_CORR"] and model_objective.has_Sbox_with_decimal_weights(cipher, goal):
             config_model["decimal_objective_function"] = {}
             Sbox = model_objective.detect_Sbox(cipher)
             config_model["decimal_objective_function"]["Sbox"] = Sbox
-            if goal in {'LINEARPATH_CORRE', 'LINEAR_CORRE'}:
+            if goal in {'LINEARPATH_CORR', 'LINEAR_CORR'}:
                 config_model["decimal_objective_function"]["table"] = Sbox.computeDDT()
 
         solutions = sat_search.modeling_solving_sat(objective_target, model_cons, obj_fun, config_model, config_solver)
@@ -212,13 +214,13 @@ def search_linear_trail(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT
 
     # Step 5: Extract and Visualize Trails from Solutions.
     if isinstance(solutions, list):
-        return extract_and_format_linear_trails(cipher, goal, config_model, show_mode, solutions)
+        return extract_and_format_linear_trails(cipher, goal, config_model, config_solver, show_mode, solutions)
 
     raise ValueError("[WARNING] No valid solutions found.")
 
 
 # -------------------- Trail Extraction and Visualization --------------------
-def extract_and_format_linear_trails(cipher, goal, config_model, show_mode, solutions):
+def extract_and_format_linear_trails(cipher, goal, config_model, config_solver, show_mode, solutions):
     trails = []
     trail_structs = []
     pr = 0
@@ -227,17 +229,24 @@ def extract_and_format_linear_trails(cipher, goal, config_model, show_mode, solu
         if trail_struct in trail_structs:
             continue
         trail_structs.append(trail_struct)
-        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_struct": trail_struct, "linear_weight": sol.get("obj_fun_value"), "rounds_linear_weight": sol.get("rounds_obj_fun_values")}
+        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}",
+                "functions": config_model["functions"],
+                "rounds": config_model["rounds"],
+                "config_model": config_model,
+                "config_solver": config_solver,
+                "trail_struct": trail_struct,
+                "linear_weight": sol.get("obj_fun_value"),
+                "rounds_linear_weight": sol.get("rounds_obj_fun_values")}
         trail = LinearTrail(data, solution_trace=sol)
         if i > 0:
             print(f"[INFO] Saving the {i+1}-th Trail.")
             trail.json_filename = trail.json_filename.replace(".json", f"_{i}.json") if trail.json_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.json")
             trail.txt_filename = trail.txt_filename.replace(".txt", f"_{i}.txt") if trail.txt_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.txt")
         trail.save_json()
-        trail.save_trail_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
+        trail.save_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
         trails.append(trail)
         pr += 2 ** ( - trail.data['linear_weight'] ) if trail.data['linear_weight'] is not None else 0
-    if solutions and goal == "LINEARHULL_CORRE":
+    if solutions and goal == "LINEARHULL_CORR":
         print(f"[INFO] Total correlation of all found trails: 2^{log2(pr) if pr > 0 else 'undefined'}")
     return trails
 
@@ -287,6 +296,7 @@ def extract_trail_structures(cipher, goal, solution):
     # ------------------------------ Functions / Rounds / Layers ------------------------------
     for fun in cipher.functions:
         fun_store = {
+        "rounds": list(range(1, cipher.functions[fun].nbr_rounds + 1)),
         "nbr_words": cipher.functions[fun].nbr_words if hasattr(cipher.functions[fun], "nbr_words") else None,
         "nbr_temp_words": cipher.functions[fun].nbr_temp_words if hasattr(cipher.functions[fun], "nbr_temp_words") else None
         }

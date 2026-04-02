@@ -191,7 +191,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         super().__init__(input_vars, output_vars, ID = ID)
         self.name = name
         self.mat = mat
-        self.polynomial = polynomial
+        self.polynomial = polynomial # For AES, polynomial = 0x1b, degree = 8. For SKINNY, polynomial = None, degree = None (i.e. binary matrix over GF(2))
 
     def inverse_over_gf2m(self):
         """
@@ -597,29 +597,25 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
 
         # Modeling for truncated differential / linear cryptanalysis
         elif model_type in ['sat', 'milp'] and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1", self.__class__.__name__ + "_TRUNCATEDDIFF_2", self.__class__.__name__ + "_TRUNCATEDLINEAR_2"]:
-            if branch_num is not None:
-                return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
-            else: # TO DO: Branch number computation is not implemented yet.
-                # if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
-                    # branch_num =self.differential_branch_number()
-                # elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
-                    # branch_num =self.linear_branch_number()
-                print("[WARNING] Please provide branch number as its calculation is not implemented yet.")
+            if model_type in ['milp'] and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
+                if branch_num is not None: # If the branch number is provided, generate the MILP model for describing the branch number property
+                    return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
+                # else: # TO DO: Branch number computation is not implemented yet.
+                    # if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
+                        # branch_num =self.differential_branch_number()
+                    # elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
+                        # branch_num =self.linear_branch_number()
+                    # return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
                 self.model_version = self.__class__.__name__ + "_TRUNCATEDDIFF_2"
-            elif  self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
+                print(f"[WARNING] The {model_type} model for differential branch number = {branch_num} is not implemented. Turn to model_version " + self.model_version)
+            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
                 self.model_version = self.__class__.__name__ + "_TRUNCATEDLINEAR_2"
-            print("[WARNING] Turn to model_version " + self.model_version)
-            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_2", self.__class__.__name__ + "_TRUNCATEDLINEAR_2"]:
-                self.model_filename = str(BASE_PATH / f"constraints_{model_type}_{self.name}_{self.model_version}_{tool_type}.txt")
-                self.filename_load = filename_load
-                return self._generate_model_truncated_diff_linear_valid_patterns(model_type, tool_type)
-
-        # Modeling for truncated differential / linear cryptanalysis
-        elif model_type in ['sat', 'milp'] and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_3", self.__class__.__name__ + "_TRUNCATEDDIFF_4", self.__class__.__name__ + "_TRUNCATEDLINEAR_3", self.__class__.__name__ + "_TRUNCATEDLINEAR_4"]:
+                print(f"[WARNING] The {model_type} model for linear branch number = {branch_num} is not implemented. Turn to model_version " + self.model_version)
+            # Generate the model for describing all valid input/output patterns.
             self.model_filename = str(BASE_PATH / f"constraints_{model_type}_{self.name}_{self.model_version}_{tool_type}.txt")
             self.filename_load = filename_load
-            return self._generate_model_truncated_diff_linear_zero_star_patterns(model_type, tool_type)
+            return self._generate_model_truncated_diff_linear_valid_patterns(model_type, tool_type)
 
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'" + self.model_version)
@@ -748,53 +744,6 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             for j in range(2**output_words):
                 y = tuple('*' if b == '1' else 0 for b in format(j, f"0{output_words}b"))
                 pattern = (x, y)
-                if pattern in patterns:
-                    ttable += "1"
-                else: ttable += "0"
-
-        input_variables, output_variables = [f"a{i}" for i in range(len(var_in))], [f"b{i}" for i in range(len(var_out))]
-        generate_and_save_constraints(model_type, tool_type, 0, ttable, input_variables, output_variables, model_filename=self.model_filename)
-        model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
-        return model_list
-
-    def _generate_model_truncated_diff_linear_zero_star_patterns(self, model_type, tool_type):
-        print("_generate_model_truncated_diff_linear_zero_star_patterns", self.model_version)
-        input_words = len(self.input_vars)
-        output_words = len(self.output_vars)
-        var_in = []
-        for i in range(input_words):
-            var_in += self.get_var_model('in', i, bitwise=False, dim=1)
-        var_out = []
-        for i in range(output_words):
-            var_out += self.get_var_model('out', i, bitwise=False, dim=1)
-
-        if self.filename_load and os.path.exists(self.model_filename):
-            model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
-            return model_list
-
-        if self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_3":
-            patterns = self.zero_star_io_patterns()
-        elif self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF_4":
-            patterns = self.zero_star_patterns_from_output_via_inverse()
-        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR_3", self.__class__.__name__ + "_TRUNCATEDLINEAR_4"]:
-            mat = copy.deepcopy(self.mat)
-            mat_trans = np.transpose(self.mat)
-            self.mat = mat_trans
-            if self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR_3":
-                patterns = self.zero_star_io_patterns()
-            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR_4":
-                patterns = self.zero_star_patterns_from_output_via_inverse()
-            self.mat = mat
-        else:
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        print("patterns", patterns)
-
-        ttable = ""
-        for i in range(2**input_words):
-            x = tuple('*' if b == '1' else 0 for b in format(i, f"0{input_words}b"))
-            for j in range(2**output_words):
-                y = tuple('*' if b == '1' else 0 for b in format(j, f"0{output_words}b"))
-                pattern = x + y
                 if pattern in patterns:
                     ttable += "1"
                 else: ttable += "0"

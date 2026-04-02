@@ -215,7 +215,7 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                     if model_type == 'milp' and version in [0]:
                         d = self.ID + '_d_' + str(i)
                     elif model_type == 'milp' and version in [1]:
-                        d = [f"{self.ID}_d_{i}_{j}" for j in range(int((len(self.input_vars)+1)/2))]                
+                        d = [f"{self.ID}_d_{i}_{j}" for j in range(int((len(self.input_vars)+1)/2))]
                     else:
                         d = None
                     model_list.extend(gen_nxor_constraints(var_in[i], var_out[i], model_type, v_dummy=d, version=version))

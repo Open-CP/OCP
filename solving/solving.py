@@ -3,6 +3,8 @@ This module provides tools for solving MILP/SAT models. Supports multiple solver
     - MILP solvers: Gurobi, SCIP, OR-Tools
     - SAT solvers: PySAT, OR-Tools
 """
+from tools.resource_monitor import RuntimeResourceMonitor
+import time
 
 try: # Solve MILP model using Gurobi solver
     import gurobipy as gp
@@ -56,12 +58,19 @@ def solve_milp(filename, config_solver=None):
     config_solver = config_solver or {}
     solver = config_solver.get("solver", "DEFAULT")
     print(f"[INFO] Solving MILP model with settings: {config_solver}")
-    if solver.upper() in ["GUROBI", "DEFAULT"]:
-        return solve_milp_gurobi(filename, config_solver)
-    elif solver.upper() == "SCIP":
-        return solve_milp_scip(filename, config_solver)
-    raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: 'GUROBI' (DEFAULT), 'SCIP'.")
-
+    monitor = RuntimeResourceMonitor(interval=0.2)
+    monitor.start()
+    time_start = time.time()
+    try:
+        if solver.upper() in ["GUROBI", "DEFAULT"]:
+            return solve_milp_gurobi(filename, config_solver)
+        elif solver.upper() == "SCIP":
+            return solve_milp_scip(filename, config_solver)
+        else:
+            raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: 'GUROBI' (DEFAULT), 'SCIP'.")
+    finally:
+        config_solver["resource_usage"] = monitor.stop()
+        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
 
 def solve_milp_gurobi(filename, config_solver): # Solve a MILP model using Gurobi.
     if gurobipy_import == False:
@@ -166,12 +175,19 @@ def solve_sat(filename, variable_map, config_solver=None):
     config_solver = config_solver or {}
     solver = config_solver.get("solver", "DEFAULT")
     print(f"[INFO] Solving SAT model with settings: {config_solver}")
-    if solver in ["DEFAULT", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
-        return solve_sat_pysat(filename, variable_map, config_solver)
-    elif solver == "ORTools":
-        return solve_sat_ortools(filename, variable_map, config_solver)
-    raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: ORTools, DEFAULT, Cadical103, Cadical153, Cadical195, CryptoMinisat, Gluecard3, Gluecard4, Glucose3, Glucose4, Lingeling, MapleChrono, MapleCM, Maplesat, Mergesat3, Minicard, Minisat22, MinisatGH'.")
-
+    monitor = RuntimeResourceMonitor(interval=0.2)
+    monitor.start()
+    time_start = time.time()
+    try:
+        if solver in ["DEFAULT", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
+            return solve_sat_pysat(filename, variable_map, config_solver)
+        elif solver == "ORTools":
+            return solve_sat_ortools(filename, variable_map, config_solver)
+        else:
+            raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: ORTools, DEFAULT, Cadical103, Cadical153, Cadical195, CryptoMinisat, Gluecard3, Gluecard4, Glucose3, Glucose4, Lingeling, MapleChrono, MapleCM, Maplesat, Mergesat3, Minicard, Minisat22, MinisatGH'.")
+    finally:
+        config_solver["resource_usage"] = monitor.stop()
+        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
 
 def solve_sat_pysat(filename, variable_map, config_solver):
     if not pysat_import:

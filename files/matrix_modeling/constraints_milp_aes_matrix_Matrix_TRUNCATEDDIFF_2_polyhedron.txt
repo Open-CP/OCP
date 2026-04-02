@@ -1,0 +1,14 @@
+Input: a0||a1||a2||a3; msb: a0
+Output: b0||b1||b2||b3; msb: b0
+Time used to simplify the constraints: 0.0146 s
+Number of constraints: 8
+Constraints: ['a0 + a1 + a2 + a3 - 4 b0 + b1 + b2 + b3 >= 0', 'a0 + a1 + a2 - 4 a3 + b0 + b1 + b2 + b3 >= 0', 'a0 - 4 a1 + a2 + a3 + b0 + b1 + b2 + b3 >= 0', '- 4 a0 + a1 + a2 + a3 + b0 + b1 + b2 + b3 >= 0', 'a0 + a1 - 4 a2 + a3 + b0 + b1 + b2 + b3 >= 0', 'a0 + a1 + a2 + a3 + b0 - 4 b1 + b2 + b3 >= 0', 'a0 + a1 + a2 + a3 + b0 + b1 - 4 b2 + b3 >= 0', 'a0 + a1 + a2 + a3 + b0 + b1 + b2 - 4 b3 >= 0', 'Binary\na0 a1 a2 a3 b0 b1 b2 b3']
+
+
+Information
+Backend: convex_hull_cdd
+Backend version: 2.1.8.post1
+Model type: milp
+Tool type: polyhedron
+Python version: 3.8.20
+Platform: Linux-6.14.0-37-generic-x86_64-with-glibc2.17

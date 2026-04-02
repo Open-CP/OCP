@@ -71,7 +71,7 @@ def configure_model_version(cipher, goal, config_model): # Configure the model v
         set_model_versions(cipher, "LINEAR", functions, rounds, layers, positions) # Set model_version = "LINEAR" for all operators
         set_model_versions(cipher, "LINEAR_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "LINEAR_A" for all Sbox operators
 
-    elif goal == 'LINEARPATH_CORRE' or goal == "LINEARHULL_CORRE":
+    elif goal == 'LINEARPATH_CORR' or goal == "LINEARHULL_CORR":
         set_model_versions(cipher, "LINEAR", functions, rounds, layers, positions) # Set model_version = "LINEAR" for all operators
         set_model_versions(cipher, "LINEAR_PR", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "LINEAR_PR" for all Sbox operators
 
@@ -565,6 +565,12 @@ def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_var
     """
     variables = input_variables + output_variables + weight_variables if weight_variables else input_variables + output_variables
     time_start = time.time()
+    if model_type == "milp":
+        assert tool_type in ["minimize_logic", "minimize_logic_espresso", "polyhedron"], f"Unsupported tool type {tool_type} for MILP model."
+    elif model_type == "sat":
+        assert tool_type in ["minimize_logic", "minimize_logic_espresso"], f"Unsupported tool type {tool_type} for SAT model."
+    else:
+        raise ValueError(f"unknown model type {model_type}")
 
     if tool_type == "minimize_logic" or tool_type == "minimize_logic_espresso":
         inequalities, information = ttb_to_ineq_logic(ttable, variables, mode=mode, tool_type=tool_type)

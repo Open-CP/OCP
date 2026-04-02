@@ -56,8 +56,9 @@ def test_implementation(op):
 
 def test_milp_model(op, model_version, mode=0, tool_type="minimize_logic"):
     op.model_version = model_version
+    print(f"MILP constraints with model_version={model_version}, tool_type={tool_type}, mode={mode}: \n")
     milp_constraints = op.generate_model(model_type='milp', mode=mode, tool_type=tool_type)
-    print(f"MILP constraints with model_version={model_version}: \n", "\n".join(milp_constraints))
+    # print("\n".join(milp_constraints))
     filename = str(FILES_DIR / f"milp_{op.ID}_{model_version}.lp")
     if hasattr(op, 'weight'):
         obj_fun=op.weight
@@ -69,28 +70,42 @@ def test_milp_model(op, model_version, mode=0, tool_type="minimize_logic"):
     return sol_list
 
 
-def test_sat_model(op, model_version, mode=0, tool_type="minimize_logic"):
-    op.model_version = model_version
-    sat_constraints = op.generate_model(model_type='sat', mode=mode, tool_type=tool_type)
-    print(f"SAT constraints with model_version={model_version}: \n", "\n".join(sat_constraints))
-    filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
-    model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
-    print("variable_map in sat:\n", model["variable_map"])
-    sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
-    # print(f"All solutions:\n{sol_list}")
-    return sol_list
+def test_sbox_milp_diff(sbox): # MILP models for differential cryptanalysis
+    model_versions = [sbox.__class__.__name__+"_XORDIFF", sbox.__class__.__name__+"_XORDIFF_PR", sbox.__class__.__name__+"_XORDIFF_A", sbox.__class__.__name__+"_XORDIFF_P"]
+    for tool_type in [ "minimize_logic", "minimize_logic_espresso", "polyhedron"]:
+        modes = [0,1,2] if tool_type != "polyhedron" else [0]
+        for model_version in model_versions:
+            for mode in modes:
+                if sbox in [skinny8_sbox, aes_sbox] and tool_type == "polyhedron":
+                    continue
+                if sbox in [skinny8_sbox] and model_version == sbox.__class__.__name__+"_XORDIFF_PR":
+                    continue
+                if sbox not in [skinny8_sbox, aes_sbox] and model_version == sbox.__class__.__name__+"_XORDIFF_P":
+                    continue
+                sol_list = test_milp_model(sbox, model_version, mode=mode, tool_type=tool_type)
+                test_Sbox_solutions_milp(sbox, sol_list)
+
+    sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF")
+    sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")
 
 
-def gen_model_vars(in_out, Sbox):
-    model_vars = []
-    for i in range(len(Sbox.input_vars)):
-        var = Sbox.input_vars[i] if in_out == 'in' else Sbox.output_vars[i]
-        var_ID = Sbox.get_var_ID(in_out, i, unroll=True)
-        if var.bitsize > 1:
-            model_vars += [f"{var_ID}_{i}" for i in range(var.bitsize)]
-        else:
-            model_vars +=[var_ID]
-    return model_vars
+def test_sbox_milp_linear(sbox): # MILP models for linear cryptanalysis
+    model_versions = [sbox.__class__.__name__+"_LINEAR", sbox.__class__.__name__+"_LINEAR_PR", sbox.__class__.__name__+"_LINEAR_A", sbox.__class__.__name__+"_LINEAR_P"]
+    for tool_type in ["minimize_logic", "minimize_logic_espresso", "polyhedron"]:
+        modes = [0,1,2] if tool_type != "polyhedron" else [0]
+        for model_version in model_versions:
+            for mode in modes:
+                if sbox in [skinny8_sbox, aes_sbox] and tool_type == "polyhedron":
+                    continue
+                if sbox in [skinny8_sbox, aes_sbox] and model_version == sbox.__class__.__name__+"_LINEAR_PR":
+                    continue
+                if sbox not in [skinny8_sbox, aes_sbox] and model_version == sbox.__class__.__name__+"_LINEAR_P":
+                    continue
+                sol_list = test_milp_model(sbox, model_version, mode=mode, tool_type=tool_type)
+                test_Sbox_solutions_milp(sbox, sol_list)
+
+    sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR")
+    sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_A")
 
 
 def test_Sbox_solutions_milp(Sbox, solutions):
@@ -101,8 +116,12 @@ def test_Sbox_solutions_milp(Sbox, solutions):
     nonzero_count = sum(1 for row in table for val in row if val != 0)
     if nonzero_count != len(solutions):
         raise ValueError(f"Mismatch: non-zero count in DDT/LAT = {nonzero_count}, but model.SolCount = {len(solutions)}")
-    input_variables = gen_model_vars('in', Sbox)
-    output_variables = gen_model_vars('out', Sbox)
+    input_variables = []
+    for i in range(len(Sbox.input_vars)):
+        input_variables += Sbox.get_var_model("in", i)
+    output_variables = []
+    for i in range(len(Sbox.output_vars)):
+        output_variables += Sbox.get_var_model("out", i)
     for solution in solutions:
         row, column = '', ''
         for i in range(Sbox.input_bitsize):
@@ -115,15 +134,59 @@ def test_Sbox_solutions_milp(Sbox, solutions):
             if table[row][column] == 0:
                 raise ValueError(f"*****************solution is wrong: row={row}, column={column}, pr={pr} != {table[row][column]}")
         elif Sbox.model_version in [Sbox.__class__.__name__ + "_XORDIFF_PR", Sbox.__class__.__name__ + "_LINEAR_PR"]:
-            diff_weights = Sbox.gen_weights(table)
-            pr_vars, obj_fun = Sbox._gen_model_pr_variables_objective_fun_milp()
-            pr_variables = [Sbox.ID + "_" + p for p in pr_vars]
+            weights = Sbox.gen_weights(table)
+            var_p = [f"{Sbox.ID}_p{i}" for i in range(len(weights))]
             pr = 0
-            for i in range(len(pr_variables)):
-                pr += diff_weights[i] * int(round(solution[pr_variables[i]]))
+            for i in range(len(var_p)):
+                pr += weights[i] * int(round(solution[var_p[i]]))
             if abs(float(math.log(abs(table[row][column])/(2**Sbox.input_bitsize), 2))) != pr:
                 raise ValueError(f"*****************solution is wrong: row={row}, column={column}, pr={pr}, table={table[row][column]}")
     print(f"All solutions returned from MILP have been checked and are consistent with the DDT/LAT of S-box")
+
+
+def test_sat_model(op, model_version, mode=0, tool_type="minimize_logic"):
+    op.model_version = model_version
+    print(f"SAT constraints with model_version={model_version}, tool_type={tool_type}, mode={mode}:")
+    sat_constraints = op.generate_model(model_type='sat', mode=mode, tool_type=tool_type)
+    # print("\n".join(sat_constraints))
+    filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
+    model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
+    print("variable_map in sat:\n", model["variable_map"])
+    sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
+    # print(f"All solutions:\n{sol_list}")
+    return sol_list
+
+
+def test_sbox_sat_diff(sbox): # SAT models for differential cryptanalysis
+    model_versions = [sbox.__class__.__name__+"_XORDIFF", sbox.__class__.__name__+"_XORDIFF_PR", sbox.__class__.__name__+"_XORDIFF_A"]
+    for tool_type in ["minimize_logic", "minimize_logic_espresso"]:
+        modes = [0,1,2]
+        for model_version in model_versions:
+            for mode in modes:
+                if sbox in [skinny8_sbox] and model_version == sbox.__class__.__name__+"_XORDIFF_PR":
+                    continue
+                if sbox in [aes_sbox] and model_version == sbox.__class__.__name__+"_XORDIFF_PR" and mode == 1:
+                    continue
+                sol_list = test_sat_model(sbox, model_version, mode=mode, tool_type=tool_type)
+                test_Sbox_solutions_sat(sbox, sol_list)
+
+    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF")
+    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")
+
+
+def test_sbox_sat_linear(sbox): # SAT models for linear cryptanalysis
+    model_versions = [sbox.__class__.__name__+"_LINEAR", sbox.__class__.__name__+"_LINEAR_PR", sbox.__class__.__name__+"_LINEAR_A"]
+    for tool_type in ["minimize_logic", "minimize_logic_espresso"]:
+        modes = [0,1,2]
+        for model_version in model_versions:
+            for mode in modes:
+                if sbox in [skinny8_sbox, aes_sbox] and model_version == sbox.__class__.__name__+"_LINEAR_PR":
+                    continue
+                sol_list = test_sat_model(sbox, model_version, mode=mode, tool_type=tool_type)
+                test_Sbox_solutions_sat(sbox, sol_list)
+
+    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR")
+    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_A")
 
 
 def test_Sbox_solutions_sat(Sbox, solutions):
@@ -134,8 +197,12 @@ def test_Sbox_solutions_sat(Sbox, solutions):
     nonzero_count = sum(1 for row in table for val in row if val != 0)
     if nonzero_count != len(solutions):
         raise ValueError(f"Mismatch: non-zero count in DDT = {nonzero_count}, but model.SolCount = {len(solutions)}")
-    input_variables = gen_model_vars('in', Sbox)
-    output_variables = gen_model_vars('out', Sbox)
+    input_variables = []
+    for i in range(len(Sbox.input_vars)):
+        input_variables += Sbox.get_var_model("in", i)
+    output_variables = []
+    for i in range(len(Sbox.output_vars)):
+        output_variables += Sbox.get_var_model("out", i)
     for solution in solutions:
         row, column = '', ''
         for i in range(Sbox.input_bitsize):
@@ -148,115 +215,36 @@ def test_Sbox_solutions_sat(Sbox, solutions):
             if table[row][column] == 0:
                 raise ValueError(f"*****************solution is wrong: row={row}, column={column}, pr={pr} != {table[row][column]}")
         elif Sbox.model_version in [Sbox.__class__.__name__ + "_XORDIFF_PR", Sbox.__class__.__name__ + "_LINEAR_PR"]:
-            pr_vars, obj_fun = Sbox._gen_model_pr_variables_objective_fun_sat()
-            pr_variables = [Sbox.ID + "_" + p for p in pr_vars]
-            integers, floats = Sbox.gen_integer_float_weight(table)
+            integers_weight, floats_weight = Sbox.gen_integer_float_weight(table)
+            var_p = [f"{Sbox.ID}_p{i}" for i in range(max(integers_weight)+len(floats_weight))]
             pr = 0
-            for i in range(max(integers)):
-                pr += solution[pr_variables[i]]
-            for i in range(max(integers), max(integers)+len(floats)):
-                if solution[pr_variables[i]] == 1:
-                    pr += floats[i-max(integers)]
+            for i in range(max(integers_weight)):
+                pr += solution[var_p[i]]
+            for i in range(max(integers_weight), max(integers_weight)+len(floats_weight)):
+                if solution[var_p[i]] == 1:
+                    pr += floats_weight[i-max(integers_weight)]
             if abs(float(math.log(abs(table[row][column])/(2**Sbox.input_bitsize), 2))) != pr:
+                print("solution", solution)
                 raise ValueError(f"*****************solution is wrong: row={row}, column={column}, pr={pr}, ddt={table[row][column]}")
     print(f"All solutions returned from SAT have been checked and are consistent with the DDT of S-box")
-
-
-def test_sbox(sbox):
-    print(f"\n********************* operation: {sbox.ID} Sbox ********************* ")
-    sbox.display()
-
-    test_implementation(sbox)
-
-    # 1. MILP models and tests for differential cryptanalysis
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF_PR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF_PR", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF_A", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_XORDIFF_A", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_1")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A_1")
-
-
-    # # 2. MILP models and tests for linear cryptanalysis
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR_PR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR_PR", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR_A", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_milp(sbox, sol_list)
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_LINEAR_A", tool_type="polyhedron")
-    # test_Sbox_solutions_milp(sbox, sol_list)
-
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_1")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_A")
-    # sol_list = test_milp_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_A_1")
-
-
-    # # 3. SAT models and tests for differential cryptanalysis
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_XORDIFF", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_XORDIFF_PR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_XORDIFF_A", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-
-    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF")
-    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")
-
-    # # 4. SAT models and tests for linear cryptanalysis
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_LINEAR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_LINEAR_PR", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-    # for mode in [0,1,2]:
-    #     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_LINEAR_A", mode=mode, tool_type="minimize_logic")
-    #     test_Sbox_solutions_sat(sbox, sol_list)
-
-    # sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR")
-    # sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDLINEAR_A")
 
 
 if __name__ == '__main__':
 
     print(f"=== Implementation Test Log ===")
 
-    test_sbox(present_sbox)
+    for sbox in [gift_sbox, present_sbox, knot_sbox, twine_sbox, ascon_sbox, skinny4_sbox, skinny8_sbox, aes_sbox]:
+        print(f"\n********************* operation: {sbox.ID} Sbox ********************* ")
+        sbox.display()
 
-    print("All implementation tests completed!")
+        test_implementation(sbox)
+
+        test_sbox_milp_diff(sbox)
+
+        test_sbox_milp_linear(sbox)
+
+        test_sbox_sat_diff(sbox)
+
+        test_sbox_sat_linear(sbox)
+
+        print("All implementation tests completed!")

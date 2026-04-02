@@ -1,6 +1,6 @@
 from pathlib import Path
 from math import log2
-from attacks.trail import DifferentialTrail
+from attacks.attack_trace import DifferentialTrail
 import tools.model_constraints as model_constraints
 import tools.model_objective as model_objective
 import tools.milp_search as milp_search
@@ -39,11 +39,11 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
 
     if config_model["model_type"] == "milp":
         # Set the model "filename".
-        config_model["filename"] = str(FILES_DIR / f"{cipher.name}_{goal}_{objective_target}_{config_solver['solver']}_model.lp")
+        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_milp_model.lp")
 
     elif config_model["model_type"] == "sat":
         # Set the model "filename".
-        config_model["filename"] = str(FILES_DIR / f"{cipher.name}_{goal}_{objective_target}_{config_solver['solver']}_model.cnf")
+        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_sat_model.cnf")
 
     # Set solution_number to a large value if not defined when searching for differentials
     if goal == "DIFFERENTIAL_PROB":
@@ -210,13 +210,13 @@ def search_diff_trail(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_
 
     # Step 5: Extract and Visualize Trails from Solutions.
     if isinstance(solutions, list):
-        return extract_and_format_diff_trails(cipher, goal, config_model, show_mode, solutions)
+        return extract_and_format_diff_trails(cipher, goal, config_model, config_solver, show_mode, solutions)
 
     raise ValueError("[WARNING] No valid solutions found.")
 
 
 # -------------------- Trail Extraction and Visualization --------------------
-def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, solutions):
+def extract_and_format_diff_trails(cipher, goal, config_model, config_solver, show_mode, solutions):
     trails = []
     trail_structs = []
     pr = 0
@@ -225,14 +225,21 @@ def extract_and_format_diff_trails(cipher, goal, config_model, show_mode, soluti
         if trail_struct in trail_structs:
             continue
         trail_structs.append(trail_struct)
-        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}", "functions": config_model["functions"], "rounds": config_model["rounds"], "trail_struct": trail_struct, "diff_weight": sol.get("obj_fun_value"), "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
+        data = {"cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}",
+                "functions": config_model["functions"],
+                "rounds": config_model["rounds"],
+                "config_model": config_model,
+                "config_solver": config_solver,
+                "trail_struct": trail_struct,
+                "diff_weight": sol.get("obj_fun_value"),
+                "rounds_diff_weight": sol.get("rounds_obj_fun_values")}
         trail = DifferentialTrail(data, solution_trace=sol)
         if i > 0:
             print(f"[INFO] Saving the {i+1}-th Trail.")
             trail.json_filename = trail.json_filename.replace(".json", f"_{i}.json") if trail.json_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.json")
             trail.txt_filename = trail.txt_filename.replace(".txt", f"_{i}.txt") if trail.txt_filename else str(FILES_DIR / f"{trail.data['cipher']}_trail_{i}.txt")
         trail.save_json()
-        trail.save_trail_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
+        trail.save_txt(show_mode=show_mode)  # Print the trail in a human-readable format and save it to a file.
         trails.append(trail)
         pr += 2 ** ( - trail.data['diff_weight'] ) if trail.data['diff_weight'] is not None else 0
     if solutions and goal == "DIFFERENTIAL_PROB":
@@ -286,6 +293,7 @@ def extract_trail_structures(cipher, goal, solution):
     # ------------------------------ Functions / Rounds / Layers ------------------------------
     for fun in cipher.functions:
         fun_store = {
+        "rounds": list(range(1, cipher.functions[fun].nbr_rounds + 1)),
         "nbr_words": cipher.functions[fun].nbr_words if hasattr(cipher.functions[fun], "nbr_words") else None,
         "nbr_temp_words": cipher.functions[fun].nbr_temp_words if hasattr(cipher.functions[fun], "nbr_temp_words") else None
         }

@@ -105,7 +105,7 @@ def test_diff_attack_sat(cipher):
 # ********************* Linear Cryptanalysis ********************* #
 def test_linear_attack_milp(cipher):
     # Example: default parameters. Refer to test/linear_cryptanalysis/ for more available parameters.
-    goal="LINEARPATH_CORRE"
+    goal="LINEARPATH_CORR"
     constraints=["INPUT_NOT_ZERO"]
     objective_target="OPTIMAL"
     show_mode=0
@@ -117,7 +117,7 @@ def test_linear_attack_milp(cipher):
 
 def test_linear_attack_sat(cipher):
     # Example: default parameters. Refer to test/linear_cryptanalysis/ for more available parameters.
-    goal="LINEARPATH_CORRE"
+    goal="LINEARPATH_CORR"
     constraints=["INPUT_NOT_ZERO"]
     objective_target="OPTIMAL"
     show_mode=0
@@ -138,7 +138,7 @@ if __name__ == "__main__":
 
     import primitives.simon as simon
     cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
-     
+
     test_all_implementations(cipher)
     test_visualisation(cipher)
     test_diff_attack_milp(cipher)

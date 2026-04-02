@@ -25,10 +25,10 @@ def diff_attacks(cipher, goal="DIFFERENTIALPATH_PROB", constraints=["INPUT_NOT_Z
 
 
 # =================== Linear Attacks ===================
-def linear_attacks(cipher, goal="LINEARPATH_CORRE", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model=None, config_solver=None):
+def linear_attacks(cipher, goal="LINEARPATH_CORR", constraints=["INPUT_NOT_ZERO"], objective_target="OPTIMAL", show_mode=0, config_model=None, config_solver=None):
     time_start = time.time()
 
-    if goal in ["LINEAR_SBOXCOUNT", "LINEARPATH_CORRE", "LINEARHULL_CORRE", "TRUNCATEDLINEAR_SBOXCOUNT"]:
+    if goal in ["LINEAR_SBOXCOUNT", "LINEARPATH_CORR", "LINEARHULL_CORR", "TRUNCATEDLINEAR_SBOXCOUNT"]:
         trails = linear.search_linear_trail(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
     else:
         raise ValueError(f"[WARNING] Invalid goal: {goal}.")
