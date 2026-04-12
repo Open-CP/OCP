@@ -42,6 +42,13 @@ def test_python_unrolled_ttable_imp(cipher): # Generate unrolled Python implemen
         return False
     for tv in cipher.test_vectors: imp.test_implementation_python(cipher, cipher.name + "_ttable_unrolled", tv[0], tv[1])
 
+def test_c_unrolled_ttable_imp(cipher): # Generate unrolled Python implementation and test it with the test vectors
+    imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}_ttable_unrolled.c", "c", True, True)
+    if cipher.test_vectors==[]:
+        print("warning: no test vector defined!")
+        return False
+    for tv in cipher.test_vectors: imp.test_implementation_c(cipher, cipher.name + "_ttable_unrolled", tv[0], tv[1])
+
 def test_c_imp(cipher): # Generate C implementation and test it with the test vectors
     imp.generate_implementation(cipher, FILES_DIR / f"{cipher.name}.c", "c")
     if cipher.test_vectors==[]:
@@ -70,14 +77,19 @@ def test_verilog_unrolled_imp(cipher): # Generate unrolled Verilog implementatio
         return False
     for tv in cipher.test_vectors: imp.test_implementation_verilog(cipher, cipher.name + "_unrolled", tv[0], tv[1])
 
+def test_ttable_imp(cipher):
+    test_python_unrolled_ttable_imp(cipher)
+    test_c_unrolled_ttable_imp(cipher)
+
 def test_all_implementations(cipher): # Generate all implementations
     #test_python_imp(cipher)
-    #test_python_unrolled_imp(cipher)
-    test_python_unrolled_ttable_imp(cipher)
+    test_python_unrolled_imp(cipher)
     #test_c_imp(cipher)
-    #test_c_unrolled_imp(cipher)
+    test_c_unrolled_imp(cipher)
     #test_verilog_imp(cipher)
     #test_verilog_unrolled_imp(cipher)
+    test_ttable_imp(cipher)
+
 
 
 # ********************* VISUALIZATIONS ********************* #
@@ -138,7 +150,6 @@ def test_linear_attack_sat(cipher):
 
 if __name__ == "__main__":
     import primitives.aes as aes
-    
     cipher = aes.AES_BLOCKCIPHER(version=[128,128])
     test_all_implementations(cipher)
     cipher = aes.AES_BLOCKCIPHER(version=[128,192])

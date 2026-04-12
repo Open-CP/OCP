@@ -82,7 +82,7 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                                for line in header: myfile.write(line + '\n')
                                myfile.write('\n')
         #initialization of ttable conversion object 
-        if ttable and ("PERMUTATION" in my_prim.functions): ttable_conversion = TTable_Conversion(my_prim.functions["PERMUTATION"])
+        if ttable and ("PERMUTATION" in my_prim.functions): ttable_conversion = TTable_Conversion(my_prim.functions["PERMUTATION"], implementation_type=language)
         else:ttable=False 
         #generate headers
         if ttable: 
@@ -203,8 +203,16 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
                      for s in my_prim.functions_implementation_order:
                          if  r <= my_prim.functions[s].nbr_rounds:
                             for l in range(my_prim.functions[s].nbr_layers+1):
-                                for cons in my_prim.functions[s].constraints[r][l]:
-                                    for line in cons.generate_implementation('c', unroll=True): myfile.write("\t" + line + "\n")
+                                for c,cons in enumerate(my_prim.functions[s].constraints[r][l]):
+                                    if s=="PERMUTATION" and ttable:
+                                        c_flag = ttable_conversion.states[r][l][c]
+                                        if c_flag==0:
+                                            for line in cons.generate_implementation("c", unroll=True): myfile.write("\t" + line + "\n")
+                                        elif c_flag==1: continue 
+                                        else: 
+                                            myfile.write("\t" + ttable_conversion.con_list[r][l][c] + "\n")
+                                    else:
+                                        for line in cons.generate_implementation('c', unroll=True): myfile.write("\t" + line + "\n")
                             myfile.write("\n")
              else:
                  myfile.write("\t// Round function \n")

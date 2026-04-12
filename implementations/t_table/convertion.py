@@ -45,7 +45,7 @@ class TTable_Conversion:
     #these layers pairwise commutative(under composition) and the functions are additive
     #additional we know only commutative if all same operator(i.e. (equal and ^ only) or (equal and & only))
     COMMUTATIVE_LAYERS = ["ConstantXor", "AddRoundKey"] 
-    def __init__(self, layer: Layered_Function):
+    def __init__(self, layer: Layered_Function, implementation_type="python"):
         self.layer = layer 
         con = self.layer.constraints
         self.states = [] 
@@ -64,7 +64,7 @@ class TTable_Conversion:
         self.hasNoSboxCase = False 
         self.poly = 0x1B
         self.word_size = layer.word_bitsize
-        for rd in range(len(con)): self.convert_round(rd)
+        for rd in range(len(con)): self.convert_round(rd, implementation_type=implementation_type)
     def getSboxIndex(self, sboxObj:Sbox):
         return [obj.get_header_ID() for obj in self.sboxs].index(sboxObj.get_header_ID())
     def getSboxes(self):
@@ -113,7 +113,7 @@ class TTable_Conversion:
                 rtn[c] = self.sboxs[pl].table[c]
                 c = rtn[c]
         return rtn 
-    def matrix_ttable_conversion(self, output_vars, input_vars, in_idx, out_idx, have_sbox, round, layer, sbox_perm):
+    def matrix_ttable_conversion(self, output_vars, input_vars, in_idx, out_idx, have_sbox, round, layer, sbox_perm, implementation_type="python"):
         if not have_sbox: self.hasNoSboxCase=True  
         name_list = ["TTABLE_NOSBOX"]*16#initialized to all no ttable  
         #from the sbox_perm gethe number
@@ -129,8 +129,8 @@ class TTable_Conversion:
                 tmp_out.append(output_vars[out_idx[r*n + c]])
                 tmp_name_list.append(name_list[in_idx[r*n+c]])
             obj = TTable(self.mat, list(range(sz)), "PLACE HOLDER", self.word_size, self.poly)
-            self.con_list[round][layer][r] = obj.generate_implementation(tmp_in, tmp_out, tmp_name_list)
-    def xor_conversion(self, output_vars, input_variables, in_idx, out_idx, have_sbox, round, layer, sbox_perm):
+            self.con_list[round][layer][r] = obj.generate_implementation(tmp_in, tmp_out, tmp_name_list, implementation_type=implementation_type)
+    def xor_conversion(self, output_vars, input_variables, in_idx, out_idx, have_sbox, round, layer, sbox_perm, implementation_type="python"):
         if not have_sbox: self.hasNoSboxCase=True 
         name_list = ["TTABLE_NOSBOX"]*16#initialized to all no ttable  
         sz = 1<<self.layer.word_bitsize
@@ -146,7 +146,7 @@ class TTable_Conversion:
                 tmp_out.append(output_vars[out_idx[r*n + c]])
                 tmp_name_list.extend([name_list[in_idx[o][r*n+c]] for o in range(len(input_variables))])
             obj = TTable(self.mat, list(range(sz)), "PLACE HOLDER", self.word_size, self.poly)
-            self.con_list[round][layer][r] = obj.generate_implementation_xor(tmp_in, tmp_out, tmp_name_list)
+            self.con_list[round][layer][r] = obj.generate_implementation_xor(tmp_in, tmp_out, tmp_name_list, implementation_type=implementation_type)
     def set_layer(self, rd,lyr, status):
         for c in range(len(self.states[rd][lyr])):
             self.states[rd][lyr][c] = status[c]
@@ -165,7 +165,7 @@ class TTable_Conversion:
         for v,perm in enumerate(hm):
             if perm:rtn[v] = self.getSboxPermIndex(perm)
         return rtn 
-    def convert_round(self, round):
+    def convert_round(self, round, implementation_type="python"):
         layer_names = [self.getLayerName(round, lyr) for lyr in range(self.layer.nbr_layers)] 
         if "Matrix" in layer_names:
             midx = layer_names.index("Matrix")
@@ -198,7 +198,7 @@ class TTable_Conversion:
                     sbox_perm = self.get_sbox_mapping(srr[0], srr[-1], round)#variable -> sbox permutation mapping 
                     input_vars = self.sort_vars(flatten(con.input_vars for con in self.layer.constraints[round][srr[0]]))
                     output_vars = self.sort_vars(flatten(con.output_vars for con in self.layer.constraints[round][midx]))
-                    self.matrix_ttable_conversion(output_vars, input_vars, idxs,oidx,sbox_case,round, srr[0], sbox_perm)#instead of sbox_case need to tell which sbox index to use 
+                    self.matrix_ttable_conversion(output_vars, input_vars, idxs,oidx,sbox_case,round, srr[0], sbox_perm, implementation_type=implementation_type)#instead of sbox_case need to tell which sbox index to use 
                     #if no sbox is used then -1 for hte sbox_case 
                 input_variables = []
                 input_idxs = []
@@ -234,11 +234,13 @@ class TTable_Conversion:
                     srr = [j for j in range(sidx, midx) if layer_names[j]=="Sbox"]
                     sbox_perm = self.get_sbox_mapping(srr[0], srr[-1], round)#variable -> sbox permutation mapping 
                     self.set_layer(round, chosen_layer, [TTABLE]*4 + [DELETE]*12)
-                    self.xor_conversion(output_vars, input_variables, input_idxs, oidx,False,round,chosen_layer,sbox_perm)
+                    self.xor_conversion(output_vars, input_variables, input_idxs, oidx,False,round,chosen_layer,sbox_perm, implementation_type=implementation_type)
                 
     def generate_headers(self, language="python"):
         word_size = self.layer.word_bitsize
         rtn = [] 
+        if language=="c":#quick fix of ttable-layer in c case
+            rtn.append("uint32_t x;")
         if self.hasNoSboxCase:
             tt = TTable(self.mat, list(range(len(self.sbox))), "TTABLE_NOSBOX",word_size,self.poly)
             rtn.append(tt.generate_implementation_header(language)) 

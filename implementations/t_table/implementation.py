@@ -15,20 +15,15 @@ class TTable:
         if implementation_type == 'python': 
             return str(self.table_name) + ' = ' + str(self.table)
         elif implementation_type == 'c': 
-            return None
-            if self.input_bitsize <= 8: 
-                if isinstance(self.input_vars[0], list): return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint8_t ' + 'x;'] + ['uint8_t ' + 'y;']
-                else: return ['uint8_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
-            else: 
-                if isinstance(self.input_vars[0], list): return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};'] + ['uint32_t ' + 'x;'] + ['uint32_t ' + 'y;']
-                else: return ['uint32_t ' + str(self.__class__.__name__) + '[' + str(2**self.input_bitsize) + '] = {' + str(self.table)[1:-1] + '};']
+            return "int "+ str(self.table_name)+f"[{len(self.table)}][{len(self.table[0])}]" + " = " + str([[c for c in r] for r in self.table]).replace('[', '{').replace(']', '}')+";"
         else: return None 
     
     def generate_implementation(self, input_vars, output_vars,name_list, implementation_type='python', unroll=True):
         if implementation_type == 'python': 
             return '[' + ','.join([output_vars[i].ID for i in range(len(output_vars))]) + "] = " + "int("+'^'.join([ name_list[i]+f"[{i}]"+"["+input_vars[i].ID+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')" 
         elif implementation_type == 'c': 
-            raise Exception(str(self.__class__.__name__) + ": NOT SUPPORTED YET LATER DO '" + implementation_type + "'")
+            return "x = "+ '^'.join([ name_list[i]+f"[{i}]"+"["+input_vars[i].ID+"]"  for i in range(len(input_vars))]) + "; " + ';'.join([output_vars[i].ID + f" = x >> {32 - (i+1)*8}"  for i in range(len(output_vars))])+";"
+            
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
 
     def generate_implementation_xor(self, input_vars, output_vars,name_list, implementation_type='python', unroll=True):
@@ -41,8 +36,10 @@ class TTable:
             rhs = f" = [a^b for a,b in zip({a},{b})]"
             lhs = b
             return lhs + rhs 
-        
-        
         elif implementation_type == 'c': 
-            raise Exception(str(self.__class__.__name__) + ": NOT SUPPORTED YET LATER DO '" + implementation_type + "'")
+            a = "int("+'^'.join([ name_list[i]+f"[{i}]"+"["+"^".join(input_vars[i])+"]"  for i in range(len(input_vars))])+')'+ ".to_bytes(4, 'big')"
+            b = "[" + ",".join([output_vars[i].ID for i in range(len(output_vars))]) +"]"
+            rhs = '^'.join([ name_list[i]+f"[{i}]"+"["+"^".join(input_vars[i])+"]"  for i in range(len(input_vars))])
+            rtn = "x = " + rhs+"; " +  ';'.join([output_vars[i].ID + f" ^= x >> {32 - (i+1)*8}"  for i in range(len(output_vars))])
+            return rtn  + ";"
         else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")

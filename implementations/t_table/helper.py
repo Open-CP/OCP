@@ -28,7 +28,6 @@ def transpose(arr, n):
 
 def generate_ttable(mc:List[int],sbox:List[int], rows:int, word_size:int, poly:int):
     assert len(mc)==rows**2 
-    #assert len(sbox)==256 
     sbox_len = len(sbox)
     mccpy = mc.copy()
     mc = mccpy 
