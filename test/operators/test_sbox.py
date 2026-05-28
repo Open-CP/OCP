@@ -146,14 +146,19 @@ def test_Sbox_solutions_milp(Sbox, solutions):
 
 def test_sat_model(op, model_version, mode=0, tool_type="minimize_logic"):
     op.model_version = model_version
+    solver = None # Change to test different solvers supported for solving SAT problems
     print(f"SAT constraints with model_version={model_version}, tool_type={tool_type}, mode={mode}:")
     sat_constraints = op.generate_model(model_type='sat', mode=mode, tool_type=tool_type)
-    # print("\n".join(sat_constraints))
-    filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
-    model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
-    print("variable_map in sat:\n", model["variable_map"])
-    sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
-    # print(f"All solutions:\n{sol_list}")
+    if solver == "CPSAT":
+            family_of_variables = ' '.join(sat_constraints).replace('-', '')
+            all_variables = sorted(set(family_of_variables.split()))
+            variable_dict = {variable: i + 1 for (i, variable) in enumerate(all_variables)}
+            sol_list = solving.solve_sat_cpsat(sat_constraints, variable_dict, {"solution_number": 100000})
+    else:
+        filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
+        model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
+        print("variable_map in sat:\n", model["variable_map"])
+        sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
     return sol_list
 
 
@@ -168,10 +173,10 @@ def test_sbox_sat_diff(sbox): # SAT models for differential cryptanalysis
                 if sbox in [aes_sbox] and model_version == sbox.__class__.__name__+"_XORDIFF_PR" and mode == 1:
                     continue
                 sol_list = test_sat_model(sbox, model_version, mode=mode, tool_type=tool_type)
-                test_Sbox_solutions_sat(sbox, sol_list)
+                test_Sbox_solutions_sat(sbox, sol_list)           
 
     sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF")
-    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")
+    sol_list = test_sat_model(sbox, sbox.__class__.__name__+"_TRUNCATEDDIFF_A")   
 
 
 def test_sbox_sat_linear(sbox): # SAT models for linear cryptanalysis
