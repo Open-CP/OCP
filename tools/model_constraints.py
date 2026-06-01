@@ -434,7 +434,7 @@ def gen_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version=0):
                     f'{v_dummy} - {vin2} >= 0',
                     f'{v_dummy} - {vout} >= 0',
                     'Binary\n' + ' '.join([vin1, vin2, vout, v_dummy])]
-        elif version == 2:
+        elif version == 2: # Fu,K.,Wang,M.,Guo,Y.,Sun,S.,Hu,L. Milp-based automatic search algorithms for differential and linear trails for speck.
             assert isinstance(v_dummy, str), "[WARNING] v_dummy must be provided as a string for XOR in MILP version 2."
             return [f'{vin1} + {vin2} + {vout} - 2 {v_dummy} = 0',
                     'Binary\n' + ' '.join([vin1, vin2, vout, v_dummy])]
@@ -607,6 +607,7 @@ def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_var
             file.write(f"Tool type: {tool_type}\n")
             file.write(f"Python version: {sys.version.split()[0]}\n")
             file.write(f"Platform: {platform.platform()}\n")
+    return constraints, objective_fun
 
 def load_constraints_template(filename):
     """

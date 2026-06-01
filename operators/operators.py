@@ -309,31 +309,143 @@ class Shift(UnaryOperator):    # Operator for the shift function: shift of the i
 
     def generate_model(self, model_type='sat'):
         if model_type == 'sat':
-            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
-                model_list = [f"-{var_out[i]}" for i in range(self.amount)]
-                model_list += [clause for i in range(len(var_in)-self.amount) for clause in (f"-{var_in[i]} {var_out[i+self.amount]}", f"{var_in[i]} -{var_out[i+self.amount]}")]
-                model_list += [f"{var_in[i]} -{var_in[i]}" for i in range(len(var_in)-self.amount, len(var_in))]
+            var_in, var_out = self.get_var_model("in", 0), self.get_var_model("out", 0)
+
+            n = len(var_in)
+            s = self.amount
+
+            def eq_clause(a, b): # a = b  <=>  (not a or b) and (a or not b)
+                return [f"-{a} {b}", f"{a} -{b}"]
+
+            def zero_clause(a): # a = 0
+                return f"-{a}"
+
+            def tautology_clause(a): # a or not a. This is only used to keep shifted-out variables visible in the SAT model.
+                return f"{a} -{a}"
+
+            if self.direction == 'r' and self.model_version == self.__class__.__name__ + "_XORDIFF":
+                # XOR-difference propagation for y = x >> s:
+                # y_i = 0       for 0 <= i < s,
+                # y_i = x_{i-s} for s <= i < n.
+                model_list = [zero_clause(var_out[i]) for i in range(s)]
+                model_list += [
+                    clause
+                    for i in range(n - s)
+                    for clause in eq_clause(var_in[i], var_out[i + s])
+                ]
+                model_list += [tautology_clause(var_in[i]) for i in range(n - s, n)]
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
-                model_list = [f"{var_in[i]} -{var_in[i]}" for i in range(self.amount)]
-                model_list += [clause for i in range(len(var_in) - self.amount) for clause in (f"-{var_in[i+self.amount]} {var_out[i]}", f"{var_in[i+self.amount]} -{var_out[i]}")]
-                model_list += [f"-{var_out[i]}" for i in range(len(var_in)-self.amount, len(var_in))]
+
+            elif self.direction == 'l' and self.model_version == self.__class__.__name__ + "_XORDIFF":
+                # XOR-difference propagation for y = x << s:
+                # y_i = x_{i+s} for 0 <= i < n-s,
+                # y_i = 0       for n-s <= i < n.
+                model_list = [tautology_clause(var_in[i]) for i in range(s)]
+                model_list += [
+                    clause
+                    for i in range(n - s)
+                    for clause in eq_clause(var_in[i + s], var_out[i])
+                ]
+                model_list += [zero_clause(var_out[i]) for i in range(n - s, n)]
+                return model_list
+
+            elif self.direction == 'r' and self.model_version == self.__class__.__name__ + "_LINEAR":
+                # Linear-mask propagation for y = x >> s:
+                # x_i = y_{i+s} for 0 <= i < n-s,
+                # x_i = 0       for n-s <= i < n.
+                # The output masks y_0,...,y_{s-1} correspond to zero-padded positions and are free.
+                model_list = [tautology_clause(var_out[i]) for i in range(s)]
+                model_list += [
+                    clause
+                    for i in range(n - s)
+                    for clause in eq_clause(var_in[i], var_out[i + s])
+                ]
+                model_list += [zero_clause(var_in[i]) for i in range(n - s, n)]
+                return model_list
+
+            elif self.direction == 'l' and self.model_version == self.__class__.__name__ + "_LINEAR":
+                # Linear-mask propagation for y = x << s:
+                # x_i = 0       for 0 <= i < s,
+                # x_i = y_{i-s} for s <= i < n.
+                # The output masks y_{n-s},...,y_{n-1} correspond to zero-padded positions and are free.
+                model_list = [zero_clause(var_in[i]) for i in range(s)]
+                model_list += [
+                    clause
+                    for i in range(n - s)
+                    for clause in eq_clause(var_in[i + s], var_out[i])
+                ]
+                model_list += [tautology_clause(var_out[i]) for i in range(n - s, n)]
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
-            var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction =='r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
-                model_list = [f'{var_out[i]} = 0' for i in range(self.amount)]
-                model_list += [f'{var_in[i]} - {var_out[i+self.amount]} = 0' for i in range(len(var_in)-self.amount)]
-                model_list += [f"{var_in[i]} - {var_in[i]} = 0" for i in range(len(var_in)-self.amount, len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+            var_in, var_out = self.get_var_model("in", 0), self.get_var_model("out", 0)
+            n = len(var_in)
+            s = self.amount
+
+            def eq_constraint(a, b): # a = b
+                return f"{a} - {b} = 0"
+
+            def zero_constraint(a): # a = 0
+                return f"{a} = 0"
+
+            def binary_declaration():
+                return "Binary\n" + " ".join(v for v in var_in + var_out)
+
+            if self.direction == 'r' and self.model_version ==  self.__class__.__name__ + "_XORDIFF":
+                # XOR-difference propagation for y = x >> s:
+                # y_i = 0       for 0 <= i < s,
+                # y_i = x_{i-s} for s <= i < n.
+                model_list = [zero_constraint(var_out[i]) for i in range(s)]
+                model_list += [
+                    eq_constraint(var_in[i], var_out[i + s])
+                    for i in range(n - s)
+                ]
+                model_list.append(binary_declaration())
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
-                model_list = [f"{var_in[i]} - {var_in[i]} = 0" for i in range(self.amount)]
-                model_list += [f'{var_in[i+self.amount]} - {var_out[i]} = 0' for i in range(len(var_in)-self.amount)]
-                model_list += [f'{var_out[i]} = 0' for i in range(len(var_in)-self.amount, len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+
+            elif self.direction == 'l' and self.model_version == self.__class__.__name__ + "_XORDIFF":
+                # XOR-difference propagation for y = x << s:
+                # y_i = x_{i+s} for 0 <= i < n-s,
+                # y_i = 0       for n-s <= i < n.
+                model_list = [
+                    eq_constraint(var_in[i + s], var_out[i])
+                    for i in range(n - s)
+                ]
+                model_list += [
+                    zero_constraint(var_out[i])
+                    for i in range(n - s, n)
+                ]
+                model_list.append(binary_declaration())
+                return model_list
+
+            elif self.direction == 'r' and self.model_version == self.__class__.__name__ + "_LINEAR":
+                # Linear-mask propagation for y = x >> s:
+                # x_i = y_{i+s} for 0 <= i < n-s,
+                # x_i = 0       for n-s <= i < n.
+                model_list = [
+                    eq_constraint(var_in[i], var_out[i + s])
+                    for i in range(n - s)
+                ]
+                model_list += [
+                    zero_constraint(var_in[i])
+                    for i in range(n - s, n)
+                ]
+                model_list.append(binary_declaration())
+                return model_list
+
+            elif self.direction == 'l' and self.model_version == self.__class__.__name__ + "_LINEAR":
+                # Linear-mask propagation for y = x << s:
+                # x_i = 0       for 0 <= i < s,
+                # x_i = y_{i-s} for s <= i < n.
+                model_list = [
+                    zero_constraint(var_in[i])
+                    for i in range(s)
+                ]
+                model_list += [
+                    eq_constraint(var_in[i + s], var_out[i])
+                    for i in range(n - s)
+                ]
+                model_list.append(binary_declaration())
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)

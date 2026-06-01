@@ -833,7 +833,8 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                         unit_vectors.add(tuple(row))
                 if len(unit_vectors) >= len(self.mat) - 1:
                     model_list = [f'{var_in[0]} -{var_out[0]}', f'-{var_in[0]} {var_out[0]}']
-                return model_list
+                    return model_list
+                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
 
         elif model_type == 'milp':
@@ -846,7 +847,8 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                 if len(unit_vectors) >= len(self.mat) - 1:
                     model_list = [f'{var_in[0]} - {var_out[0]} = 0']
                     model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list
+                    return model_list
+                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
