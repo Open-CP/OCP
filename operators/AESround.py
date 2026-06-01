@@ -79,7 +79,7 @@ class AESround(Operator): # Operator for the AES round
                     cons.model_version = self.model_version.replace(self.__class__.__name__, cons.__class__.__name__)
                     if "Sbox" in cons.__class__.__name__ and cons.model_version == cons.__class__.__name__+"_TRUNCATEDDIFF":
                         cons.model_version += "_A"
-                    if cons.__class__.__name__ == "Matrix" and ["TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version]:
+                    if cons.__class__.__name__ == "Matrix" and ("TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version):
                         model_list += cons.generate_model(model_type, branch_num=5)
                     else:
                         model_list += cons.generate_model(model_type)

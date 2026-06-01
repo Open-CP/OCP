@@ -343,6 +343,7 @@ class ConstantXOR(UnaryOperator): # Operator for the constant addition using xor
 
 
 class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute the bitwise AND then XOR on the three input variables towards the output variable
+    # out = (in0 & in1) ^ in2
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
@@ -358,24 +359,107 @@ class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute t
     def generate_model(self, model_type='sat'):
         model_list = []
         if model_type == 'sat':
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_XORDIFF_2", self.__class__.__name__ + "_XORDIFF_3"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
                 var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
                 var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
                 for i in range(len(var_in1)):
                     i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
                     if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
-                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {i1} - {i2} <= 0', f'{i1} + {i2} + {i3} - {o} >= 0', f'{i1} + {i2} - {i3} + {o} >= 0']
+                        model_list += [f'{i1} {i2} -{p}', f'{i1} {i2} -{i3} {o}', f'-{i1} {p}', f'{i1} {i2} {i3} -{o}', f'-{i2} {p}']
+                self.weight = var_p
+                return model_list
+            elif self.model_version in [self.__class__.__name__ + "_LINEAR"]:
+                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                for i in range(len(var_in1)):
+                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
+                    model_list += [f'-{i3} {p}', f'-{i1} {p}', f'-{i2} {p}', f'{i3} -{o}', f'{o} -{p}']
+                self.weight = var_p
+                return model_list
+            else:
+                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        elif model_type == 'milp':
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
+                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                for i in range(len(var_in1)):
+                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
+                    if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
+                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{i1} + {i2} + {i3} - {o} >= 0', f'{i1} + {i2} - {i3} + {o} >= 0']
                     elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":
-                        model_list += [f'{p} = 0 -> {i1} = 0', f'{p} = 0 -> {i2} = 0', f'{p} = 1 -> {i1} + {i2} >= 1', f'{i1} + {i2} + {i3} - {o} >= 0', f'{i1} + {i2} - {i3} + {o} >= 0']
-                    elif self.model_version == self.__class__.__name__ + "_XORDIFF_2":
-                        model_list += [f'{p} = 0 -> {i1} = 0', f'{p} = 0 -> {i2} = 0', f'{p} = 0 -> {i3} - {o} = 0', f'{p} = 1 -> {i1} + {i2} >= 1']
-                    elif self.model_version == self.__class__.__name__ + "_XORDIFF_3":
-                        model_list += [f'{p} = 0 -> {i1} = 0', f'{p} = 0 -> {i2} = 0', f'{p} = 0 -> {i3} - {o} = 0', f'{p} - {i1} - {i2} <= 0']
+                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{o} - {i3} + {p} >= 0', f'{i3} - {o} + {p} >= 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_in3 + var_out + var_p))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            elif self.model_version in [self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_1"]:
+                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
+                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+                for i in range(len(var_in1)):
+                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
+                    if self.model_version in [self.__class__.__name__ + "_LINEAR"]:
+                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {i3} >= 0', f'{i3} - {o} >= 0', f'{o} - {p} >= 0']
+                    elif self.model_version == self.__class__.__name__ + "_LINEAR_1":
+                        model_list += [f'{i3} - {i2} >= 0', f'{o} - {i3} >= 0', f'{i3} - {i1} >= 0', f'{i3} - {o} >= 0', f'{p} - {i3} >= 0', f'{i3} - {p} >= 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_in3 + var_out + var_p))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+
+
+    @staticmethod
+    def _eval_bit(x): # x = in0 || in1 || in2
+        in0 = (x >> 2) & 1
+        in1 = (x >> 1) & 1
+        in2 = x & 1
+        return (in0 & in1) ^ in2
+
+    @staticmethod
+    def bit_andxor_ddt(): # ddt[dx][dy] = #{x : F(x) ^ F(x ^ dx) = dy}
+        ddt = [[0 for _ in range(2)] for _ in range(8)]
+        for dx in range(8):
+            for x in range(8):
+                dy = ANDXOR._eval_bit(x) ^ ANDXOR._eval_bit(x ^ dx)
+                ddt[dx][dy] += 1
+        return ddt
+
+    @staticmethod
+    def bit_andxor_lat(): # lat[a][b] = sum_x (-1)^(<a,x> ^ <b,F(x)>)
+        def parity(x):
+            return bin(x).count("1") & 1
+        lat = [[0 for _ in range(2)] for _ in range(8)]
+        for a in range(8):      # input mask
+            for b in range(2):  # output mask
+                s = 0
+                for x in range(8):
+                    e = parity(a & x) ^ parity(b & ANDXOR._eval_bit(x))
+                    s += 1 if e == 0 else -1
+                lat[a][b] = s
+        return lat
+    
+    @staticmethod
+    def bit_andxor_diff_truth_table(): # Return possible differential propagation truth table. Each row is [din0, din1, din2, dout, weight], where weight = -log2(Pr[din -> dout])
+        ddt = ANDXOR.bit_andxor_ddt()
+        ttable = ''
+        for n in range(1 << 5):  # 3 input diff bits + 1 output diff bit + 1 weight bit
+            dx = n >> 2
+            dy = (n >> 1) & 1
+            wbit = n & 1
+            c = ddt[dx][dy]
+
+            ttable += '1' if (c == 8 and wbit == 0) or (c == 4 and wbit == 1) else '0'
+
+        return ttable
+
+    @staticmethod
+    def bit_andxor_linear_truth_table(): # Return linear-mask propagation truth table. Each row is [min0, min1, min2, mout, weight], where weight = -log2(Cor(mask_in, mask_out)). 
+        lat = ANDXOR.bit_andxor_lat()
+        ttable = ''
+        for n in range(1 << 5):  # 3 input mask bits + 1 output mask bit + 1 weight bit
+            mx = n >> 2
+            my = (n >> 1) & 1
+            wbit = n & 1
+            c = abs(lat[mx][my])
+            ttable += '1' if (c == 8 and wbit == 0) or (c == 4 and wbit == 1) else '0'
+        return ttable

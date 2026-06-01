@@ -29,7 +29,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
     def generate_model(self, model_type='sat'):
         model_list = []
         if model_type == 'sat':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF"]: # Reference: Ling Sun, et al. Accelerating the Search of Differential and Linear Characteristics with the SAT Method
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF"]: # Reference: [1] Nicky Mouha and Bart Preneel. Towards finding optimal differential charac- teristics for ARX. [2] Ling Sun, Wei Wang, and Meiqin Wang. Accelerating the search of differential and linear characteristics with the SAT method
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
                 n = self.input_vars[0].bitsize
                 var_p = [self.ID + '_p_' + str(i) for i in range(n - 1)]

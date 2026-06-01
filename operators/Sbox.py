@@ -308,7 +308,7 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
         self.weight = [obj_fun]
         return model_list
 
-    def _generate_model_diff_linear(self, model_type, tool_type, mode): # modeling all possible (input difference, output difference)
+    def _generate_model_diff_linear(self, model_type, tool_type, mode): # modeling all possible (input difference, output difference). Reference: Siwei Sun, Lei Hu, Peng Wang, Kexin Qiao, Xiaoshuang Ma, and Ling Song. Automatic security evaluation and (related-key) differential characteristic search: Application to SIMON, PRESENT, LBlock, DES(L) and other bit-oriented block ciphers
         if self.model_version in [self.__class__.__name__ + "_XORDIFF_A", self.__class__.__name__ + "_LINEAR_A"]:
             self.model_filename = str(BASE_PATH / f"constraints_{model_type}_{self.model_version.replace('_A', '')}_{tool_type}_{mode}.txt")
 
@@ -342,7 +342,7 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
 
         return model_list
 
-    def _generate_model_diff_linear_p(self, model_type, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, use teh method from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
+    def _generate_model_diff_linear_p(self, model_type, tool_type, mode): # for large sbox, self.input_bitsize >= 8, e.g., skinny, use the method from: MILP Modeling for (Large) S-boxes to Optimize Probability of Differential Characteristics. (2017). IACR Transactions on Symmetric Cryptology, 2017(4), 99-129.
         model_list = []
 
         var_in, var_out = [], []
