@@ -1,7 +1,7 @@
 """
 This module provides tools for solving MILP/SAT models. Supports multiple solvers and configurations.
-    - MILP solvers: Gurobi, SCIP, OR-Tools
-    - SAT solvers: PySAT, OR-Tools
+    - MILP solvers: Gurobi, SCIP
+    - SAT solvers: PySAT, OR-Tools CPSAT
 """
 from tools.resource_monitor import RuntimeResourceMonitor
 import time
@@ -22,13 +22,13 @@ except ImportError:
     scip_import = False
     pass
 
-try: # Solve MILP/SAT model using Or-tools solver. TO DO
-    from ortools.linear_solver import pywraplp
-    import ortoolslpparser
-    ortools_import = True
+#Solve SAT model using Google OR-Tools CPSAT solver
+try:
+    from ortools.sat.python import cp_model
+    ortools_cp_import = True
 except ImportError:
-    print("[WARNING] ortools module can't be loaded")
-    ortools_import = False
+    print("Ortools module for CP can't be loaded \n")
+    ortools_cp_import = False
     pass
 
 try: # Solve SAT model using a solver from python-sat
@@ -164,7 +164,7 @@ def solve_sat(filename, variable_map, config_solver=None):
             - target: The optimization target:
                 - "SATISFIABLE": Find a feasible solution.
                 - "All": Find all feasible solutions.
-            - solver: solver name (e.g, "ORTools", "Cadical103")
+            - solver: solver name (e.g, "CryptoMinisat", "Cadical103")
 
     Returns:
         - If target is "SATISFIABLE", returns a dict of variable assignments (a solution).
@@ -181,8 +181,6 @@ def solve_sat(filename, variable_map, config_solver=None):
     try:
         if solver in ["DEFAULT", "Cadical103", "Cadical153", "Cadical195", "CryptoMinisat", "Gluecard3", "Gluecard4", "Glucose3", "Glucose4", "Lingeling", "MapleChrono", "MapleCM", "Maplesat", "Mergesat3", "Minicard", "Minisat22", "MinisatGH"]:
             return solve_sat_pysat(filename, variable_map, config_solver)
-        elif solver == "ORTools":
-            return solve_sat_ortools(filename, variable_map, config_solver)
         else:
             raise ValueError(f"[ERROR] Unsupported solver: '{solver}'. Supported: ORTools, DEFAULT, Cadical103, Cadical153, Cadical195, CryptoMinisat, Gluecard3, Gluecard4, Glucose3, Glucose4, Lingeling, MapleChrono, MapleCM, Maplesat, Mergesat3, Minicard, Minisat22, MinisatGH'.")
     finally:
@@ -223,5 +221,87 @@ def solve_sat_pysat(filename, variable_map, config_solver):
     return sol_list
 
 
-def solve_sat_ortools(filename, variable_map, config_solver): # TO DO
-    return None
+def solve_sat_cpsat(constraints, variable_map, config_solver = None):
+    """
+    Solve a SAT problem using Google OR-Tools CPSAT solver.
+
+    Args:
+        constraints (list): List of constraints.
+        variable_map (dict): Mapping of variables to their indices.
+        config_solver (dict):
+            - target: The optimization target:
+                - "SATISFIABLE": Find a feasible solution.
+                - "All": Find all feasible solutions.
+            - solver: solver name (e.g, "CPSAT")
+            - solution_number: The number of solutions to find (default: 1)
+
+    Returns:
+        - If target is "SATISFIABLE", returns a dict of variable assignments (a solution).
+        - If target is "ALL", returns a list of such dicts (all solutions).
+        - None if no feasible solution is found or solver fails.
+    """
+    if not ortools_cp_import:
+        print("[WARNING] OR-Tools CP module can't be loaded ... skipping test")
+        return None
+
+    #Creates the model
+    model = cp_model.CpModel()
+
+    #Creates the variables
+    boolean_var_map = {}
+    variable_list = []
+    for var in variable_map:
+        v = model.new_bool_var(var)
+        boolean_var_map[var] = v
+        variable_list.append(v)
+
+    #Add constraints
+    for cons in constraints:
+        cons_var_list = cons.split()
+        model.add_bool_or([boolean_var_map[var1[1:]].Not() if var1[0]=='-' else boolean_var_map[var1] for var1 in cons_var_list])
+
+    solver = cp_model.CpSolver()
+    solver.parameters.num_workers = 1   #Allow multi-threading
+    config_solver = config_solver or {}
+    solution_number = config_solver.get("solution_number", 1)
+    sol_list = []
+    print(f"[INFO] Solving SAT model with settings: {config_solver}")
+    monitor = RuntimeResourceMonitor(interval=0.2)
+    monitor.start()
+    time_start = time.time()
+
+    if solution_number == 1:
+        status = solver.solve(model)
+        sol = {}
+        if status in [cp_model.OPTIMAL, cp_model.FEASIBLE]:
+            for var in variable_map:
+                sol[var] = solver.value(boolean_var_map[var])
+            sol_list.append(sol)
+        config_solver["resource_usage"] = monitor.stop()
+        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
+        print(f"[INFO] Found {len(sol_list)} solution(s) from OR-Tools CP-SAT.")
+        return sol_list
+        
+    elif solution_number > 1:
+        class VarArraySolutionPrinter(cp_model.CpSolverSolutionCallback):
+            def __init__(self, variable_map, boolean_var_map, solution_number):
+                cp_model.CpSolverSolutionCallback.__init__(self)
+                self.variable_map = variable_map
+                self.boolean_var_map = boolean_var_map
+                self.solution_number = solution_number
+                self.solutions = []
+            def on_solution_callback(self):
+                if len(self.solutions) >= self.solution_number:
+                    return
+                sol = {}
+                for var in self.variable_map:
+                    sol[var] = self.Value(self.boolean_var_map[var])
+                self.solutions.append(sol)
+
+        solution_printer = VarArraySolutionPrinter(variable_map, boolean_var_map, solution_number)
+        solver.SearchForAllSolutions(model, solution_printer)
+        print(f"[INFO] Found {len(solution_printer.solutions)} solution(s) from OR-Tools CP-SAT.")
+        config_solver["resource_usage"] = monitor.stop()
+        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
+        return solution_printer.solutions
+    return sol_list

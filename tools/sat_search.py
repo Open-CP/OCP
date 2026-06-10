@@ -295,9 +295,16 @@ def gen_sat_constraints_from_objective_target(objective_function, config_model, 
 # Core function for modeling and solving SAT.
 def modeling_solving(constraints, objective_function, config_model, config_solver):
     print(f"[INFO] Modeling and solving SAT.")
-    model = write_sat_model(constraints=constraints, filename=config_model.get("filename"))
-    solutions = solving.solve_sat(config_model.get("filename"), model["variable_map"], config_solver)
-
+    solver = config_solver.get("solver", "DEFAULT")
+    if solver == "CPSAT":
+        family_of_variables = ' '.join(constraints).replace('-', '')
+        all_variables = sorted(set(family_of_variables.split()))
+        variable_dict = {variable: i + 1 for (i, variable) in enumerate(all_variables)}
+        solutions = solving.solve_sat_cpsat(constraints, variable_dict, config_solver)
+    else:
+        model = write_sat_model(constraints=constraints, filename=config_model.get("filename"))
+        solutions = solving.solve_sat(config_model.get("filename"), model["variable_map"], config_solver)
+        
     if isinstance(solutions, list) and len(solutions) > 0:
         for sol in solutions:
             round_values = model_objective.cal_round_obj_fun_values_from_solution(objective_function, sol)

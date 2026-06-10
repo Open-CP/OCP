@@ -45,17 +45,24 @@ def test_milp_model(op):
 
 def test_sat_model(op):
     model_versions = [op.__class__.__name__+"_XORDIFF", op.__class__.__name__+"_TRUNCATEDDIFF", op.__class__.__name__+"_LINEAR", op.__class__.__name__+"_TRUNCATEDLINEAR"]
+    solver = None  # Change to test different solvers supported for solving SAT problems
     for model_v in model_versions:
         op.model_version = model_v
         sat_constraints = op.generate_model(model_type='sat')
         print(f"SAT constraints with model_version={model_v}: \n", "\n".join(sat_constraints))
-        filename = str(FILES_DIR / f"sat_{op.ID}_{model_v}.cnf")
-        model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
-        print("variable_map in sat:\n", model["variable_map"])
-        sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
+        if solver == "CPSAT":
+            family_of_variables = ' '.join(sat_constraints).replace('-', '')
+            all_variables = sorted(set(family_of_variables.split()))
+            variable_dict = {variable: i + 1 for (i, variable) in enumerate(all_variables)}
+            sol_list = solving.solve_sat_cpsat(sat_constraints, variable_dict, {"solution_number": 100000})
+        else:
+            filename = str(FILES_DIR / f"sat_{op.ID}_{model_v}.cnf")
+            model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
+            print("variable_map in sat:\n", model["variable_map"])
+            sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
         print(f"All solutions:\n{sol_list}")
-
-
+        
+                     
 def test_constant_add_1():
 
     op = gen_operator(1, [[1, 2], [3, 4]], round = 1, index = 0)
@@ -63,7 +70,7 @@ def test_constant_add_1():
     test_implementation(op)
 
     test_milp_model(op)
-
+    
     test_sat_model(op)
 
 

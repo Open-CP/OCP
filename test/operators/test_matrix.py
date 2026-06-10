@@ -53,12 +53,19 @@ def test_milp_model(op, model_version, tool_type="minimize_logic", branch_num=No
 
 def test_sat_model(op, model_version, tool_type="minimize_logic"):
     op.model_version = model_version
+    solver = None # Change to test different solvers supported for solving SAT problems
     sat_constraints = op.generate_model(model_type='sat', tool_type=tool_type)
     print(f"SAT constraints with model_version={model_version}: \n", "\n".join(sat_constraints))
-    filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
-    model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
-    print("variable_map in sat:\n", model["variable_map"])
-    sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
+    if solver == "CPSAT":
+            family_of_variables = ' '.join(sat_constraints).replace('-', '')
+            all_variables = sorted(set(family_of_variables.split()))
+            variable_dict = {variable: i + 1 for (i, variable) in enumerate(all_variables)}
+            sol_list = solving.solve_sat_cpsat(sat_constraints, variable_dict, {"solution_number": 100000})
+    else:
+        filename = str(FILES_DIR / f"sat_{op.ID}_{model_version}.cnf")
+        model = sat_search.write_sat_model(constraints=sat_constraints, filename=filename)
+        print("variable_map in sat:\n", model["variable_map"])
+        sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
     print(f"Number of solutions: {len(sol_list)}")
     for sol in sol_list:
         print(sol)
@@ -87,7 +94,6 @@ def test_matrix(op):
             if tool_type == "polyhedron":
                 continue  # skip SAT for polyhedron since it's not supported
             test_sat_model(op, model_version, tool_type=tool_type)
-
 
 if __name__ == '__main__':
     print(f"=== Implementation Test Log ===")
