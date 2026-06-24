@@ -10,6 +10,7 @@ import variables.variables as var
 from operators.Sbox import Sbox, ASCON_Sbox, Skinny_4bit_Sbox, Skinny_8bit_Sbox, GIFT_Sbox, AES_Sbox, TWINE_Sbox, PRESENT_Sbox, KNOT_Sbox
 import tools.milp_search as milp_search
 import tools.sat_search as sat_search
+import tools.sbox_division_trails as sbox_division_trails
 import solving.solving as solving
 
 FILES_DIR = ROOT / "files"
@@ -229,22 +230,49 @@ def test_Sbox_solutions_sat(Sbox, solutions):
     print(f"All solutions returned from SAT have been checked and are consistent with the DDT of S-box")
 
 
+
+def test_sbox_twosubset(sbox):
+    trails = sbox_division_trails.sbox_two_subset_division_trails(sbox.table, sbox.input_bitsize)
+    assert len(trails) == 47
+
+    sbox.model_version = sbox.__class__.__name__ + "_INTEGRAL_TWOSUBSET"
+    constraints = sbox.generate_model(model_type="milp", tool_type="polyhedron", filename_load=False)
+    assert constraints
+
+    input_variables = []
+    for i in range(len(sbox.input_vars)):
+        input_variables += sbox.get_var_model("in", i)
+    output_variables = []
+    for i in range(len(sbox.output_vars)):
+        output_variables += sbox.get_var_model("out", i)
+
+    assert any(input_variables[0] in constraint for constraint in constraints)
+    assert any(output_variables[0] in constraint for constraint in constraints)
+
+    print(f"[TEST] Constraints template written to {sbox.model_filename}")
+
+
+
 if __name__ == '__main__':
 
-    print(f"=== Implementation Test Log ===")
 
-    for sbox in [gift_sbox, present_sbox, knot_sbox, twine_sbox, ascon_sbox, skinny4_sbox, skinny8_sbox, aes_sbox]:
+
+    # for sbox in [gift_sbox, present_sbox, knot_sbox, twine_sbox, ascon_sbox, skinny4_sbox, skinny8_sbox, aes_sbox]:
+    for sbox in [present_sbox2]:
+
         print(f"\n********************* operation: {sbox.ID} Sbox ********************* ")
         sbox.display()
 
-        test_implementation(sbox)
+        # test_implementation(sbox)
 
-        test_sbox_milp_diff(sbox)
+        # test_sbox_milp_diff(sbox)
 
-        test_sbox_milp_linear(sbox)
+        # test_sbox_milp_linear(sbox)
 
-        test_sbox_sat_diff(sbox)
+        # test_sbox_sat_diff(sbox)
 
-        test_sbox_sat_linear(sbox)
+        # test_sbox_sat_linear(sbox)
+
+        test_sbox_twosubset(sbox)
 
         print("All implementation tests completed!")

@@ -3,6 +3,7 @@ This module provides usage examples for the SPECK primitive and SPECK block ciph
 
 1. Generating software implementations and visualizations
 2. Conducting differential cryptanalysis using MILP and SAT methods
+3. Conducting integral cryptanalysis using MILP methods
 
 Note:
 For examples of other ciphers, refer to the following folders:
@@ -128,6 +129,29 @@ def test_linear_attack_sat(cipher):
     trails = attacks.linear_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
 
 
+# ********************* Integral Cryptanalysis ********************* #
+def test_integral_attack_milp(cipher, constant_bits, config_model=None, config_solver=None):
+    # Example: two-subset integral distinguisher search using MILP.
+    goal="INTEGRAL_TWOSUBSET"
+    constraints=["TWO_SUBSET_INIT"]
+    objective_target="EXISTENCE"
+    show_mode=2
+    if config_model is None:
+        config_model={}
+    else:
+        config_model=dict(config_model)
+    config_model.setdefault("constant_bits", constant_bits)
+    config_model.setdefault("filename", str(FILES_DIR / f"{cipher.name}_INTEGRAL_TWOSUBSET_milp_model.lp"))
+    if config_solver is None:
+        config_solver={"solver": "DEFAULT", "solution_number": 1, "OutputFlag": 0}
+
+    # Search for the integral distinguisher
+    distinguishers = attacks.integral_attacks(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+    for distinguisher in distinguishers:
+        print(f"[TEST] Balanced bits: {distinguisher.data['balanced_bits']}")
+    return distinguishers
+
+
 if __name__ == "__main__":
     # import primitives.aes as aes
     # cipher = aes.AES_BLOCKCIPHER(version=[128,256])
@@ -136,12 +160,21 @@ if __name__ == "__main__":
     # cipher = speck.SPECK_PERMUTATION(version=32)
     # cipher = speck.SPECK_BLOCKCIPHER(version=[32,64])
 
-    import primitives.simon as simon
-    cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
+    # import primitives.simon as simon
+    # cipher = simon.SIMON_BLOCKCIPHER(version=[32,64])
 
-    test_all_implementations(cipher)
-    test_visualisation(cipher)
-    test_diff_attack_milp(cipher)
-    test_diff_attack_sat(cipher)
-    test_linear_attack_milp(cipher)
-    test_linear_attack_sat(cipher)
+    # test_all_implementations(cipher)
+    # test_visualisation(cipher)
+    # test_diff_attack_milp(cipher)
+    # test_diff_attack_sat(cipher)
+    # test_linear_attack_milp(cipher)
+    # test_linear_attack_sat(cipher)
+
+    # PRESENT integral attack example. This MILP example is slower than the default demos.
+    import primitives.present as present
+    present_cipher = present.PRESENT_PERMUTATION(r=9)
+    present_config_model={
+        "model_params": {"PRESENT_Sbox": {"tool_type": "polyhedron"}},
+        "filename": str(FILES_DIR / "9round_PRESENT_PERM_INTEGRAL_TWOSUBSET_milp_model.lp"),
+    }
+    test_integral_attack_milp(present_cipher, [60, 61, 62, 63], config_model=present_config_model)

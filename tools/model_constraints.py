@@ -83,6 +83,9 @@ def configure_model_version(cipher, goal, config_model): # Configure the model v
         set_model_versions(cipher, "TRUNCATEDLINEAR", functions, rounds, layers, positions) # Set model_version = "TRUNCATEDLINEAR" for all operators
         set_model_versions(cipher, "TRUNCATEDLINEAR_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "TRUNCATEDLINEAR_A" for all Sbox operators
 
+    elif goal == "INTEGRAL_TWOSUBSET":
+        set_model_versions(cipher, "INTEGRAL_TWOSUBSET", functions, rounds, layers, positions) # Set model_version = "INTEGRAL_TWOSUBSET" for all selected operators
+
     else:
         raise ValueError(f"Invalid goal: {goal}.")
 

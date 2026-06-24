@@ -3,6 +3,7 @@ import os
 from pathlib import Path
 from operators.operators import Operator, RaiseExceptionVersionNotExisting
 from tools.model_constraints import generate_and_save_constraints, gen_constraints_obj_func_from_template
+from tools.sbox_division_trails import two_subset_sbox_truthtable
 
 ROOT = Path(__file__).resolve().parents[1]  # this file -> operators -> <ROOT>
 BASE_PATH = ROOT / "files/sbox_modeling"
@@ -258,7 +259,31 @@ class Sbox(Operator):  # Generic operator assigning a Sbox relationship between 
             return self._generate_model_diff_linear_p(model_type, tool_type, mode)
         elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_A", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_A"] and (not isinstance(self.input_vars[0], list)):
             return self._generate_model_diff_linear_word_truncated(model_type)
+        elif self.model_version in [self.__class__.__name__ + "_INTEGRAL_TWOSUBSET"]:
+            return self._generate_model_integral_twosubset(model_type, tool_type, mode)
         else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+
+    def _generate_model_integral_twosubset(self, model_type, tool_type, mode):
+        if model_type != "milp":
+            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+        if self.input_bitsize != self.output_bitsize:
+            raise ValueError(f"{self.__class__.__name__}: INTEGRAL_TWOSUBSET requires equal input and output bitsizes")
+
+        var_in, var_out = [], []
+        for i in range(len(self.input_vars)):
+            var_in += self.get_var_model("in", i)
+        for i in range(len(self.output_vars)):
+            var_out += self.get_var_model("out", i)
+
+        if self.filename_load and os.path.exists(self.model_filename):
+            model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
+        else:
+            ttable = two_subset_sbox_truthtable(self.table, self.input_bitsize)
+            input_variables, output_variables = [f"a{i}" for i in range(len(var_in))], [f"b{i}" for i in range(len(var_out))]
+            generate_and_save_constraints(model_type, tool_type, mode, ttable, input_variables, output_variables, model_filename=self.model_filename)
+            model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
+
+        return model_list
 
     def _generate_model_diff_linear_pr(self, model_type, tool_type, mode):
         var_in, var_out = [], []

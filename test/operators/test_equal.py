@@ -55,12 +55,32 @@ def test_sat_model(op):
         sol_list = solving.solve_sat(filename, model["variable_map"], {"solution_number": 100000})
         print(f"All solutions:\n{sol_list}")
 
+def test_equal_twosubset(op):
+    op.model_version = op.__class__.__name__ + "_INTEGRAL_TWOSUBSET"
+    milp_constraints = op.generate_model(model_type='milp')
+    var_in, var_out = op.get_var_model("in", 0), op.get_var_model("out", 0)
+    expected_constraints = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
+    assert milp_constraints[:-1] == expected_constraints
+    assert milp_constraints[-1] == 'Binary\n' + ' '.join(v for v in var_in + var_out)
+
+    try:
+        op.generate_model(model_type='sat')
+    except Exception as exc:
+        assert "not existing for sat" in str(exc)
+    else:
+        raise AssertionError("Equal_INTEGRAL_TWOSUBSET must reject non-MILP model_type")
+
+    print(f"MILP constraints with model_version={op.model_version}: \n", "\n".join(milp_constraints))
+
+
 
 def test_equal(bitsize):
 
     op = gen_operator(bitsize=bitsize)
 
     test_implementation(op)
+
+    test_equal_twosubset(op)
 
     test_milp_model(op)
 

@@ -290,3 +290,46 @@ class LinearTrail(Trail):
             lines += f"rounds_linear_weight: {self.data['rounds_linear_weight']}\n"
         print(lines)
         return lines
+
+
+class IntegralDistinguisher(AttackTrace):
+    def __init__(self, data, solution_trace=None):
+        super().__init__("integral", data, solution_trace=solution_trace)
+        config_model = data.get("config_model", {})
+        config_solver = data.get("config_solver", {})
+        solver_name = config_solver.get("solver", "DEFAULT")
+        if "filename" in config_model:
+            model_path = Path(config_model["filename"])
+            base_name = model_path.stem[:-6] if model_path.stem.endswith("_model") else model_path.stem
+            base_path = model_path.with_name(base_name)
+            self.json_filename = str(base_path) + f"_{self.type}_{solver_name}_distinguisher.json"
+            self.txt_filename = str(base_path) + f"_{self.type}_{solver_name}_distinguisher.txt"
+        else:
+            base_path = FILES_DIR / f"{self.data['cipher']}_{self.type}_{solver_name}_distinguisher"
+            self.json_filename = str(base_path) + ".json"
+            self.txt_filename = str(base_path) + ".txt"
+
+    def save_json(self):
+        with open(self.json_filename, "w") as f:
+            json.dump(self.to_dict(), f, ensure_ascii=False, indent='\t')
+
+    def save_txt(self):
+        lines = []
+        lines.append("========== Integral Distinguisher ==========")
+        lines.append(f"Cipher: {self.data['cipher']}")
+        lines.append(f"Goal: {self.data.get('goal')}")
+        lines.append(f"Status: {self.data.get('status')}")
+        lines.append(f"Balanced bits: {self.data.get('balanced_bits', [])}")
+        lines.append(f"Model file: {self.data.get('config_model', {}).get('filename')}")
+        lines.append("")
+        text = "\n".join(lines)
+        with open(self.txt_filename, "w") as f:
+            f.write(text)
+        print(text)
+        return text
+
+    def save_tex(self):
+        raise NotImplementedError("LaTeX export is not implemented yet.")
+
+    def save_pdf(self):
+        raise NotImplementedError("PDF export is not implemented yet.")

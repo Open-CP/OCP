@@ -2,6 +2,7 @@ import time
 
 import attacks.differential_cryptanalysis as diff
 import attacks.linear_cryptanalysis as linear
+import attacks.integral_cryptanalysis as integral
 
 # **************************************************************************** #
 # This module provides a high-level attack interfaces, including:
@@ -35,3 +36,15 @@ def linear_attacks(cipher, goal="LINEARPATH_CORR", constraints=["INPUT_NOT_ZERO"
 
     print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
     return trails
+
+# =================== Integral Attacks ===================
+def integral_attacks(cipher, goal="INTEGRAL_TWOSUBSET", constraints=None, objective_target="EXISTENCE", show_mode=0, config_model=None, config_solver=None):
+    time_start = time.time()
+
+    if goal == "INTEGRAL_TWOSUBSET":
+        distinguishers = integral.search_integral_distinguisher(cipher, goal=goal, constraints=constraints, objective_target=objective_target, show_mode=show_mode, config_model=config_model, config_solver=config_solver)
+    else:
+        raise ValueError(f"[WARNING] Invalid goal: {goal}.")
+
+    print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
+    return distinguishers

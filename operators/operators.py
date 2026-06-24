@@ -218,7 +218,7 @@ class Equal(UnaryOperator):  # Operator assigning equality between the input var
                 return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
+            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_INTEGRAL_TWOSUBSET"]:
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
                 model_list = [f"{vin} - {vout} = 0" for vin, vout in zip(var_in, var_out)]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
