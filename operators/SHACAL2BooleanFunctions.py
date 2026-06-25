@@ -1,3 +1,4 @@
+# Not ready for use, still in development.
 import copy
 from operators.operators import Operator, Rot, Shift, RaiseExceptionVersionNotExisting
 from operators.boolean_operators import NOT, AND, N_XOR, XOR

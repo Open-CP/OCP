@@ -1,3 +1,4 @@
+# Not ready for use, still in development.
 from primitives.primitives import Stream_cipher
 from operators.boolean_operators import XOR, AND
 from operators.operators import Equal

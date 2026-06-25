@@ -96,17 +96,14 @@ def gen_obj_fun_variables(obj_fun, obj_fun_decimal=False): # In the case of a de
     if not obj_fun_decimal:
         return obj_fun_var_int
     else:
+        # Collect the distinct decimal (non-integer) coefficients across every round and component.
         decimal_vars = []
         for obj_fun_r in obj_fun:
-            if obj_fun_r:
-                terms = [t.strip() for t in obj_fun_r[0].split('+')]
-                break
-        for term in terms:
-            parts = term.split()
-            if len(parts) >= 2:
-                coef, var = parts[0], parts[1]
-                if not float(coef).is_integer():
-                    decimal_vars.append(coef)
+            for obj in obj_fun_r:
+                for term in (t.strip() for t in obj.split('+')):
+                    parts = term.split()
+                    if len(parts) >= 2 and not float(parts[0]).is_integer() and parts[0] not in decimal_vars:
+                        decimal_vars.append(parts[0])
 
         obj_fun_var_dec = {k: [] for k in decimal_vars}
 
@@ -117,7 +114,7 @@ def gen_obj_fun_variables(obj_fun, obj_fun_decimal=False): # In the case of a de
                 for term in terms:
                     parts = term.split()
                     if len(parts) >= 2 and (not float(parts[0]).is_integer()):
-                        obj_fun_var_r_dec[coef].append(parts[1])
+                        obj_fun_var_r_dec[parts[0]].append(parts[1])
             for k in decimal_vars:
                 obj_fun_var_dec[k].append(obj_fun_var_r_dec[k])
         return obj_fun_var_int, [obj_fun_var_dec[k] for k in decimal_vars]

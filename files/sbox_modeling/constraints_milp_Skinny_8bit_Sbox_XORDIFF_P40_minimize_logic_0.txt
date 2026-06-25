@@ -1,6 +1,15 @@
 Input: a0||a1||a2||a3||a4||a5||a6||a7; msb: a0
 Output: b0||b1||b2||b3||b4||b5||b6||b7; msb: b0
-Time used to simplify the constraints: 1.3278 s
+Time used to simplify the constraints: 0.6162 s
 Number of constraints: 16
-Constraints: ['b6 >= 1', 'b4 >= 1', '- b2 >= 0', '- a3 + b7 >= 0', '- b0 >= 0', '- a7 >= 0', '- a5 >= 0', '- b5 >= 0', 'a0 >= 1', 'a1 >= 1', 'a6 >= 1', '- a2 >= 0', 'a3 - b7 >= 0', '- b1 >= 0', '- a4 >= 0', '- b3 >= 0']
-Weight: 
+Constraints: ['b6 >= 1', 'b4 >= 1', '- b2 >= 0', '- a3 + b7 >= 0', '- b0 >= 0', '- a7 >= 0', '- a5 >= 0', '- b5 >= 0', 'a0 >= 1', 'a1 >= 1', 'a6 >= 1', '- a2 >= 0', 'a3 - b7 >= 0', '- b1 >= 0', '- a4 >= 0', '- b3 >= 0', 'Binary\na0 a1 a2 a3 a4 a5 a6 a7 b0 b1 b2 b3 b4 b5 b6 b7']
+
+
+Information
+Backend: espresso_pyeda
+Backend version: 0.28.0
+Mode: ['-estrong', '-eonset']
+Model type: milp
+Tool type: minimize_logic
+Python version: 3.8.20
+Platform: Linux-6.14.0-37-generic-x86_64-with-glibc2.17

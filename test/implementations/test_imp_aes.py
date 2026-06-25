@@ -6,6 +6,9 @@ if str(ROOT) not in sys.path:
 from primitives.aes import AES_PERMUTATION, AES_BLOCKCIPHER
 from OCP import test_all_implementations, test_visualisation
 
+# Note: For AES, only the *unrolled* implementation is currently supported (and verified against the NIST test vectors). 
+# The rolled implementation is not yet correct for AES because the rolled code generator emits a single round body inside a loop, which assumes every round is structurally identical and indexes round-dependent data by the loop counter. 
+# Hence test_all_implementations is expected to pass only on the unrolled output.
 
 def test_imp_aes_permutation():
     cipher = AES_PERMUTATION(r=None)

@@ -15,6 +15,7 @@ class SipHash_permutation(Permutation):
         :param nbr_rounds: Number of rounds
         :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
+        if nbr_rounds is None: nbr_rounds = 4   # default to SipHash-2-4 finalization;
         nbr_layers = 10
         nbr_words = 4 
         nbr_temp_words = 0
@@ -37,10 +38,15 @@ class SipHash_permutation(Permutation):
                 S.PermutationLayer("PERM2", i, 9, [2,1,0,3]) # Permutation layer
    
     def gen_test_vectors(self):
-        # Test vector from  https://www.aumasson.jp/siphash/siphash.pdf
-        IN =[0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
-        OUT = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8]
-        self.test_vectors.append([[IN], OUT])
+        # Test values from https://www.aumasson.jp/siphash/siphash.pdf (Appendix A, SipHash-2-4 intermediate states).
+        if self.nbr_rounds == 2:    # compression: 2 SipRounds
+            IN  = [0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
+            OUT = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8]
+            self.test_vectors.append([[IN], OUT])
+        elif self.nbr_rounds == 4:  # finalization: 4 SipRounds
+            IN  = [0x3c85b3ab6f55be51, 0x414fc3fb98efe374, 0xccf13ea527b9f442, 0x5293f5da84008f82]
+            OUT = [0xf6bcd53893fecff1, 0x54b9964c7ea0d937, 0x1b38329c099bb55a, 0x1814bb89ad7be679]
+            self.test_vectors.append([[IN], OUT])
         
 def SIPHASH_PERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]

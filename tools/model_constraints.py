@@ -62,26 +62,32 @@ def configure_model_version(cipher, goal, config_model): # Configure the model v
     if goal == 'DIFFERENTIAL_SBOXCOUNT':
         set_model_versions(cipher, "XORDIFF", functions, rounds, layers, positions) # Set model_version = "XORDIFF" for all operators
         set_model_versions(cipher, "XORDIFF_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "XORDIFF_A" for all Sbox operators
+        set_model_versions(cipher, "XORDIFF_A", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box active-count semantics inside AESround
 
     elif goal == 'DIFFERENTIALPATH_PROB' or  goal == "DIFFERENTIAL_PROB":
         set_model_versions(cipher, "XORDIFF", functions, rounds, layers, positions) # Set model_version = "XORDIFF" for all operators
         set_model_versions(cipher, "XORDIFF_PR", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "XORDIFF_PR" for all Sbox operators
+        set_model_versions(cipher, "XORDIFF_PR", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box probability semantics inside AESround
 
     elif goal == 'LINEAR_SBOXCOUNT':
         set_model_versions(cipher, "LINEAR", functions, rounds, layers, positions) # Set model_version = "LINEAR" for all operators
         set_model_versions(cipher, "LINEAR_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "LINEAR_A" for all Sbox operators
+        set_model_versions(cipher, "LINEAR_A", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box active-count semantics inside AESround
 
     elif goal == 'LINEARPATH_CORR' or goal == "LINEARHULL_CORR":
         set_model_versions(cipher, "LINEAR", functions, rounds, layers, positions) # Set model_version = "LINEAR" for all operators
         set_model_versions(cipher, "LINEAR_PR", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "LINEAR_PR" for all Sbox operators
+        set_model_versions(cipher, "LINEAR_PR", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box correlation semantics inside AESround
 
     elif goal == "TRUNCATEDDIFF_SBOXCOUNT":
         set_model_versions(cipher, "TRUNCATEDDIFF", functions, rounds, layers, positions) # Set model_version = "TRUNCATEDDIFF" for all operators
         set_model_versions(cipher, "TRUNCATEDDIFF_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "TRUNCATEDDIFF_A" for all Sbox operators
+        set_model_versions(cipher, "TRUNCATEDDIFF_A", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box active-count semantics inside AESround
 
     elif goal == "TRUNCATEDLINEAR_SBOXCOUNT":
         set_model_versions(cipher, "TRUNCATEDLINEAR", functions, rounds, layers, positions) # Set model_version = "TRUNCATEDLINEAR" for all operators
         set_model_versions(cipher, "TRUNCATEDLINEAR_A", functions, rounds, layers, positions, operator_name="Sbox") # Set model_version = "TRUNCATEDLINEAR_A" for all Sbox operators
+        set_model_versions(cipher, "TRUNCATEDLINEAR_A", functions, rounds, layers, positions, operator_name="AESround") # Preserve S-box active-count semantics inside AESround
 
     else:
         raise ValueError(f"Invalid goal: {goal}.")
@@ -170,6 +176,8 @@ def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bit
                     cons_vars_name.extend([f"{var.ID}_{j}" for j in range(var.bitsize)])
                 else:
                     cons_vars_name.append(var.ID)
+        if not cons_vars_name: # No variables to constrain; avoid emitting a malformed constraint such as " = 0".
+            return []
         if cons_type == "EXACTLY":
             return gen_constraints_exactly(model_type, cons_vars_name, cons_value)
         elif cons_type == "SUM_EXACTLY":
@@ -209,8 +217,7 @@ def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
         try:
             cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
         except Exception as e:
-            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.equals. Passing...")
-            return []
+            raise ValueError(f"CardEnc.equals failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
@@ -243,8 +250,7 @@ def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQ
         try:
             cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
         except Exception as e:
-            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.atmost. Passing...")
-            return []
+            raise ValueError(f"CardEnc.atmost failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
@@ -277,8 +283,7 @@ def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding=1):
         try:
             cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
         except Exception as e:
-            print(f"[WARNING] Don't support encoding {encoding} in CardEnc.atleast. Passing...")
-            return []
+            raise ValueError(f"CardEnc.atleast failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
         readable_clauses = []
         for clause in cnf.clauses:
             readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
@@ -316,6 +321,7 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None): # Genera
 def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
     assert Round >= 2, f"Round = {Round} must be at least 2."
     assert len(best_obj) == Round-1, f"best_obj = {best_obj} length must be Round-1 = {Round-1}."
+    obj_fun = list(obj_fun) # work on a copy so the caller's list is not mutated
     while obj_fun and obj_fun[-1] == []: # Remove empty lists at the end of obj_fun
         obj_fun.pop()
     assert obj_fun is not None and len(obj_fun) == Round and all(isinstance(obj, list) for obj in obj_fun), f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}."
@@ -339,6 +345,7 @@ def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstrain
     assert Round >= 2, f"Round = {Round} must be at least 2."
     assert len(best_obj) == Round-1, f"best_obj length = {len(best_obj)} must be (Round-1) = {Round-1}."
     assert isinstance(obj_sat, int) and obj_sat > 0, f"obj_sat = {obj_sat} must be a positive integer."
+    obj_var = list(obj_var) # work on a copy so the caller's list is not mutated
     while obj_var and obj_var[-1] == []: # Remove empty lists at the end of obj_var
         obj_var.pop()
     assert obj_var is not None and len(obj_var) == Round and all(isinstance(row, list) for row in obj_var), f"obj_var must be a list of lists, and with length = {len(obj_var)} equal to Round = {Round}."
@@ -530,6 +537,8 @@ def gen_matrix_constraints(vin, vout, model_type, v_dummy=None):
             return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
         elif model_type == 'sat':
             return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
+        else:
+            raise ValueError(f"Unsupported model_type '{model_type}' in gen_matrix_constraints.")
     elif len(vin) == 2:
         return gen_xor_constraints(vin[0], vin[1], vout, model_type)
     elif len(vin) >= 3:
@@ -547,6 +556,8 @@ def gen_word_matrix_constraints(vin, vout, model_type, v_dummy=None):
             return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
         elif model_type == 'sat':
             return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
+        else:
+            raise ValueError(f"Unsupported model_type '{model_type}' in gen_word_matrix_constraints.")
     elif len(vin) == 2:
         return gen_word_xor_constraints(vin[0], vin[1], vout, model_type)
     elif len(vin) >= 3:
