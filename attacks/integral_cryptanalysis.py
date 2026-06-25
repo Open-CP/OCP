@@ -180,6 +180,9 @@ def search_integral_distinguisher(cipher, goal="INTEGRAL_TWOSUBSET", constraints
     assert isinstance(config_model, dict) or config_model is None, f"Invalid config_model: {config_model}. Expected a dictionary or None."
     assert isinstance(config_solver, dict) or config_solver is None, f"Invalid config_solver: {config_solver}. Expected a dictionary or None."
 
+    # Generate a new cipher instance with added copy layer after each operator.
+    cipher.add_copy_operators()
+
     # Step 1. Parse and set model and solver configurations.
     config_model, config_solver = parse_and_set_configs(cipher, goal, objective_target, config_model, config_solver)
     model_type = config_model.get("model_type", "milp")

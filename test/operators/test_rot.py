@@ -32,7 +32,7 @@ def test_implementation(op):
 
 
 def test_milp_model(op):
-    model_versions = [op.__class__.__name__+"_XORDIFF", op.__class__.__name__+"_LINEAR"]
+    model_versions = [op.__class__.__name__+"_XORDIFF", op.__class__.__name__+"_LINEAR", op.__class__.__name__+"_INTEGRAL_TWOSUBSET"]
     for model_v in model_versions:
         op.model_version = model_v
         milp_constraints = op.generate_model(model_type='milp')

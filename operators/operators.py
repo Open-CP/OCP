@@ -180,6 +180,13 @@ class CopyOperator(Operator):  # Operator that duplicates one input into multipl
                             v_dummy = None
                         model_list.extend(gen_nxor_constraints([var_out[j][i] for j in range(len(var_out))], var_in[i], model_type=model_type, v_dummy=v_dummy))
                 return model_list
+            # Modeling for integral cryptanalysis
+            elif model_type == "milp" and self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
+                var_in, var_out = (self.get_var_model("in", 0), [self.get_var_model("out", i) for i in range(len(self.output_vars))])
+                for i in range(self.input_vars[0].bitsize):
+                    model_list += [f"{var_in[i]} - " + " - ".join(var_out[j][i] for j in range(len(var_out))) + " = 0"]
+                model_list.append('Binary\n' + ' '.join(var_in + sum(var_out, [])))
+                return model_list
             # Modeling for truncated linear cryptanalysis
             elif len(self.output_vars) == 2 and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
                 var_in, var_out1, var_out2 = (self.get_var_model("in", 0, bitwise=False),  self.get_var_model("out", 0, bitwise=False), self.get_var_model("out", 1, bitwise=False))
@@ -277,11 +284,11 @@ class Rot(UnaryOperator):     # Operator for the rotation function: rotation of 
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'milp':
             var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-            if (self.direction == 'r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
+            if (self.direction == 'r' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_INTEGRAL_TWOSUBSET"]):
                 model_list = [f'{var_in[i]} - {var_out[(i + self.amount) % len(var_in)]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return model_list
-            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]):
+            elif (self.direction =='l' and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_INTEGRAL_TWOSUBSET"]):
                 model_list = [f'{var_in[(i+self.amount)%len(var_in)]} - {var_out[i]} = 0' for i in range(len(var_in))]
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
                 return  model_list

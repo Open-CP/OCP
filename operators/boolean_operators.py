@@ -53,6 +53,13 @@ class AND(BinaryOperator):  # Operator for the bitwise AND operation: compute th
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
                 self.weight = [" + ".join(var_p)]
                 return model_list
+            elif self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0))
+                for i in range(len(var_in1)):
+                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                    model_list += [f'{o} - {i1} >= 0', f'{o} - {i2} >= 0', f'{o} - {i1} - {i2} <= 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
+                return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
@@ -174,6 +181,13 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 model_list += [f'{var_in1[0]} - {var_out[0]} = 0', f'{var_in2[0]} - {var_out[0]} = 0']
+                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
+                return model_list
+            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0))
+                for i in range(len(var_in1)):
+                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                    model_list += [f'{i1} + {i2} - {o} = 0']
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
                 return model_list
             else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)

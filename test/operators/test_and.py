@@ -32,10 +32,18 @@ def test_implementation(op):
 
 
 def test_milp_model(op):
-    model_versions = [op.__class__.__name__+"_XORDIFF", op.__class__.__name__+"_LINEAR"]
+    model_versions = [op.__class__.__name__+"_XORDIFF", op.__class__.__name__+"_LINEAR", op.__class__.__name__+"_INTEGRAL_TWOSUBSET"]
     for model_v in model_versions:
         op.model_version = model_v
         milp_constraints = op.generate_model(model_type='milp')
+        if model_v == op.__class__.__name__+"_INTEGRAL_TWOSUBSET":
+            var_in1, var_in2, var_out = op.get_var_model("in", 0), op.get_var_model("in", 1), op.get_var_model("out", 0)
+            expected_constraints = []
+            for i in range(op.input_vars[0].bitsize):
+                i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                expected_constraints += [f'{o} - {i1} >= 0', f'{o} - {i2} >= 0', f'{o} - {i1} - {i2} <= 0']
+            assert milp_constraints[:-1] == expected_constraints
+            assert milp_constraints[-1] == 'Binary\n' + ' '.join(v for v in var_in1 + var_in2 + var_out)
         print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))
         filename = str(FILES_DIR / f"milp_{op.ID}_{model_v}.lp")
         model = milp_search.write_milp_model(constraints=milp_constraints, obj_fun=op.weight, filename=filename)
