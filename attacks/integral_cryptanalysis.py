@@ -50,12 +50,13 @@ def expand_var_ids(var): # Expand variable IDs by bits if necessary.
 
 
 def get_initial_state_var_ids(cipher, function="PERMUTATION"):
-    return [var_id for var in cipher.functions[function].vars[1][0] for var_id in expand_var_ids(var)]
+    func = cipher.functions[function]
+    return [var_id for var in func.vars[1][0][:func.nbr_words] for var_id in expand_var_ids(var)]
 
 
 def get_final_state_var_ids(cipher, function="PERMUTATION"):
     func = cipher.functions[function]
-    return [var_id for var in func.vars[func.nbr_rounds][func.nbr_layers] for var_id in expand_var_ids(var)]
+    return [var_id for var in func.vars[func.nbr_rounds][func.nbr_layers][:func.nbr_words] for var_id in expand_var_ids(var)]
 
 
 def normalize_bit_positions(bit_positions, bit_size):
@@ -144,11 +145,10 @@ def search_balanced_bits(base_constraints, final_var_ids, config_model, config_s
 
     if status == "unknown":
         status = "not_found"
-    balanced_var_ids = [var_id for var_id in final_var_ids if var_id not in banned_var_ids]
     return {
         "status": status,
-        "banned_bits": final_var_ids_to_bit_positions(banned_var_ids),
-        "balanced_bits": final_var_ids_to_bit_positions(balanced_var_ids),
+        "banned_bits": [i for i, var_id in enumerate(final_var_ids) if var_id in banned_var_ids],
+        "balanced_bits": [i for i, var_id in enumerate(final_var_ids) if var_id not in banned_var_ids],
     }
 
 

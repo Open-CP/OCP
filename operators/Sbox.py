@@ -542,6 +542,72 @@ class PRESENT_Sbox(Sbox):           # Operator of the PRESENT 4-bit Sbox
         self.table = [12, 5, 6, 11, 9, 0, 10, 13, 3, 14, 15, 8, 4, 7, 1, 2]
 
 
+class RECTANGLE_Sbox(Sbox):         # Operator of the RECTANGLE 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [6, 5, 12, 10, 1, 14, 7, 9, 11, 0, 3, 13, 8, 15, 4, 2]
+
+
+class LBlock_Sbox0(Sbox):           # Operator of the LBlock s0 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [14, 9, 15, 0, 13, 4, 10, 11, 1, 2, 8, 3, 7, 6, 12, 5]
+
+
+class LBlock_Sbox1(Sbox):           # Operator of the LBlock s1 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [4, 11, 14, 9, 15, 13, 0, 10, 7, 12, 5, 6, 2, 8, 1, 3]
+
+
+class LBlock_Sbox2(Sbox):           # Operator of the LBlock s2 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [1, 14, 7, 12, 15, 13, 0, 6, 11, 5, 9, 3, 2, 4, 8, 10]
+
+
+class LBlock_Sbox3(Sbox):           # Operator of the LBlock s3 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [7, 6, 8, 11, 0, 15, 3, 14, 9, 10, 12, 13, 5, 2, 4, 1]
+
+
+class LBlock_Sbox4(Sbox):           # Operator of the LBlock s4 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [14, 5, 15, 0, 7, 2, 12, 13, 1, 8, 4, 9, 11, 10, 6, 3]
+
+
+class LBlock_Sbox5(Sbox):           # Operator of the LBlock s5 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [2, 13, 11, 12, 15, 14, 0, 9, 7, 10, 6, 3, 1, 8, 4, 5]
+
+
+class LBlock_Sbox6(Sbox):           # Operator of the LBlock s6 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [11, 9, 4, 14, 0, 15, 10, 13, 6, 12, 5, 7, 3, 8, 1, 2]
+
+
+class LBlock_Sbox7(Sbox):           # Operator of the LBlock s7 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [13, 10, 15, 0, 14, 4, 9, 11, 2, 1, 8, 3, 7, 5, 12, 6]
+
+
+class LBlock_Sbox8(Sbox):           # Operator of the LBlock s8 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [8, 7, 14, 5, 15, 13, 0, 6, 11, 12, 9, 10, 2, 4, 1, 3]
+
+
+class LBlock_Sbox9(Sbox):           # Operator of the LBlock s9 4-bit Sbox
+    def __init__(self, input_vars, output_vars, ID = None):
+        super().__init__(input_vars, output_vars, 4, 4, ID = ID)
+        self.table = [11, 5, 15, 0, 7, 2, 9, 13, 4, 8, 1, 12, 14, 10, 3, 6]
+
+
 class KNOT_Sbox(Sbox):             # Operator of the KNOT 4-bit Sbox
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, 4, 4, ID = ID)

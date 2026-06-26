@@ -33,7 +33,7 @@ def test_9_round_present_twosubset_integral():
     assert len(distinguishers) == 1
     assert distinguishers[0].data["status"] == "found"
     assert distinguishers[0].data["balanced_bits"] == [63]
-    print(f"[TEST] Successfully found the {r}-round PRESENT two-subset integral distinguisher using MILP.")
+    print(f"[TEST] Successfully found the {r}-round PRESENT integral distinguisher using MILP.")
 
 
 if __name__ == "__main__":
