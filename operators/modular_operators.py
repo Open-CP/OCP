@@ -203,6 +203,50 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
                 self.weight = [" + ".join(var_p[:self.input_vars[0].bitsize])]
                 return model_list
+            elif self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
+                # Sun et al. modulo model: z_i = x_i xor y_i xor c_i,
+                # c_i = x_{i+1}y_{i+1} xor (x_{i+1} xor y_{i+1})c_{i+1}, c_{n-1}=0.
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0))
+                n = self.input_vars[0].bitsize
+                var_aux = [self.ID + '_integral_' + str(i) for i in range(12 * n - 19)] if n > 1 else []
+
+                if n == 1:
+                    model_list += [var_in1[0] + ' + ' + var_in2[0] + ' - ' + var_out[0] + ' = 0']
+                else:
+                    carry = {}
+                    aux_index = 0
+                    i = n - 1
+                    x_z, x_c, y_z, y_c, carry[i - 1] = var_aux[aux_index:aux_index + 5]
+                    aux_index += 5
+                    model_list += [var_in1[i] + ' - ' + x_z + ' - ' + x_c + ' = 0']
+                    model_list += [var_in2[i] + ' - ' + y_z + ' - ' + y_c + ' = 0']
+                    model_list += [x_z + ' + ' + y_z + ' - ' + var_out[i] + ' = 0']
+                    model_list += [carry[i - 1] + ' - ' + x_c + ' >= 0']
+                    model_list += [carry[i - 1] + ' - ' + y_c + ' >= 0']
+                    model_list += [carry[i - 1] + ' - ' + x_c + ' - ' + y_c + ' <= 0']
+
+                    for i in range(n - 2, 0, -1):
+                        x_z, x_and, x_xor, y_z, y_and, y_xor = var_aux[aux_index:aux_index + 6]
+                        c_z, c_and, xy_and, xy_xor, carry_and, carry[i - 1] = var_aux[aux_index + 6:aux_index + 12]
+                        aux_index += 12
+                        model_list += [var_in1[i] + ' - ' + x_z + ' - ' + x_and + ' - ' + x_xor + ' = 0']
+                        model_list += [var_in2[i] + ' - ' + y_z + ' - ' + y_and + ' - ' + y_xor + ' = 0']
+                        model_list += [carry[i] + ' - ' + c_z + ' - ' + c_and + ' = 0']
+                        model_list += [x_z + ' + ' + y_z + ' + ' + c_z + ' - ' + var_out[i] + ' = 0']
+                        model_list += [xy_and + ' - ' + x_and + ' >= 0']
+                        model_list += [xy_and + ' - ' + y_and + ' >= 0']
+                        model_list += [xy_and + ' - ' + x_and + ' - ' + y_and + ' <= 0']
+                        model_list += [x_xor + ' + ' + y_xor + ' - ' + xy_xor + ' = 0']
+                        model_list += [carry_and + ' - ' + xy_xor + ' >= 0']
+                        model_list += [carry_and + ' - ' + c_and + ' >= 0']
+                        model_list += [carry_and + ' - ' + xy_xor + ' - ' + c_and + ' <= 0']
+                        model_list += [xy_and + ' + ' + carry_and + ' - ' + carry[i - 1] + ' = 0']
+
+                    model_list += [var_in1[0] + ' + ' + var_in2[0] + ' + ' + carry[0] + ' - ' + var_out[0] + ' = 0']
+
+                model_list.append('Binary\n' + ' '.join(v for v in var_in1 + var_in2 + var_out + var_aux))
+                self.weight = []
+                return model_list
             else:
                 RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
         elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
