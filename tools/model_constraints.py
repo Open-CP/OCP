@@ -1,115 +1,129 @@
-import ast
-import os
-import sys
-import time
-import re
-import platform
-from tools.minimize_logic import ttb_to_ineq_logic
-from tools.polyhedron import ttb_to_ineq_convex_hull
-from itertools import combinations
-try:
-    from pysat.card import CardEnc
-    from pysat.formula import IDPool
+"""Model-level SAT/MILP constraints for cryptanalysis.
+
+This module provides:
+1. Model-level constraint encodings
+   - Predefined value/cardinality constraints (EXACTLY, AT_LEAST, SUM_AT_MOST, ...)
+   - SAT sequential-counter cardinality encoding
+   - Matsui's branch-and-bound constraints for MILP/SAT trail search
+2. Attack boundary/input constraints shared by the differential and linear cryptanalysis
+   - Nonzero input constraint builder
+   - Fixed input/output difference or mask constraints for hull/probability goals
+
+"""
+
+from importlib import import_module
+from importlib.util import find_spec
+
+
+# ------------------------- PySAT cardinality backend ------------------------- #
+# PySAT is an optional dependency: at import we only check that it is available
+# (``find_spec``, no import), and load it on first use, so importing this module never
+# pulls in PySAT. ``CardEnc``/``vpool`` stay ``None`` until the first SAT cardinality call.
+CardEnc = None
+vpool = None
+pysat_import = find_spec("pysat") is not None
+
+
+def _load_pysat_cardinality_backend():
+    """Import PySAT's CardEnc/IDPool on first use; return ``(CardEnc, vpool)`` or ``(None, None)``."""
+    global CardEnc, pysat_import, vpool
+
+    if CardEnc is not None and vpool is not None:
+        return CardEnc, vpool
+    try:
+        CardEnc = import_module("pysat.card").CardEnc
+        IDPool = import_module("pysat.formula").IDPool
+    except ImportError:
+        pysat_import = False
+        return None, None
     vpool = IDPool(start_from=1000)
     pysat_import = True
-except ImportError:
-    print("[WARNING] pysat module can't be loaded")
-    pysat_import = False
+    return CardEnc, vpool
 
 
-# **************************************************************************** #
-# This module provides the unified interface for generating MILP/SAT model constraints for cryptanalysis, including:
-# 1. Cipher Model Configuration
-#    - Assign model versions based on attack goals
-#    - Generate constraints and objective functions
-# 2. Constraint Generation Utilities
-#    - Predefined constraints (EXACTLY, AT_LEAST, SUM_AT_MOST, etc.)
-#    - SAT sequential encoding for cardinality constraints
-# 3. Advanced Search Strategies
-#    - Matsui’s branch-and-bound acceleration techniques for MILP and SAT-based differential and linear trail searches
-# **************************************************************************** #
+def _require_pysat_cardenc():
+    """Return the PySAT ``CardEnc`` backend, raising ``ValueError`` if PySAT is unavailable."""
+    card_enc, _ = _load_pysat_cardinality_backend()
+    if card_enc is None:
+        raise ValueError("PySAT is required for SAT cardinality constraints.")
+    return card_enc
 
 
-# --------------------------- Model Configuration ---------------------------
-def fill_functions_rounds_layers_positions(cipher, functions=None, rounds=None, layers=None, positions=None):
-    """
-    Fill in functions, rounds, layers, and positions to full coverage when the corresponding argument is None; otherwise, keep user-supplied values.
-
-    Parameters:
-        cipher (object): The cipher object.
-        functions (list[str]): List of functions. If None, use all functions of the cipher. Example: ["PERMUTATION", "KEY_SCHEDULE", "SUBKEYS"].
-        rounds (dict): Dictionary specifying rounds. If None, use all. Example: {"PERMUTATION": [1, 2, 3]}.
-        layers (dict): Dictionary specifying layers. If None, use all. Example: {"PERMUTATION": {1: [0, 1], 2: [0, 1], 3: [0, 1]}}.
-        positions (dict): Dictionary specifying positions. If None, use all. Example: {"PERMUTATION": {1: {0: [0, 1], 1: [0, 1]}, 2: {0: [0, 1], 1: [0, 1]}, 3: {0: [0, 1], 1: [0, 1]}}}.
-
-    Returns:
-        tuple: (functions, rounds, layers, positions)
-    """
-    if functions is None:
-        functions = [f for f in cipher.functions]
-    if rounds is None:
-        rounds = {f: list(range(1, cipher.functions[f].nbr_rounds + 1)) for f in functions}
-    if layers is None:
-        layers = {f: {r: list(range(cipher.functions[f].nbr_layers+1)) for r in rounds[f]} for f in functions}
-    if positions is None:
-        positions = {f: {r: {l: list(range(len(cipher.functions[f].constraints[r][l]))) for l in layers[f][r]} for r in rounds[f]} for f in functions}
-    return functions, rounds, layers, positions
+def _pysat_cardinality_error_types():
+    """Return the exception types a PySAT ``CardEnc`` call may raise for an unsupported encoding/bound."""
+    try:
+        card_module = import_module("pysat.card")
+    except ImportError:
+        return (ValueError, RuntimeError)
+    return tuple(
+        error_type
+        for error_type in (
+            getattr(card_module, "NoSuchEncodingError", None),
+            getattr(card_module, "UnsupportedBound", None),
+            ValueError,
+            RuntimeError,
+        )
+        if error_type is not None
+    )
 
 
-def set_model_versions(cipher, version, functions, rounds, layers, positions, operator_name=None): # Assigns a specified model_version to constraints (operators) in the cipher based on specified parameters.
-    def _assgn_version(cons):
-        if operator_name is None: # Assign model_version to all operators in the cipher.
-            cons.model_version = cons.__class__.__name__ + "_" + version
-        elif operator_name is not None and (operator_name == cons.__class__.__name__ or (operator_name=="Sbox" and cons.__class__.__name__.endswith("Sbox"))): # Assign model_version to operators with a specific name.
-            cons.model_version = cons.__class__.__name__ + "_" + version
-
-    # Assign model_version to input/output constraints
-    for cons in cipher.inputs_constraints:
-        _assgn_version(cons)
-    for cons in cipher.outputs_constraints:
-        _assgn_version(cons)
-
-    # Assign model_version to function
-    for f in functions:
-        for r in rounds[f]:
-            for l in layers[f][r]:
-                for cons in cipher.functions[f].constraints[r][l]: # Only support all constraints in a layer for now.
-                    _assgn_version(cons)
+def _readable_cardinality_clauses(cnf, reverse_map):
+    """Render PySAT numeric CNF clauses back into named (or ``dummy_*``) model constraint strings."""
+    readable_clauses = []
+    for clause in cnf.clauses:
+        readable = " ".join(
+            f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}"
+            if lit < 0
+            else reverse_map.get(abs(lit), f"dummy_{abs(lit)}")
+            for lit in clause
+        )
+        readable_clauses.append(readable)
+    return readable_clauses
 
 
-def gen_round_model_constraint_obj_fun(cipher, model_type, config_model): # Generate constraints for a given cipher based on user-specified parameters.
-    constraint = []
-    obj_fun = [[] for _ in range(cipher.functions["PERMUTATION"].nbr_rounds)]
-
-    # Generate constraints linking input and output
-    if config_model.get("gen_input_model", True):
-        for cons in cipher.inputs_constraints:
-            constraint += cons.generate_model(model_type=model_type)
-    if config_model.get("gen_output_model", True):
-        for cons in cipher.outputs_constraints:
-            constraint += cons.generate_model(model_type=model_type)
-
-    # Generate constraints and objective function for each round/layer/operator
-    functions, rounds, layers, positions = config_model.get("functions"), config_model.get("rounds"), config_model.get("layers"), config_model.get("positions")
-    for f in functions:
-        for r in rounds[f]:
-            for l in layers[f][r]:
-                for i in positions[f][r][l]:
-                    cons = cipher.functions[f].constraints[r][l][i]
-                    cons_class_name = cons.__class__.__name__
-                    params = (config_model.get("model_params") or {}).get(cons_class_name, {}) # get operator-specific params if available. Options: {cons_class_name: {parame_name: param_value}}. Example: config_model["model_params"] = {"PRESENT_Sbox": {"tool_type": "polyhedron"}}
-                    constraint += cons.generate_model(model_type=model_type, **params)
-                    if hasattr(cons, 'weight'):
-                        obj_fun[r-1] += cons.weight
-    return constraint, obj_fun
+def _pysat_cardinality_constraints(cons_vars, cons_value, encoding, encoder, encoder_name):
+    """Build SAT cardinality clauses via a PySAT ``CardEnc`` encoder, returning ``[]`` if the encoding is unsupported."""
+    if not encoding:
+        encoding = 1
+    _, card_vpool = _load_pysat_cardinality_backend()
+    if card_vpool is None:
+        raise ValueError("PySAT is required for SAT cardinality constraints.")
+    variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
+    reverse_map = {v: k for k, v in variable_map.items()}
+    lits = [variable_map[name] for name in cons_vars]
+    try:
+        cnf = encoder(lits=lits, bound=cons_value, vpool=card_vpool, encoding=encoding)
+    except _pysat_cardinality_error_types():
+        print(f"[WARNING] CardEnc.{encoder_name} does not support encoding {encoding}; no constraints generated.")
+        return []
+    return _readable_cardinality_clauses(cnf, reverse_map)
 
 
-# -------------------- Predefined Constraint Generation --------------------
+# -------------------- Predefined Constraint Generation -------------------- #
+def expand_var_ids(var, bitwise=False):
+    """Expand a single variable into its per-bit (or whole-word) model variable IDs."""
+    if bitwise and var.bitsize > 1:
+        return [f"{var.ID}_{i}" for i in range(var.bitsize)]
+    return [var.ID]
+
+
+def expand_constraint_vars(cons_vars, bitwise=True):
+    """Expand a list of variable names / Variable objects into model variable IDs."""
+    cons_vars_name = []
+    for var in cons_vars:
+        if isinstance(var, str):
+            cons_vars_name.append(var)
+        else:
+            cons_vars_name.extend(expand_var_ids(var, bitwise=bitwise))
+    return cons_vars_name
+
+
 def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bitwise=True, encoding=None):
     """
     Generate commonly used, predefined model constraints based on type and parameters.
 
     Args:
+        model_type (str): The model backend, ``"milp"`` or ``"sat"``.
         cons_type (str): The constraint type, must be one of the predefined types:
             - "EXACTLY": All selected variables == a target value.
             - "AT_LEAST": All selected variables >= target value.
@@ -120,38 +134,31 @@ def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bit
         cons_vars (list): Variable names or Variables objects with ID and bitsize attributes.
         cons_value (int): Target value.
         bitwise (bool): If True, expand variables by bit.
+        encoding: SAT cardinality encoding passed to the backend (ignored for MILP;
+            ``None`` selects the default).
 
     Returns:
         list[str]: List of generated model constraint strings.
-
     """
-    if cons_type in ["EXACTLY", "SUM_EXACTLY", "AT_LEAST", "SUM_AT_LEAST", "AT_MOST", "SUM_AT_MOST"]:
-        cons_vars_name = []
-        for var in cons_vars:
-            if isinstance(var, str):
-                cons_vars_name.append(var)
-            else:
-                if bitwise and var.bitsize > 1:
-                    cons_vars_name.extend([f"{var.ID}_{j}" for j in range(var.bitsize)])
-                else:
-                    cons_vars_name.append(var.ID)
-        if not cons_vars_name: # No variables to constrain; avoid emitting a malformed constraint such as " = 0".
-            return []
-        if cons_type == "EXACTLY":
-            return gen_constraints_exactly(model_type, cons_vars_name, cons_value)
-        elif cons_type == "SUM_EXACTLY":
-            return gen_constraints_sum_exactly(model_type, cons_vars_name, cons_value, encoding)
-        elif cons_type == "AT_MOST":
-            return gen_constraints_at_most(model_type, cons_vars_name, cons_value)
-        elif cons_type == "SUM_AT_MOST":
-            return gen_constraints_sum_at_most(model_type, cons_vars_name, cons_value, encoding)
-        elif cons_type == "AT_LEAST":
-            return gen_constraints_at_least(model_type, cons_vars_name, cons_value)
-        elif cons_type == "SUM_AT_LEAST":
-            return gen_constraints_sum_at_least(model_type, cons_vars_name, cons_value, encoding)
-    raise ValueError(f"Unsupported cons_type '{cons_type}'.")
+    builders = {
+        "EXACTLY": gen_constraints_exactly,
+        "SUM_EXACTLY": gen_constraints_sum_exactly,
+        "AT_MOST": gen_constraints_at_most,
+        "SUM_AT_MOST": gen_constraints_sum_at_most,
+        "AT_LEAST": gen_constraints_at_least,
+        "SUM_AT_LEAST": gen_constraints_sum_at_least,
+    }
+    if cons_type not in builders:
+        raise ValueError(f"Unsupported cons_type '{cons_type}'.")
 
-def gen_constraints_exactly(model_type, cons_vars, cons_value):
+    cons_vars_name = expand_constraint_vars(cons_vars, bitwise=bitwise)
+    if not cons_vars_name:  # No variables in scope: nothing to constrain (keeps milp/sat consistent).
+        return []
+    return builders[cons_type](model_type, cons_vars_name, cons_value, encoding=encoding)
+
+
+def gen_constraints_exactly(model_type, cons_vars, cons_value, encoding=None):
+    """Constrain each selected variable to equal ``cons_value`` (MILP, or SAT for value 0/1)."""
     if model_type == "milp":
         return [f"{cons_vars[i]} = {cons_value}" for i in range(len(cons_vars))]
     elif model_type == "sat" and cons_value == 0:
@@ -161,31 +168,31 @@ def gen_constraints_exactly(model_type, cons_vars, cons_value):
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for EXACTLY constraint.")
 
+
 def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
+    """Constrain the sum of the selected variables to equal ``cons_value``."""
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
     elif model_type == "sat" and cons_value == 0:
         return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
     elif model_type == "sat" and pysat_import:
-        if not encoding:
-            encoding = 1  # Default to 1 if not specified
-        assert encoding in [0,1,2,3,4,5,6,7,8,9], f"[ERROR] Invalid encoding = {encoding}, refer https://pysathq.github.io/docs/html/api/card.html"
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        try:
-            cnf = CardEnc.equals(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        except Exception as e:
-            raise ValueError(f"CardEnc.equals failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
-            readable_clauses.append(readable)
-        return readable_clauses
+        # ``None`` is defaulted downstream in ``_pysat_cardinality_constraints``; here we
+        # only reject an explicitly out-of-range encoding.
+        if encoding is not None and encoding not in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
+            raise ValueError(
+                f"[ERROR] Invalid encoding = {encoding}, refer "
+                "https://pysathq.github.io/docs/html/api/card.html"
+            )
+        card_enc = _require_pysat_cardenc()
+        return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.equals, "equals")
+    elif model_type == "sat":
+        raise RuntimeError("SUM_EXACTLY over SAT requires PySAT (pip install python-sat).")
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_EXACTLY constraint.")
 
-def gen_constraints_at_most(model_type, cons_vars, cons_value):
+
+def gen_constraints_at_most(model_type, cons_vars, cons_value, encoding=None):
+    """Constrain each selected variable to be at most ``cons_value`` (MILP, or SAT for value 0/1)."""
     if model_type == "milp":
         return [f"{cons_vars[i]} <= {cons_value}" for i in range(len(cons_vars))]
     elif model_type == "sat" and cons_value == 0:
@@ -195,7 +202,9 @@ def gen_constraints_at_most(model_type, cons_vars, cons_value):
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for AT_MOST constraint.")
 
+
 def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):
+    """Constrain the sum of the selected variables to be at most ``cons_value``."""
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
     elif model_type == "sat" and (encoding == "SEQUENTIAL" or encoding is None):
@@ -203,22 +212,19 @@ def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQ
     elif model_type == "sat" and pysat_import:
         if not isinstance(encoding, int):
             encoding = 1  # Default to 1 if the encoding is not specified as an integer
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        try:
-            cnf = CardEnc.atmost(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        except Exception as e:
-            raise ValueError(f"CardEnc.atmost failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
-            readable_clauses.append(readable)
-        return readable_clauses
+        card_enc = _require_pysat_cardenc()
+        return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.atmost, "atmost")
+    elif model_type == "sat":
+        raise RuntimeError(
+            "SUM_AT_MOST with a numeric PySAT encoding requires PySAT (pip install python-sat); "
+            "use the default SEQUENTIAL encoding otherwise."
+        )
     else:
         raise ValueError(f"Unsupported model_type '{model_type}' for SUM_AT_MOST constraint.")
 
-def gen_constraints_at_least(model_type, cons_vars, cons_value):
+
+def gen_constraints_at_least(model_type, cons_vars, cons_value, encoding=None):
+    """Constrain each selected variable to be at least ``cons_value`` (MILP, or SAT for value 0/1)."""
     if model_type == "milp":
         return [f"{cons_vars[i]} >= {cons_value}" for i in range(len(cons_vars))]
     elif model_type == "sat" and cons_value == 1:
@@ -226,39 +232,36 @@ def gen_constraints_at_least(model_type, cons_vars, cons_value):
     elif model_type == "sat" and cons_value == 0:
         return []
     else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for GREATER_EQUAL constraint.")
+        raise ValueError(f"Unsupported model_type '{model_type}' for AT_LEAST constraint.")
+
 
 def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding=1):
+    """Constrain the sum of the selected variables to be at least ``cons_value``."""
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
     elif model_type == "sat" and cons_value == 1:
         return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
     elif model_type == "sat" and pysat_import:
-        if not encoding:
-            encoding = 1  # Default to 1 if not specified
-        variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
-        reverse_map = {v: k for k, v in variable_map.items()}
-        lits = [variable_map[name] for name in cons_vars]
-        try:
-            cnf = CardEnc.atleast(lits=lits, bound=cons_value, vpool=vpool, encoding=encoding)
-        except Exception as e:
-            raise ValueError(f"CardEnc.atleast failed (encoding={encoding}, bound={cons_value}, {len(lits)} vars): {e}") from e
-        readable_clauses = []
-        for clause in cnf.clauses:
-            readable = " ".join(f"-{reverse_map.get(abs(lit), f'dummy_{abs(lit)}')}" if lit < 0 else reverse_map.get(abs(lit), f'dummy_{abs(lit)}') for lit in clause)
-            readable_clauses.append(readable)
-        return readable_clauses
+        card_enc = _require_pysat_cardenc()
+        return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.atleast, "atleast")
+    elif model_type == "sat":
+        raise RuntimeError("SUM_AT_LEAST over SAT requires PySAT (pip install python-sat).")
     else:
-        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_GREATER_EQUAL constraint.")
+        raise ValueError(f"Unsupported model_type '{model_type}' for SUM_AT_LEAST constraint.")
 
-def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None): # Generate SAT constraints for a sequential counter encoding of a cardinality constraint. Reference: Conjunctive normal form. Technical report, Encyclopedia of Mathematics, http://encyclopediaofmath.org/index.php?title= Conjunctive_normal_form&oldid=35078. Refer to the code from: https://github.com/Crypto-TII/claasp/blob/main/claasp/cipher_modules/models/sat/sat_model.py#L262
-    if not hasattr(gen_sequential_encoding_sat, "_counter"): # Use function attribute to set global counter
+
+# ----------- SAT sequential-counter cardinality encoding ------------- #
+def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None):
+    """Generate SAT clauses for a sequential counter cardinality encoding."""
+    if not hasattr(gen_sequential_encoding_sat, "_counter"):
         gen_sequential_encoding_sat._counter = 0
     n = len(hw_list)
     if not isinstance(weight, int) or weight < 0 or weight > n:
         raise ValueError(f"weight should be an integer: 0 <= weight <= n (n={n}), got {weight}")
     if weight == 0:
         return [f'-{var}' for var in hw_list]
+    if weight >= n:
+        return []
     if dummy_variables is None:
         gen_sequential_encoding_sat._counter += 1
         prefix = f'dummy_seq_{gen_sequential_encoding_sat._counter}'
@@ -274,17 +277,24 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None): # Genera
                             for j in range(1, weight)])
         constraints.append(f'-{hw_list[i]} -{dummy_variables[i - 1][weight - 1]}')
     constraints.append(f'-{hw_list[n - 1]} -{dummy_variables[n - 2][weight - 1]}')
-    return  constraints
+    return constraints
 
-# ----------- Matsui's branch-and-bound constraints Generation -------------
-def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Generate Matsui's additional constraints for MILP models. Reference: Speeding up MILP Aided Differential Characteristic Search with Matsui’s Strategy.
-    assert Round >= 2, f"Round = {Round} must be at least 2."
-    assert len(best_obj) == Round-1, f"best_obj = {best_obj} length must be Round-1 = {Round-1}."
-    obj_fun = list(obj_fun) # work on a copy so the caller's list is not mutated
-    while obj_fun and obj_fun[-1] == []: # Remove empty lists at the end of obj_fun
+
+# ----------- Matsui's branch-and-bound constraints Generation ------------- #
+def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"):
+    """Generate Matsui branch-and-bound constraints for MILP models."""
+    if Round < 2:
+        raise ValueError(f"Round = {Round} must be at least 2.")
+    if len(best_obj) != Round - 1:
+        raise ValueError(f"best_obj = {best_obj} length must be Round-1 = {Round - 1}.")
+    if obj_fun is not None:  # copy so the caller's list is not mutated
+        obj_fun = list(obj_fun)
+    while obj_fun and obj_fun[-1] == []:  # drop trailing empty rounds
         obj_fun.pop()
-    assert obj_fun is not None and len(obj_fun) == Round and all(isinstance(obj, list) for obj in obj_fun), f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}."
-    assert cons_type in ["ALL", "UPPER", "LOWER"], f"cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER']."
+    if obj_fun is None or len(obj_fun) != Round or not all(isinstance(obj, list) for obj in obj_fun):
+        raise ValueError(f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}.")
+    if cons_type not in ["ALL", "UPPER", "LOWER"]:
+        raise ValueError(f"cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER'].")
 
     add_cons = []
     for i in range(1, Round):
@@ -292,26 +302,42 @@ def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"): # Ge
             if cons_type == "ALL" or cons_type == "UPPER":
                 w_vars = [var for r in range(i + 1, Round + 1) for var in obj_fun[r - 1]]
                 all_vars = [" + ".join(w_vars) + " - obj"]
-                add_cons += gen_predefined_constraints(model_type="milp", cons_type="AT_MOST", cons_vars=all_vars, cons_value=-best_obj[i-1])
+                add_cons += gen_predefined_constraints("milp", "AT_MOST", all_vars, -best_obj[i-1])
             if cons_type == "ALL" or cons_type == "LOWER":
                 w_vars = [var for r in range(1, Round - i + 1) for var in obj_fun[r - 1]]
                 all_vars = [" + ".join(w_vars) + " - obj"]
-                add_cons += gen_predefined_constraints(model_type="milp", cons_type="AT_MOST", cons_vars=all_vars, cons_value=-best_obj[i-1])
+                add_cons += gen_predefined_constraints("milp", "AT_MOST", all_vars, -best_obj[i-1])
     return add_cons
 
 
-def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstraintChoice=1, GroupNumForChoice=1): # Generate Matsui's additional constraints for SAT models. Reference: Ling Sun, Wei Wang and Meiqin Wang. Accelerating the Search of Differential and Linear Characteristics with the SAT Method. https://github.com/SunLing134340/Accelerating_Automatic_Search
-    assert Round >= 2, f"Round = {Round} must be at least 2."
-    assert len(best_obj) == Round-1, f"best_obj length = {len(best_obj)} must be (Round-1) = {Round-1}."
-    assert isinstance(obj_sat, int) and obj_sat > 0, f"obj_sat = {obj_sat} must be a positive integer."
-    obj_var = list(obj_var) # work on a copy so the caller's list is not mutated
-    while obj_var and obj_var[-1] == []: # Remove empty lists at the end of obj_var
+def gen_matsui_constraints_sat(
+    Round,
+    best_obj,
+    obj_sat,
+    obj_var,
+    GroupConstraintChoice=1,
+    GroupNumForChoice=1,
+):
+    """Generate Matsui branch-and-bound constraints for SAT models."""
+    if Round < 2:
+        raise ValueError(f"Round = {Round} must be at least 2.")
+    if len(best_obj) != Round - 1:
+        raise ValueError(f"best_obj length = {len(best_obj)} must be (Round-1) = {Round - 1}.")
+    if not isinstance(obj_sat, int) or obj_sat <= 0:
+        raise ValueError(f"obj_sat = {obj_sat} must be a positive integer.")
+    if obj_var is not None:  # copy so the caller's list is not mutated
+        obj_var = list(obj_var)
+    while obj_var and obj_var[-1] == []:  # drop trailing empty rounds
         obj_var.pop()
-    assert obj_var is not None and len(obj_var) == Round and all(isinstance(row, list) for row in obj_var), f"obj_var must be a list of lists, and with length = {len(obj_var)} equal to Round = {Round}."
-    assert GroupConstraintChoice == 1, f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}."
-    assert GroupNumForChoice >= 1, f"GroupNumForChoice = {GroupNumForChoice} must be at least 1."
+    if obj_var is None or len(obj_var) != Round or not all(isinstance(row, list) for row in obj_var):
+        obj_var_len = "None" if obj_var is None else len(obj_var)
+        raise ValueError(f"obj_var must be a list of lists, and with length = {obj_var_len} equal to Round = {Round}.")
+    if GroupConstraintChoice != 1:
+        raise ValueError(f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}.")
+    if GroupNumForChoice < 1:
+        raise ValueError(f"GroupNumForChoice = {GroupNumForChoice} must be at least 1.")
 
-    if not hasattr(gen_matsui_constraints_sat, "_counter"): # Use function attribute to set global counter
+    if not hasattr(gen_matsui_constraints_sat, "_counter"):  # Use function attribute to set global counter
         gen_matsui_constraints_sat._counter = 0
     if len(best_obj) == Round-1:
         best_obj = [0] + best_obj
@@ -320,8 +346,14 @@ def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstrain
         for i in range(len(obj_var[Round - 1 - r])):
             Main_Vars += [obj_var[Round - 1 - r][i]]
     gen_matsui_constraints_sat._counter += 1
-    dummy_var = [[f'dummy_matsui_{gen_matsui_constraints_sat._counter}_{i}_{j}' for j in range(obj_sat)] for i in range(len(Main_Vars) - 1)]
-    constraints = gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var) # Generate the constraint of "the objective function value is at most obj" using the sequential encoding method
+    dummy_var = [
+        [
+            f'dummy_matsui_{gen_matsui_constraints_sat._counter}_{i}_{j}'
+            for j in range(obj_sat)
+        ]
+        for i in range(len(Main_Vars) - 1)
+    ]
+    constraints = gen_sequential_encoding_sat(hw_list=Main_Vars, weight=obj_sat, dummy_variables=dummy_var)
 
     MatsuiRoundIndex = []
     if GroupConstraintChoice == 1:
@@ -340,17 +372,31 @@ def gen_matsui_constraints_sat(Round, best_obj, obj_sat, obj_var, GroupConstrain
         for i in range(EndingRound):
             right += len(obj_var[i])
         right -= 1
-        constraints += gen_matsui_partial_cardinality_sat(Main_Vars, dummy_var, obj_sat, left, right, PartialCardinalityCons)
+        constraints += gen_matsui_partial_cardinality_sat(
+            Main_Vars,
+            dummy_var,
+            obj_sat,
+            left,
+            right,
+            PartialCardinalityCons,
+        )
     return constraints
 
 
-def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m): # Generate CNF clauses that constrain the number of active variables in the range [left, right] to be at most `m`, using sequential counter encoded auxiliary variables `dummy_var`.
-    assert isinstance(obj_var, list) and len(obj_var) > 0, "obj_var must be a non-empty list."
-    assert isinstance(dummy_var, list) and len(dummy_var) == len(obj_var) - 1, "dummy_var must be a list with length equal to len(obj_var) - 1."
-    assert isinstance(k, int) and k > 0, "k must be a positive integer."
-    assert isinstance(left, int) and left >= 0, "left index must be a non-negative integer."
-    assert isinstance(right, int) and right < len(obj_var), f"right index = {right} out of range of obj_var = {len(obj_var)}."
-    assert isinstance(m, int) and m >= 0, f"m={m} must be a non-negative integer."
+def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m):
+    """Generate partial cardinality SAT clauses for Matsui constraints."""
+    if not isinstance(obj_var, list) or len(obj_var) == 0:
+        raise ValueError("obj_var must be a non-empty list.")
+    if not isinstance(dummy_var, list) or len(dummy_var) != len(obj_var) - 1:
+        raise ValueError("dummy_var must be a list with length equal to len(obj_var) - 1.")
+    if not isinstance(k, int) or k <= 0:
+        raise ValueError("k must be a positive integer.")
+    if not isinstance(left, int) or left < 0:
+        raise ValueError("left index must be a non-negative integer.")
+    if not isinstance(right, int) or right >= len(obj_var):
+        raise ValueError(f"right index = {right} out of range of obj_var = {len(obj_var)}.")
+    if not isinstance(m, int) or m < 0:
+        raise ValueError(f"m={m} must be a non-negative integer.")
 
     n = len(obj_var)
     add_cons = []
@@ -377,297 +423,131 @@ def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m): #
     return add_cons
 
 
-def gen_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version=0):
-    # Constraint for bitwise xor: vin1 ^ vin2 = vout. Valid patterns for (vin1, vin2, vout): (0,0,0), (0,1,1), (1,0,1), (1,1,0)
-    assert isinstance(vin1, str) and isinstance(vin2, str) and isinstance(vout, str), "[WARNING] Input and output variables must be strings."
-    if model_type == "sat":
-        if version == 0:
-            return [f'{vin1} {vin2} -{vout}', f'{vin1} -{vin2} {vout}', f'-{vin1} {vin2} {vout}', f'-{vin1} -{vin2} -{vout}']
-        else:
-            raise ValueError(f"[WARNING] Unknown version {version} for XOR in SAT.")
-    elif model_type == 'milp':
-        if version == 0:
-            return [f'{vin1} + {vin2} - {vout} >= 0',
-                    f'{vin2} + {vout} - {vin1} >= 0',
-                    f'{vin1} + {vout} - {vin2} >= 0',
-                    f'{vin1} + {vin2} + {vout} <= 2',
-                    'Binary\n' + ' '.join([vin1, vin2, vout])]
-        elif version == 1:
-            assert isinstance(v_dummy, str), "[WARNING] v_dummy must be provided as a string for XOR in MILP version 1."
-            return [f'{vin1} + {vin2} + {vout} - 2 {v_dummy} >= 0',
-                    f'{vin1} + {vin2} + {vout} <= 2',
-                    f'{v_dummy} - {vin1} >= 0',
-                    f'{v_dummy} - {vin2} >= 0',
-                    f'{v_dummy} - {vout} >= 0',
-                    'Binary\n' + ' '.join([vin1, vin2, vout, v_dummy])]
-        elif version == 2: # Fu,K.,Wang,M.,Guo,Y.,Sun,S.,Hu,L. Milp-based automatic search algorithms for differential and linear trails for speck.
-            assert isinstance(v_dummy, str), "[WARNING] v_dummy must be provided as a string for XOR in MILP version 2."
-            return [f'{vin1} + {vin2} + {vout} - 2 {v_dummy} = 0',
-                    'Binary\n' + ' '.join([vin1, vin2, vout, v_dummy])]
-        else:
-            raise ValueError(f"[WARNING] Unknown version {version} for XOR in MILP.")
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for XOR.")
+# ----------- Attack boundary and input constraints ------------- #
+def gen_input_non_zero_constraints(cipher, config_model, bitwise):
+    """Generate the standard nonzero input constraint.
 
-def gen_word_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version=0):
-    # Constraint for wordwise xor: vin1 ^ vin2 = vout. Valid patterns for (vin1, vin2, vout): (0,0,0), (0,1,1), (1,0,1), (1,1,0), (1,1,1)
-    assert isinstance(vin1, str) and isinstance(vin2, str) and isinstance(vout, str), "[WARNING] Input and output variables must be strings."
-    if model_type == "sat":
-        if version == 0:
-            return [f'{vin1} {vin2} -{vout}',
-                    f'{vin1} -{vin2} {vout}',
-                    f'-{vin1} {vin2} {vout}']
-        else:
-            raise ValueError(f"[WARNING] Unknown version {version} for Word-wise XOR in SAT.")
-    if model_type == 'milp':
-        if version == 0:
-            return [f'{vin1} + {vin2} - {vout} >= 0',
-                    f'{vin2} + {vout} - {vin1} >= 0',
-                    f'{vin1} + {vout} - {vin2} >= 0',
-                    'Binary\n' + ' '.join([vin1, vin2, vout])]
-        elif version == 1:
-            assert isinstance(v_dummy, str), "[WARNING] v_dummy must be provided as a string for Word-wise XOR in MILP version 1."
-            return [f'{vin1} + {vin2} + {vout} - 2 {v_dummy} >= 0',
-                    f'{v_dummy} - {vin1} >= 0',
-                    f'{v_dummy} - {vin2} >= 0',
-                    f'{v_dummy} - {vout} >= 0',
-                    'Binary\n' + ' '.join([vin1, vin2, vout, v_dummy])]
-        else:
-            raise ValueError(f"[WARNING] Unknown version {version} for Word-wise XOR in MILP.")
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for Word-wise XOR.")
-
-
-def gen_nxor_constraints(vin, vout, model_type, v_dummy=None, version=0):
-    # Constraint for n-ary bitwise nxor: vin1 ^ vin2 ^ ... ^ vinn = vout.
-    assert isinstance(vin, list) and isinstance(vout, str) and all(isinstance(v, str) for v in vin), "[WARNING] Input and output variables must be strings."
-    constraints = []
-    if model_type == "sat":
-        for k in range(0, len(vin) + 1):  # All subsets (0 to n elements)
-            for comb in combinations(vin, k):
-                is_odd_parity = (len(comb) % 2 == 1)
-                clause = [f"{vout}" if is_odd_parity else f"-{vout}"]
-                clause += [f"-{v}" if v in comb else f"{v}" for v in vin]
-                constraints.append(" ".join(clause))
-        return constraints
-    elif model_type == "milp":
-        if version == 0:
-            assert isinstance(v_dummy, str), "[WARNING] dummy must be provided as a string for n-XOR in MILP version 0."
-            constraints += [" + ".join(v for v in (vin)) + " + " + vout + f" - 2 {v_dummy} = 0"]
-            constraints += [f"{v_dummy} >= 0"]
-            constraints += [f"{v_dummy} <= {int((len(vin)+1)/2)}"]
-            constraints.append('Binary\n' + ' '.join(vin + [vout]))
-            constraints.append('Integer\n' + v_dummy)
-            return constraints
-        elif version == 1: # Reference: MILP-aided cryptanalysis of the future block cipher.
-            assert isinstance(v_dummy, list), "[WARNING] v_dummy must be provided as a list of strings for n-XOR in MILP version 1."
-            s = " + ".join(vin) + f" + {vout} - {2 * len(v_dummy)} {v_dummy[0]}"
-            s += " - " + " - ".join(f"{2 * (len(v_dummy) - j)} {v_dummy[j]}" for j in range(1, len(v_dummy))) if len(v_dummy) > 1 else ""
-            s += " = 0"
-            return [s, 'Binary\n' + ' '.join(vin + [vout] + v_dummy)]
-        else:
-            raise ValueError(f"[WARNING] Unknown version {version} for n-XOR in MILP.")
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for n-XOR.")
-
-def gen_word_nxor_constraints(vin, vout, model_type, v_dummy=None, version=0):
-    constraints = []
-    if model_type == "milp": # Reference: Related-Key Differential Analysis of the AES.
-        constraints += [f"{' + '.join(vin)} - {vout} >= 0"]
-        for k, ik in enumerate(vin):
-            others = [x for j, x in enumerate(vin) if j != k]
-            constraints.append(f"{' + '.join(others)} + {vout} - {ik} >= 0")
-        constraints.append('Binary\n' +  ' '.join(vin + [vout]))
-        return constraints
-    elif model_type == "sat":
-        constraints.append(" ".join([f"-{vout}"] + list(vin)))
-        for k, ik in enumerate(vin):
-            others = [x for j, x in enumerate(vin) if j != k]
-            constraints.append(f"{' '.join(others)} {vout} -{ik}")
-        return constraints
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for word-wise n-ary XOR.")
-
-def gen_matrix_constraints(vin, vout, model_type, v_dummy=None):
-    assert isinstance(vin, list), "Input variables should be provided as a list in matrix_constraints."
-    assert isinstance(vout, str), "Output variable should be provided as a string in matrix_constraints."
-    if len(vin) == 1:
-        if model_type == 'milp':
-            return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
-        elif model_type == 'sat':
-            return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
-        else:
-            raise ValueError(f"Unsupported model_type '{model_type}' in gen_matrix_constraints.")
-    elif len(vin) == 2:
-        return gen_xor_constraints(vin[0], vin[1], vout, model_type)
-    elif len(vin) >= 3:
-        if model_type == 'milp':
-            assert isinstance(v_dummy, str), "Dummy variables must be provided for MILP model with more than 2 inputs."
-        return gen_nxor_constraints(vin, vout, model_type, v_dummy=v_dummy)
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
-
-def gen_word_matrix_constraints(vin, vout, model_type, v_dummy=None):
-    assert isinstance(vin, list), "Input variables should be provided as a list in word_matrix_constraints."
-    assert isinstance(vout, str), "Output variable should be provided as a string in word_matrix_constraints."
-    if len(vin) == 1:
-        if model_type == 'milp':
-            return [f"{vout} - {vin[0]} = 0", "Binary\n" + vin[0] + " " + vout]
-        elif model_type == 'sat':
-            return [f"{vin[0]} -{vout}", f"-{vin[0]} {vout}"]
-        else:
-            raise ValueError(f"Unsupported model_type '{model_type}' in gen_word_matrix_constraints.")
-    elif len(vin) == 2:
-        return gen_word_xor_constraints(vin[0], vin[1], vout, model_type)
-    elif len(vin) >= 3:
-        return gen_word_nxor_constraints(vin, vout, model_type)
-    else:
-        raise ValueError(f"[WARNING] Unknown model type {model_type} for Matrix.")
-
-
-# ---------------- Common utilities in SAT and MILP modeling ---------------- #
-def generate_and_save_constraints(model_type, tool_type, mode, ttable, input_variables, output_variables, weight_variables=None, objective_fun=None, model_filename=None):
-    """
-    Generate template constraints/objective function and save them to self.model_filename.
+    Args:
+        cipher: The cipher whose input variables must be non-zero.
+        config_model (dict): Model configuration (``model_type``, SAT encoding, ...).
+        bitwise (bool): If True, apply the constraint per bit; otherwise per word
+            (word-level for truncated goals).
 
     Returns:
-        tuple[list[str], str]: (constraints, objective_fun)
+        list[str]: The generated model constraint strings.
     """
-    variables = input_variables + output_variables + weight_variables if weight_variables else input_variables + output_variables
-    time_start = time.time()
+    cons_vars = [var for cons in cipher.inputs_constraints for var in cons.input_vars]
+    model_type = config_model.get("model_type", "milp").lower()
+    encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL") if model_type == "sat" else None
+    constraints = gen_predefined_constraints(
+        model_type=model_type,
+        cons_type="SUM_AT_LEAST",
+        cons_vars=cons_vars,
+        cons_value=1,
+        bitwise=bitwise,
+        encoding=encoding,
+    )
     if model_type == "milp":
-        assert tool_type in ["minimize_logic", "minimize_logic_espresso", "polyhedron"], f"Unsupported tool type {tool_type} for MILP model."
-    elif model_type == "sat":
-        assert tool_type in ["minimize_logic", "minimize_logic_espresso"], f"Unsupported tool type {tool_type} for SAT model."
+        binary_vars = [var_id for var in cons_vars for var_id in expand_var_ids(var, bitwise=bitwise)]
+        if binary_vars:
+            constraints.append("Binary\n" + " ".join(binary_vars))
+    return constraints
+
+
+def _cipher_boundary_vars(in_out, cipher):
+    """Return the cipher's boundary variables for ``in_out`` (``"input"`` or ``"output"``)."""
+    cons_vars = []
+    if in_out == "input":
+        if not hasattr(cipher, "inputs") or not isinstance(cipher.inputs, dict):
+            raise ValueError("[WARNING] Cipher 'inputs' attribute invalid.")
+        for input_name in cipher.inputs:
+            cons_vars += cipher.inputs[input_name]
+    elif in_out == "output":
+        if not hasattr(cipher, "outputs") or not isinstance(cipher.outputs, dict):
+            raise ValueError("[WARNING] Cipher 'outputs' attribute invalid.")
+        for output_name in cipher.outputs:
+            cons_vars += cipher.outputs[output_name]
     else:
-        raise ValueError(f"unknown model type {model_type}")
+        raise ValueError(f"[WARNING] Invalid in_out: {in_out}. Expected 'input' or 'output'.")
 
-    if tool_type == "minimize_logic" or tool_type == "minimize_logic_espresso":
-        inequalities, information = ttb_to_ineq_logic(ttable, variables, mode=mode, tool_type=tool_type)
+    if not cons_vars:
+        raise ValueError(f"[WARNING] Cipher has no {in_out} variables.")
+    return cons_vars
 
-    elif tool_type == "polyhedron": # Generate inequalities from the truth table using Convex Hull
-        inequalities, information = ttb_to_ineq_convex_hull(ttable, variables)
+
+def normalize_fixed_value_bits(fixed_value, bit_count, value_name):
+    """Normalize a binary or hexadecimal fixed mask/difference string to bits."""
+
+    text = fixed_value.strip().lower()
+    if text.startswith("0b"):
+        bits = text[2:].zfill(bit_count)
+    elif text.startswith("0x"):
+        try:
+            bits = bin(int(text, 16))[2:].zfill(bit_count)
+        except ValueError as exc:
+            raise ValueError(
+                f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+                "Expected binary (0b...) or hexadecimal (0x...) string."
+            ) from exc
     else:
-        raise ValueError(f"unknown tool type {tool_type}")
+        raise ValueError(
+            f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+            "Expected binary (0b...) or hexadecimal (0x...) string."
+        )
 
-    if model_type == 'milp': # Generate MILP constraints from inequalities
-        constraints = [inequality_to_constraint_milp(ineq, variables) for ineq in inequalities]
-        num_cons = len(constraints)
-        constraints.append('Binary\n' + ' '.join(variables))
-    elif model_type == 'sat':  # Generate SAT constraints from inequalities
-        constraints = [inequality_to_constraint_sat(ineq, variables) for ineq in inequalities]
-        num_cons = len(constraints)
-    else:
-        raise ValueError(f"unknown model type {model_type}")
+    if len(bits) > bit_count:
+        raise ValueError(
+            f"[WARNING] {value_name} has {len(bits)} bits but the {bit_count}-bit boundary was expected."
+        )
+    return bits
 
-    time_used = time.time() - time_start
-    if model_filename is not None:
-        with open(model_filename, "w", encoding="utf-8") as file:
-            file.write(f"Input: {'||'.join(input_variables)}; msb: {input_variables[0]}\n")
-            file.write(f"Output: {'||'.join(output_variables)}; msb: {output_variables[0]}\n")
-            file.write(f"Time used to simplify the constraints: {time_used:.4f} s\n")
-            file.write(f"Number of constraints: {num_cons}\n")
-            file.write(f"Constraints: {constraints}\n")
-            if objective_fun:
-                file.write(f"Weight: {objective_fun}\n")
-            file.write(f"\n\nInformation\n")
-            for key, value in information.items():
-                file.write(f"{key}: {value}\n")
-            file.write(f"Model type: {model_type}\n")
-            file.write(f"Tool type: {tool_type}\n")
-            file.write(f"Python version: {sys.version.split()[0]}\n")
-            file.write(f"Platform: {platform.platform()}\n")
-    return constraints, objective_fun
 
-def load_constraints_template(filename):
-    """
-    Load template constraints/objective function from file.
+def gen_fixed_input_output_constraints(in_out, fixed_value, cipher, model_type, value_name="value"):
+    """Generate constraints that fix input/output differences or masks."""
+
+    if model_type not in ("milp", "sat"):
+        raise ValueError(f"Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
+
+    cons_vars = _cipher_boundary_vars(in_out, cipher)
+    bit_count = sum(var.bitsize for var in cons_vars)
+    bits = normalize_fixed_value_bits(fixed_value, bit_count, value_name)
+
+    constraints = []
+    offset = 0
+    for var in cons_vars:
+        for bit_index in range(var.bitsize):
+            bit = bits[offset + bit_index]
+            var_id = var.ID if var.bitsize == 1 else f"{var.ID}_{bit_index}"
+            if model_type == "sat":
+                constraints.append(var_id if bit == "1" else f"-{var_id}")
+            else:  # milp
+                constraints.append(f"{var_id} = {bit}")
+                constraints.append("Binary\n" + var_id)
+        offset += var.bitsize
+    return constraints
+
+
+def gen_required_fixed_boundary_constraints(cipher, input_value, output_value, model_type):
+    """Generate constraints fixing the cipher's input and/or output boundary values.
+
+    The caller decides when this applies (e.g. a specific goal); at least one of
+    ``input_value`` / ``output_value`` must be provided.
+
+    Args:
+        cipher: The cipher whose input/output boundary is fixed.
+        input_value: The fixed input value, or None to leave the input free.
+        output_value: The fixed output value, or None to leave the output free.
+        model_type (str): ``"milp"`` or ``"sat"``.
 
     Returns:
-        tuple[list[str] | None, str | None]: (constraints, objective_fun)
+        list[str]: The generated model constraint strings.
     """
-    constraints, objective_fun = None, None
-    if not os.path.exists(filename):
-        return None, None
-    with open(filename, "r", encoding="utf-8") as file:
-        for line in file:
-            line = line.strip()
-            if line.startswith("Constraints:"):
-                constraints_str = line.split(":", 1)[1].strip()
-                try:
-                    constraints = ast.literal_eval(constraints_str)
-                except (SyntaxError, ValueError) as e:
-                    raise ValueError(f"Failed to parse constraints from {filename}: {constraints_str}") from e
-            elif line.startswith("Weight:"):
-                objective_fun = line.split(":", 1)[1].strip()
-    return constraints, objective_fun
+    if input_value is None and output_value is None:
+        raise ValueError("Either an input or output value must be specified to fix the boundary.")
 
-def gen_constraints_obj_func_from_template(filename, var_in, var_out, var_p=None):
-    """
-    Load template constraints/objective function from file, then instantiate them by replacing template variables:
-        a0, a1, ... -> var_in[i]
-        b0, b1, ... -> var_out[i]
-        p0, p1, ... -> var_p[i] (optional)
-
-    Returns:
-        tuple[list[str], str]: (mapped_constraints, mapped_objective_fun)
-    """
-    constraints, objective_fun = load_constraints_template(filename)
-
-    if constraints is None:
-        raise ValueError(f"Failed to load constraints or objective function from {filename}.")
-
-    def replace_vars(expr, prefix, repl_vars):
-        if repl_vars is None:
-            return expr
-        for i, var in enumerate(repl_vars):
-            expr = re.sub(rf"\b{prefix}{i}\b", str(var), expr)
-        return expr
-
-    mapped_constraints = []
-    for con in constraints:
-        con_map = con
-        con_map = replace_vars(con_map, "a", var_in)
-        con_map = replace_vars(con_map, "b", var_out)
-        con_map = replace_vars(con_map, "p", var_p)
-        mapped_constraints.append(con_map)
-
-    mapped_objective_fun = objective_fun
-    mapped_objective_fun = replace_vars(mapped_objective_fun, "p", var_p)
-
-    return mapped_constraints, mapped_objective_fun
-
-
-def inequality_to_constraint_sat(inequality, variables): # Convert an inequality (coefficients + RHS) into the constraint into SAT format.
-    """
-    Example:
-        inequality = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
-        Return: 'x1 -x2 -x4'
-    """
-    terms = []
-    for coeff, var in zip(inequality[:-1], variables):
-        if coeff == 1:
-            terms.append(f"{var}")
-        elif coeff == -1:
-            terms.append(f"-{var}")
-        # coeff == 0 → variable not used
-    return " ".join(terms).strip()
-
-
-def inequality_to_constraint_milp(inequality, variables): #  Convert an inequality (coefficients + RHS) into the constraint into MILP format.
-    """
-    Example:
-        ineq = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
-        Return: 'x1 - x2 - x4 >= -1'
-    """
-    terms = []
-    rhs = inequality[-1]
-    for coeff, var in zip(inequality[:-1], variables):
-        sign = '+' if coeff > 0 else '-'
-        abs_coeff = abs(coeff)
-        if abs_coeff == 1:
-            terms.append(f"{sign} {var}")
-        elif abs_coeff > 0:
-            terms.append(f"{sign} {abs_coeff} {var}")
-        # coeff == 0 → variable not used
-    return " ".join(terms).lstrip('+ ').strip() + f" >= {rhs}"
+    constraints = []
+    if input_value is not None:
+        constraints.extend(gen_fixed_input_output_constraints("input", input_value, cipher, model_type))
+    if output_value is not None:
+        constraints.extend(gen_fixed_input_output_constraints("output", output_value, cipher, model_type))
+    return constraints

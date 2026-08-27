@@ -18,9 +18,15 @@ from tools.model_constraints import gen_predefined_constraints
 
 
 # =================== Differential Attacks ===================
-def diff_attacks(cipher, goal="DIFFERENTIALPATH_PROB", constraints=None,
-                 objective_target="OPTIMAL", show_mode=0, config_model=None,
-                 config_solver=None):
+def diff_attacks(
+    cipher,
+    goal="DIFFERENTIALPATH_PROB",
+    constraints=None,
+    objective_target="OPTIMAL",
+    show_mode=0,
+    config_model=None,
+    config_solver=None,
+):
     """Search for differential trails of the given cipher.
 
     See :func:`~attacks.differential_cryptanalysis.search_diff_trail` for the
@@ -30,17 +36,29 @@ def diff_attacks(cipher, goal="DIFFERENTIALPATH_PROB", constraints=None,
         list: The differential trail objects found.
     """
     time_start = time.time()
-    trails = diff.search_diff_trail(cipher, goal=goal, constraints=constraints,
-                                    objective_target=objective_target, show_mode=show_mode,
-                                    config_model=config_model, config_solver=config_solver)
+    trails = diff.search_diff_trail(
+        cipher,
+        goal=goal,
+        constraints=constraints,
+        objective_target=objective_target,
+        show_mode=show_mode,
+        config_model=config_model,
+        config_solver=config_solver,
+    )
     print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
     return trails
 
 
 # =================== Linear Attacks ===================
-def linear_attacks(cipher, goal="LINEARPATH_CORR", constraints=None,
-                   objective_target="OPTIMAL", show_mode=0, config_model=None,
-                   config_solver=None):
+def linear_attacks(
+    cipher,
+    goal="LINEARPATH_CORR",
+    constraints=None,
+    objective_target="OPTIMAL",
+    show_mode=0,
+    config_model=None,
+    config_solver=None,
+):
     """Search for linear trails of the given cipher.
 
     See :func:`~attacks.linear_cryptanalysis.search_linear_trail` for the
@@ -50,17 +68,29 @@ def linear_attacks(cipher, goal="LINEARPATH_CORR", constraints=None,
         list: The linear trail objects found.
     """
     time_start = time.time()
-    trails = linear.search_linear_trail(cipher, goal=goal, constraints=constraints,
-                                        objective_target=objective_target, show_mode=show_mode,
-                                        config_model=config_model, config_solver=config_solver)
+    trails = linear.search_linear_trail(
+        cipher,
+        goal=goal,
+        constraints=constraints,
+        objective_target=objective_target,
+        show_mode=show_mode,
+        config_model=config_model,
+        config_solver=config_solver,
+    )
     print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
     return trails
 
 
 # =================== Two-Stage Trail Search ===================
-def two_stage_trail_search(cipher_factory, r, goal="DIFFERENTIALPATH_PROB",
-                           stage1_config_model=None, stage2_config_model=None,
-                           stage1_config_solver=None, stage2_config_solver=None):
+def two_stage_trail_search(
+    cipher_factory,
+    r,
+    goal="DIFFERENTIALPATH_PROB",
+    stage1_config_model=None,
+    stage2_config_model=None,
+    stage1_config_solver=None,
+    stage2_config_solver=None,
+):
     """Two-stage (truncated- then bit-level) trail search for word-oriented ciphers.
 
     Stage 1 searches a minimum-active-S-box truncated pattern; stage 2 fixes that
@@ -86,17 +116,36 @@ def two_stage_trail_search(cipher_factory, r, goal="DIFFERENTIALPATH_PROB",
         truncated trail is found.
     """
     if goal == "DIFFERENTIALPATH_PROB":
-        stage1_goal, weight_key, attack = "TRUNCATEDDIFF_SBOXCOUNT", "diff_weight", diff_attacks
+        stage1_goal, weight_key, attack = (
+            "TRUNCATEDDIFF_SBOXCOUNT",
+            "diff_weight",
+            diff_attacks,
+        )
     elif goal == "LINEARPATH_CORR":
-        stage1_goal, weight_key, attack = "TRUNCATEDLINEAR_SBOXCOUNT", "linear_weight", linear_attacks
+        stage1_goal, weight_key, attack = (
+            "TRUNCATEDLINEAR_SBOXCOUNT",
+            "linear_weight",
+            linear_attacks,
+        )
     else:
-        raise ValueError(f"Unsupported goal '{goal}' in two-stage search. Expected 'DIFFERENTIALPATH_PROB' or 'LINEARPATH_CORR'.")
+        raise ValueError(
+            f"Unsupported goal '{goal}' in two-stage search. Expected 'DIFFERENTIALPATH_PROB' or 'LINEARPATH_CORR'."
+        )
 
     # Stage 1: search the truncated trail with minimum active S-boxes.
     cipher1 = cipher_factory(r)
-    trails1 = attack(cipher1, goal=stage1_goal, constraints=["INPUT_NOT_ZERO"],
-                     objective_target="OPTIMAL", config_model=stage1_config_model,
-                     config_solver=stage1_config_solver, show_mode=2) or []
+    trails1 = (
+        attack(
+            cipher1,
+            goal=stage1_goal,
+            constraints=["INPUT_NOT_ZERO"],
+            objective_target="OPTIMAL",
+            config_model=stage1_config_model,
+            config_solver=stage1_config_solver,
+            show_mode=2,
+        )
+        or []
+    )
     if not trails1:
         print("[INFO] no truncated trail found.")
         return None
@@ -113,24 +162,41 @@ def two_stage_trail_search(cipher_factory, r, goal="DIFFERENTIALPATH_PROB",
                     for v in S.vars[rr][l]:
                         active = round(float(sol.get(v.ID, 0))) >= 1
                         kind, val = ("SUM_AT_LEAST", 1) if active else ("EXACTLY", 0)
-                        cons += gen_predefined_constraints(model_type, kind, [v], val, bitwise=True)
+                        cons += gen_predefined_constraints(
+                            model_type, kind, [v], val, bitwise=True
+                        )
         return cons
 
     stage2_model_type = (stage2_config_model or {}).get("model_type", "milp")
     cipher2 = cipher_factory(r)
     stage2_cons = _fix_activity(stage2_model_type, cipher2, trails1[0])
-    trails2 = attack(cipher2, goal=goal, constraints=stage2_cons,
-                     objective_target="OPTIMAL", config_model=stage2_config_model,
-                     config_solver=stage2_config_solver, show_mode=2) or []
+    trails2 = (
+        attack(
+            cipher2,
+            goal=goal,
+            constraints=stage2_cons,
+            objective_target="OPTIMAL",
+            config_model=stage2_config_model,
+            config_solver=stage2_config_solver,
+            show_mode=2,
+        )
+        or []
+    )
     best_weight = trails2[0].data[weight_key] if trails2 else None
     print(f"[Stage 2] best trail weight = {best_weight}")
     return min_active, best_weight
 
 
 # =================== Integral Attacks ===================
-def integral_attacks(cipher, goal="INTEGRAL_TWOSUBSET", constraints=None,
-                     objective_target="EXISTENCE", show_mode=0, config_model=None,
-                     config_solver=None):
+def integral_attacks(
+    cipher,
+    goal="INTEGRAL_TWOSUBSET",
+    constraints=None,
+    objective_target="EXISTENCE",
+    show_mode=0,
+    config_model=None,
+    config_solver=None,
+):
     """Search for integral distinguishers of the given cipher.
 
     See :func:`~attacks.integral_cryptanalysis.search_integral_distinguisher` for
@@ -140,8 +206,14 @@ def integral_attacks(cipher, goal="INTEGRAL_TWOSUBSET", constraints=None,
         list: The integral distinguisher objects found.
     """
     time_start = time.time()
-    distinguishers = integral.search_integral_distinguisher(cipher, goal=goal, constraints=constraints,
-                                                            objective_target=objective_target, show_mode=show_mode,
-                                                            config_model=config_model, config_solver=config_solver)
+    distinguishers = integral.search_integral_distinguisher(
+        cipher,
+        goal=goal,
+        constraints=constraints,
+        objective_target=objective_target,
+        show_mode=show_mode,
+        config_model=config_model,
+        config_solver=config_solver,
+    )
     print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
     return distinguishers

@@ -2,15 +2,41 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 import json
 
-ROOT = Path(__file__).resolve().parents[1] # this file -> attacks -> <ROOT>
-FILES_DIR = ROOT / "files"
+from tools.paths import get_files_dir
+from tools.model_constraints import expand_var_ids
 
 
-def _bin_to_hex(bits): # Format bits as hex (with "-" for unknown nibbles).
+def bin_to_hex(bits):
+    """Format a bit string as hexadecimal, keeping ``"-"`` for unknown nibbles.
+
+    ``bits`` is read most-significant-bit first. Each 4-bit group (nibble) becomes one
+    hex digit. A nibble is rendered as ``"-"`` whenever it contains any unknown bit
+    (``"-"``); this is lossy, since a partially unknown nibble such as ``"1-01"`` cannot
+    be represented exactly. When the length is not a multiple of 4, the input is padded
+    with leading ``"0"`` (on the high/MSB side) so that the represented value is
+    preserved. A warning is printed when padding is added or when a mixed nibble is
+    collapsed to ``"-"``.
+
+    Args:
+        bits (str): A string of ``"0"`` / ``"1"`` / ``"-"`` characters, MSB first.
+
+    Returns:
+        str: The hex string, one character per nibble.
+
+    Examples:
+        >>> bin_to_hex("1010")
+        'a'
+        >>> bin_to_hex("----")    # fully-unknown nibble
+        '-'
+        >>> bin_to_hex("1-01")    # mixed unknown bits -> lossy '-' (warns)
+        '-'
+        >>> bin_to_hex("101")     # left-padded to "0101" (warns)
+        '5'
+    """
     if len(bits) % 4 != 0:
         pad = 4 - len(bits) % 4
-        bits = "0" * pad + bits  # Pad with zeros to make length a multiple of 4
-        print(f"[WARNING] Padded {pad} trailing '0'(s) to align to 4-bit nibbles for hex formatting.")
+        bits = "0" * pad + bits  # Left-pad with zeros (high/MSB side) to align nibbles, preserving the value
+        print(f"[WARNING] Padded {pad} leading '0'(s) to align to 4-bit nibbles for hex formatting.")
     hex_digits = []
     # Convert each 4-bit group to hex, but keep "-" when any bit is unknown.
     for i in range(0, len(bits), 4):
@@ -67,7 +93,7 @@ class AttackTrace(ABC):
             base_name = stem[:-len("_model")] if stem.endswith("_model") else stem
             base_path = model_path.with_name(f"{base_name}_{self.type}_{solver_name}_{suffix}")
         else:
-            base_path = FILES_DIR / f"{self.data['cipher']}_{self.type}_{solver_name}_{suffix}"
+            base_path = get_files_dir() / f"{self.data['cipher']}_{self.type}_{solver_name}_{suffix}"
         self.json_filename = f"{base_path}.json"
         self.txt_filename = f"{base_path}.txt"
         self.pdf_filename = f"{base_path}.pdf"
@@ -135,6 +161,7 @@ class Trail(AttackTrace):
         Path(self.txt_filename).parent.mkdir(parents=True, exist_ok=True)
         with open(self.txt_filename, "w", encoding="utf-8") as f:
             f.write(lines)
+        return lines
 
     def save_tex(self): # TO DO
         raise NotImplementedError("LaTeX export is not implemented yet.")
@@ -236,7 +263,7 @@ class Trail(AttackTrace):
             lines += "######## Input: ########\n"
             for name, node_list in trail_struct["inputs"].items():
                 state = "".join(node["bin_values"] for node in node_list)
-                lines += f"{name}: " + (_bin_to_hex(state) if hex_format else state) + "\n"
+                lines += f"{name}: " + (bin_to_hex(state) if hex_format else state) + "\n"
 
         # Print functions
         for fun, fun_struct in trail_struct["functions"].items():
@@ -261,11 +288,11 @@ class Trail(AttackTrace):
                     layer_nodes = fun_struct[r][l]
 
                     state = "".join(layer_nodes[i]["bin_values"] for i in range(nbr_words))
-                    lines += _bin_to_hex(state) if hex_format else state
+                    lines += bin_to_hex(state) if hex_format else state
 
                     if show_mode == 3 and nbr_temp_words > 0:
                         temp_state = "".join(layer_nodes[nbr_words + i]["bin_values"] for i in range(nbr_temp_words))
-                        lines += _bin_to_hex(temp_state) if hex_format else temp_state
+                        lines += bin_to_hex(temp_state) if hex_format else temp_state
                     lines += "\n"
 
         # Print outputs
@@ -273,7 +300,7 @@ class Trail(AttackTrace):
             lines += "######## Output: ########\n"
             for name, node_list in trail_struct["outputs"].items():
                 state = "".join(node["bin_values"] for node in node_list)
-                lines += f"{name}: " + (_bin_to_hex(state) if hex_format else state) + "\n"
+                lines += f"{name}: " + (bin_to_hex(state) if hex_format else state) + "\n"
 
         return lines
 
@@ -380,3 +407,115 @@ class IntegralDistinguisher(AttackTrace):
 
     def save_pdf(self): # TO DO
         raise NotImplementedError("PDF export is not implemented yet.")
+
+
+# -------------------- Trail extraction from solver assignments -------------------- #
+def solution_bit(solution, var_id):
+    """Map a solver value to '0', '1', or '-'."""
+
+    value = solution.get(var_id, None)
+    if value is None:
+        return "-"
+    try:
+        return "1" if int(round(value)) == 1 else "0"
+    except (TypeError, ValueError, OverflowError):
+        return "-"
+
+
+def extract_trail_structures(cipher, goal, solution, truncated_marker):
+    """Extract a structured trail from a solver assignment."""
+
+    bitwise = truncated_marker not in goal
+
+    def node(var):
+        ids = expand_var_ids(var, bitwise=bitwise)
+        bits = "".join(solution_bit(solution, var_id) for var_id in ids)
+        return {
+            "var_ID": getattr(var, "ID", str(var)),
+            "variables": ids,
+            "bin_values": bits,
+        }
+
+    trail_struct = {
+        "bitwise": bitwise,
+        "inputs": {},
+        "outputs": {},
+        "functions": {},
+    }
+
+    if hasattr(cipher, "inputs") and isinstance(cipher.inputs, dict):
+        for name, var_list in cipher.inputs.items():
+            trail_struct["inputs"][name] = [node(v) for v in var_list]
+    if hasattr(cipher, "outputs") and isinstance(cipher.outputs, dict):
+        for name, var_list in cipher.outputs.items():
+            trail_struct["outputs"][name] = [node(v) for v in var_list]
+
+    for fun in cipher.functions:
+        cipher_function = cipher.functions[fun]
+        fun_store = {
+            "rounds": list(range(1, cipher_function.nbr_rounds + 1)),
+            "nbr_words": cipher_function.nbr_words if hasattr(cipher_function, "nbr_words") else None,
+            "nbr_temp_words": cipher_function.nbr_temp_words if hasattr(cipher_function, "nbr_temp_words") else None,
+        }
+        for round_index in range(1, cipher_function.nbr_rounds + 1):
+            round_store = {}
+            for layer_index in range(cipher_function.nbr_layers + 1):
+                round_store[layer_index] = [node(v) for v in cipher_function.vars[round_index][layer_index]]
+            fun_store[round_index] = round_store
+        trail_struct["functions"][fun] = fun_store
+    return trail_struct
+
+
+def extract_and_format_trails(
+    cipher,
+    goal,
+    config_model,
+    config_solver,
+    show_mode,
+    solutions,
+    trail_class,
+    truncated_marker,
+    weight_key,
+    rounds_weight_key,
+):
+    """Build each distinct trail and immediately save it; return the deduplicated list.
+
+    The goal-specific aggregate (differential total probability, linear ELP, ...) is
+    computed by the caller from the returned trails.
+    """
+
+    trails = []
+    trail_structs = []
+    for i, solution in enumerate(solutions):
+        trail_struct = extract_trail_structures(cipher, goal, solution, truncated_marker)
+        if trail_struct in trail_structs:
+            continue
+        trail_structs.append(trail_struct)
+        data = {
+            "cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}",
+            "functions": config_model["functions"],
+            "rounds": config_model["rounds"],
+            "config_model": config_model,
+            "config_solver": config_solver,
+            "trail_struct": trail_struct,
+            weight_key: solution.get("obj_fun_value"),
+            rounds_weight_key: solution.get("rounds_obj_fun_values"),
+        }
+        trail = trail_class(data, solution_trace=solution)
+        if i > 0:
+            print(f"[INFO] Saving the {i+1}-th Trail.")
+            trail.json_filename = (
+                trail.json_filename.replace(".json", f"_{i}.json")
+                if trail.json_filename
+                else str(get_files_dir() / f"{trail.data['cipher']}_trail_{i}.json")
+            )
+            trail.txt_filename = (
+                trail.txt_filename.replace(".txt", f"_{i}.txt")
+                if trail.txt_filename
+                else str(get_files_dir() / f"{trail.data['cipher']}_trail_{i}.txt")
+            )
+        trail.print_trail(show_mode=show_mode)
+        trail.save_json()
+        trail.save_txt(show_mode=show_mode)
+        trails.append(trail)
+    return trails

@@ -1,3 +1,8 @@
+"""Implementation generation and testing for primitives.
+
+Emits an executable implementation of a primitive/cipher in Python, C, or Verilog.
+"""
+
 import os, os.path
 import subprocess
 import ctypes
@@ -7,43 +12,41 @@ import importlib
 from contextlib import redirect_stdout
 import shutil
 
-# function to check if a C compiler is available
 def is_c_compiler_available():
     """Check if gcc or any C compiler is available in the system."""
-    # Check for common C compilers
     compilers = ['gcc', 'clang', 'cl', 'cc']
     for compiler in compilers:
         if shutil.which(compiler) is not None:
             return True, compiler
     return False, None
 
-# function to check if a Verilog compiler/simulator is available
 def is_verilog_compiler_available():
     """Check if iverilog or another Verilog compiler is available in the system."""
-    # Check for common Verilog compilers/simulators
     compilers = ['iverilog', 'verilog', 'vlog']
     for compiler in compilers:
         if shutil.which(compiler) is not None:
             return True, compiler
     return False, None
 
-# function to check if a Rust compiler is available
 def is_rust_compiler_available():
     """Check if rustc compiler is available in the system."""
     if shutil.which('rustc') is not None:
         return True
     return False
 
-# function that selects the variable bitsize when generating C code
-def get_var_def_c(word_bitsize):   
+def get_var_def_c(word_bitsize):
+    """Return the C fixed-width integer type able to hold a word of ``word_bitsize`` bits."""
     if word_bitsize <= 8: return 'uint8_t'
     elif word_bitsize <= 32: return 'uint32_t'
     elif word_bitsize <= 64: return 'uint64_t'
     else: return 'uint128_t'
 
-# function that generates the implementation of the primitive
-def generate_implementation(my_prim, filename, language = 'python', unroll = False):  
-    
+def generate_implementation(my_prim, filename, language = 'python', unroll = False):
+    """Generate ``my_prim``'s reference implementation and write it to ``filename``.
+
+    ``language`` is one of 'python' / 'c' / 'verilog' / 'rust'. With ``unroll`` True the rounds are
+    fully unrolled (round indices baked into variable names); otherwise a rolled loop is emitted.
+    """
     nbr_rounds = my_prim.nbr_rounds
     
     os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
@@ -330,26 +333,42 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
             pass  # To be implemented in the future
 
 
+def evaluate_python(cipher, inputs, cipher_name=None, output_len=None):
+    """Run a cipher's generated Python implementation on concrete inputs.
+
+    Generate the implementation first with generate_implementation(); this only
+    imports and runs it. ``inputs`` is the list of input word-lists in the cipher's
+    input order - e.g. ``[[plaintext_words], [key_words]]`` for a block cipher, or
+    ``[[state_words]]`` for a permutation. Returns the list of output words.
+    """
+    cipher_name = cipher_name or cipher.name
+    with open(os.devnull, "w") as f, redirect_stdout(f):
+        imp_cipher = importlib.import_module(f"files.{cipher_name}")
+        importlib.reload(imp_cipher)
+    func = getattr(imp_cipher, f"{cipher.name}")
+    if output_len is None:
+        output_len = sum(len(cipher.outputs[name]) for name in cipher.outputs)
+    result = [0 for _ in range(output_len)]
+    func(*inputs, result)
+    return result
+
+
 def test_implementation_python(cipher, cipher_name, input, output):
+    """Run the generated Python implementation of ``cipher`` on ``input`` and check it matches the
+    expected ``output``. Returns True/False, or None if the implementation file is not built yet."""
     print(f"\n****************TEST PYTHON IMPLEMENTATION of {cipher_name}****************")
-    
+
     # Check if Python implementation file exists
     py_file = f"files/{cipher_name}.py"
     if not os.path.exists(py_file):
         print(f"[INFO] Python implementation file '{py_file}' not found. Skipping Python test.")
         print(f"       The implementation should be generated first using generate_implementation().")
         return None
-    
+
     print("Test input = ", [hex(i2) for i1 in input for i2 in i1])
     print("Test output = ", [hex(i) for i in output])
     try:
-        with open(os.devnull, "w") as f, redirect_stdout(f):
-            imp_cipher = importlib.import_module(f"files.{cipher_name}")
-            importlib.reload(imp_cipher)
-        func = getattr(imp_cipher, f"{cipher.name}")
-        result = [0 for _ in range(len(output))]
-
-        func(*input, result)
+        result = evaluate_python(cipher, input, cipher_name=cipher_name, output_len=len(output))
         print("Test result = ", [hex(i) for i in result])
 
         if result == output:
@@ -371,6 +390,8 @@ def test_implementation_python(cipher, cipher_name, input, output):
 
 
 def test_implementation_c(cipher, cipher_name, input, output):
+    """Compile and run the generated C implementation of ``cipher`` on ``input`` and check it matches
+    ``output``. Returns True/False, or None if the C compiler or implementation file is unavailable."""
     print(f"\n****************TEST C IMPLEMENTATION of {cipher_name}****************")
     
     # Check if C compiler is available
@@ -435,6 +456,8 @@ def test_implementation_c(cipher, cipher_name, input, output):
         return False
 
 def test_implementation_verilog(cipher, cipher_name, input, output):
+    """Compile and run the generated Verilog implementation of ``cipher`` on ``input`` and check it
+    matches ``output``. Returns True/False, or None if the Verilog toolchain or file is unavailable."""
     print(f"\n****************TEST VERILOG IMPLEMENTATION of {cipher_name}****************")
 
     # Check if Verilog compiler is available
@@ -463,6 +486,8 @@ def test_implementation_verilog(cipher, cipher_name, input, output):
     return None
 
 def test_implementation_rust(cipher, cipher_name, input, output):
+    """Compile and run the generated Rust implementation of ``cipher`` on ``input`` and check it
+    matches ``output``. Returns True/False, or None if the Rust toolchain or file is unavailable."""
     print(f"\n****************TEST RUST IMPLEMENTATION of {cipher_name}****************")
     
     # Check if Rust compiler is available

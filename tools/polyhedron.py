@@ -1,3 +1,11 @@
+"""Truth-table to MILP/SAT inequalities via the convex-hull (pycddlib) method.
+
+``ttb_to_ineq_convex_hull`` builds the convex hull of the truth table's valid points with
+pycddlib, extracts the facet inequalities (equalities are split into inequality pairs),
+normalizes them to integer coefficients, and greedily selects a minimal subset that cuts
+off every invalid point.
+"""
+
 import copy
 from fractions import Fraction
 from math import gcd
@@ -5,12 +13,13 @@ from functools import reduce
 try:
     import cdd
     backend_version = getattr(cdd, "__version__", "unknown")
-except Exception:
+except (ImportError, OSError):
+    cdd = None
     backend_version = "unknown"
-    print("[WARNING] Failed to import cdd. Please check whether pycddlib is installed correctly. Install it by 'pip install pycddlib', refer to https://pypi.org/project/pycddlib/")
 
 
-def cdd_ineq_to_coeff_rhs(ineq): # Convert a cddlib-style inequality of the form: [b, a1, a2, ..., an] to the coefficients [a1, a2, ..., an, -b], which represents 'a1*x1 + ... + an*xn >= -b'
+def cdd_ineq_to_coeff_rhs(ineq):
+    """Convert a cddlib inequality ``[b, a1, ..., an]`` to ``[a1, ..., an, -b]`` (i.e. ``a1*x1 + ... + an*xn >= -b``)."""
     return ineq[1:] + [-ineq[0]]
 
 
@@ -28,24 +37,35 @@ def cdd_eq_to_coeff_rhs(eq):
     return [ineq1, ineq2]
 
 
-def normalize_inequality(ineq):  # Ensure integer coefficients with minimal scaling
+def normalize_inequality(ineq):
+    """Scale an inequality to integer coefficients of minimal magnitude (clear denominators, divide by the gcd)."""
     ineq = [Fraction(x) for x in ineq]
     lcm_den = reduce(lambda a, b: a * b // gcd(a, b), [x.denominator for x in ineq], 1)
     scaled = [int(x * lcm_den) for x in ineq]
     g = reduce(gcd, scaled)
+    if g == 0:  # all-zero inequality: nothing to scale (avoid division by zero)
+        return scaled
     scaled = [x // g for x in scaled]
     return scaled
 
 
-def is_sat(point, ineq): # Check whether a given point [x1, x2, ..., xn] satisfies the inequality [a1, a2, ..., an, b], which represents: a1*x1 + a2*x2 + ... + an*xn >= b.
+def is_sat(point, ineq):
+    """Return True if ``point`` satisfies ``ineq`` (``a1*x1 + ... + an*xn >= b`` with ``b = ineq[-1]``)."""
     return sum(x * a for x, a in zip(point, ineq[:-1])) >= ineq[-1]
 
 
-def collect_cutoffs(points, ineq): # Collect all points that do not satisfy the given inequality.
+def collect_cutoffs(points, ineq):
+    """Return the points that do NOT satisfy ``ineq`` (the points it cuts off)."""
     return [p for p in points if not is_sat(p, ineq)]
 
 
-def	minimize_constraints_greedy(inequalities, variables, ttable): # Select a minimal subset of inequalities to eliminate all impossible points by using the Greedy Algorithm.
+def minimize_constraints_greedy(inequalities, variables, ttable):
+    """Greedily select a minimal subset of inequalities that cuts off every impossible point.
+
+    Repeatedly picks the inequality removing the most still-uncovered impossible points. Warns
+    and stops if the remaining points cannot be cut off (the inequalities do not exactly
+    describe the truth table).
+    """
     num_vars = len(variables)
     all_points = [list(map(int, bin(i)[2:].zfill(num_vars))) for i in range(2 ** num_vars)]
     impossible_points = [pt for i, pt in enumerate(all_points) if ttable[i] == '0']
@@ -60,7 +80,7 @@ def	minimize_constraints_greedy(inequalities, variables, ttable): # Select a min
             cutoff.append(cutoff_of_ine)
             count_of_cutoff.append(len(cutoff_of_ine))
         if not count_of_cutoff or max(count_of_cutoff) == 0:
-            print(f"[INFO]: No inequality can further remove the remaining ({len(point)}) invalid points.") # In this case, the selected inequalities cannot exactly describe the truth table, some invalid points may remain.
+            print(f"[WARNING] No inequality can further remove the remaining ({len(point)}) invalid points.") # In this case, the selected inequalities cannot exactly describe the truth table, some invalid points may remain.
             break
         max_count_index = count_of_cutoff.index(max(count_of_cutoff))
         select_ine.append(ine[max_count_index])
@@ -70,7 +90,8 @@ def	minimize_constraints_greedy(inequalities, variables, ttable): # Select a min
     return select_ine
 
 
-def extract_equalities_indices(poly): # Parse the H-representation text of the polyhedron to extract the 'linearity' line, which indicates the indices (1-based) of equality constraints.
+def extract_equalities_indices(poly):
+    """Parse the polyhedron's H-representation for the ``linearity`` line, returning the 1-based indices of equality rows."""
     lines = str(poly).splitlines()
     for line in lines:
         if line.strip().startswith("linearity"):
@@ -79,7 +100,21 @@ def extract_equalities_indices(poly): # Parse the H-representation text of the p
     return []
 
 
-def ttb_to_ineq_convex_hull(ttable, variables): # Convert a truth table to CNF or MILP constraints using the convex hull method via pycddlib.
+def ttb_to_ineq_convex_hull(ttable, variables):
+    """Convert a truth table to a minimal set of MILP/SAT inequalities via the convex-hull method (pycddlib).
+
+    Returns ``(inequalities, information)``; raises ``ImportError`` if pycddlib is unavailable.
+
+    Requires the pycddlib 2.x API (``cdd.Matrix`` / ``cdd.RepType.GENERATOR`` /
+    ``cdd.Polyhedron`` / ``get_inequalities``). pycddlib >= 3 renamed these to
+    ``matrix_from_array`` / ``polyhedron_from_matrix`` / ... and would raise
+    ``AttributeError`` here, so pin ``pycddlib<3`` (in requirements-solvers.txt / pyproject.toml).
+    """
+    if cdd is None:
+        raise ImportError(
+            "pycddlib is required for convex-hull constraint generation. "
+            "Install it with: pip install pycddlib"
+        )
     num_vars = len(variables)
     all_points = [list(map(int, bin(i)[2:].zfill(num_vars))) for i in range(2 ** num_vars)]
     possible_points = [pt for i, pt in enumerate(all_points) if ttable[i] == '1']

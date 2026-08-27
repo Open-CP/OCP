@@ -43,7 +43,7 @@ class Variable:
             raise ValueError("Variable bitsize must be a positive integer.")
         if ID is not None and not isinstance(ID, str):
             raise ValueError("Variable ID must be None or a string.")
-        if value is not None and (not isinstance(value, int) or value < 0 or value >= 2**bitsize):
+        if value is not None and (not isinstance(value, int) or value < 0 or value >= 2 ** bitsize):
             raise ValueError("Variable value must be an integer fitting in bitsize.")
 
         self.bitsize = bitsize
@@ -75,15 +75,31 @@ class Variable:
         else:
             return "Invalid representation"
 
-    def display(self, representation='binary'):
-        """Print the variable's ID, bitsize, and value.
+    def format_display(self, representation='binary'):
+        """Return a one-line ``ID / bitsize / value`` summary string.
+        """
+        display_id = "" if self.ID is None else self.ID
+        return "ID: " + display_id + " / bitsize: " + str(self.bitsize) + " / value: " + self.display_value(representation)
+
+    def display(self, representation='binary', output_func=None):
+        """Emit the ``format_display`` line and return it.
 
         Args:
             representation (str): Value representation passed to
                 :meth:`display_value`. Defaults to ``'binary'``.
+            output_func (callable, optional): Sink for the text. When None, the
+                line is written to standard output; otherwise ``output_func(text)``
+                is called (used to redirect captured output). Defaults to None.
+
+        Returns:
+            str: The formatted line.
         """
-        display_id = "" if self.ID is None else self.ID
-        print(f"ID: {display_id} / bitsize: {self.bitsize} / value: {self.display_value(representation)}")
+        text = self.format_display(representation)
+        if output_func is None:
+            print(text)
+        else:
+            output_func(text)
+        return text
 
     def remove_round_from_ID(self):
         """Return the ID with the round field removed (``'name_round_layer_pos'`` -> ``'name_layer_pos'``).

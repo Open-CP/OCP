@@ -9,8 +9,8 @@ from pathlib import Path
 from itertools import combinations
 import time
 
-from tools.model_constraints import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun, gen_predefined_constraints
-from attacks.differential_cryptanalysis import configure_model_version
+from tools.model_configuration import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun
+from tools.model_constraints import gen_predefined_constraints
 
 import tools.milp_search as milp_search
 import tools.sat_search as sat_search
@@ -115,8 +115,7 @@ def search_id_distinguisher_enumeration(cipher, goal="IMPOSSIBLETRUNCATEDDIFF",
 
     # Build the base model once (configure operator versions, then generate round constraints);
     # only the fixed (Delta_X, Delta_Y) constraints change per iteration.
-    configure_model_version(cipher, goal_middle, config_model)
-    base_cons, obj = gen_round_model_constraint_obj_fun(cipher, model_type, config_model)
+    base_cons, obj = gen_round_model_constraint_obj_fun(cipher, goal_middle, config_model)
 
     # Enumerate (Delta_X, Delta_Y): active counts wi/wo in the configured ranges, then their positions.
     impossible, tested, start = [], 0, time.time()

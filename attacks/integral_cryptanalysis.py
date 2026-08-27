@@ -8,11 +8,10 @@ Provides:
 from pathlib import Path
 
 from attacks.attack_trace import IntegralDistinguisher
-from tools.model_constraints import fill_functions_rounds_layers_positions, set_model_versions, gen_round_model_constraint_obj_fun, gen_predefined_constraints
-import tools.milp_search as milp_search
-
-ROOT = Path(__file__).resolve().parents[1] # integral_cryptanalysis.py -> attacks -> <ROOT>
-FILES_DIR = ROOT / "files"
+from tools.model_configuration import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun
+from tools.model_constraints import gen_predefined_constraints
+from tools.milp_search import modeling_solving_milp
+from tools.paths import get_files_dir
 
 
 # ---------------------- Model and Solver Configuration ----------------------
@@ -34,34 +33,13 @@ def _parse_and_set_configs(cipher, goal, objective_target, config_model, config_
     config_model.setdefault("layers", layers)
     config_model.setdefault("positions", positions)
 
-    FILES_DIR.mkdir(parents=True, exist_ok=True)  # ensure the output directory exists (lazy)
     # Set the model "filename".
-    config_model.setdefault("filename", str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_milp_model.lp"))
+    config_model.setdefault("filename", str(get_files_dir() / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_{objective_target}_milp_model.lp"))
 
     # Set "solver" and "solution_number" for solving the model.
     config_solver.setdefault("solver", "DEFAULT")
     config_solver.setdefault("solution_number", 1)
     return config_model, config_solver
-
-def configure_model_version(cipher, goal, config_model):
-    """Assign each operator its ``model_version`` for the integral goal.
-
-    An optional ``config_model["model_version"]`` entry
-    (``{"model_version": ..., "operator_name": ...}``) overrides the version for a
-    specific operator.
-    """
-    functions, rounds, layers, positions = config_model.get("functions"), config_model.get("rounds"), config_model.get("layers"), config_model.get("positions")
-
-    if goal == "INTEGRAL_TWOSUBSET":
-        set_model_versions(cipher, "INTEGRAL_TWOSUBSET", functions, rounds, layers, positions) # Set model_version = "INTEGRAL_TWOSUBSET" for all selected operators
-
-    else:
-        raise ValueError(f"Invalid goal: {goal}.")
-
-    mv = config_model.get("model_version")  # optional per-operator override
-    if mv and mv.get("model_version") and mv.get("operator_name"):
-        set_model_versions(cipher, mv["model_version"], functions, rounds, layers, positions,
-                           operator_name=mv.get("operator_name"))
 
 
 # -------------------- Predefined Additional Constraints --------------------
@@ -160,7 +138,7 @@ def _search_balanced_bits(base_constraints, final_var_ids, config_model, config_
 
     while len(banned_var_ids) < len(final_var_ids):
         constraints = list(base_constraints) + [_gen_ban_final_var_constraint(var_id) for var_id in banned_var_ids]
-        solutions = milp_search.modeling_solving_milp("OPTIMAL", constraints, objective, config_model, config_solver)
+        solutions = modeling_solving_milp("OPTIMAL", constraints, objective, config_model, config_solver)
         if not solutions:
             status = "found"
             break
@@ -230,11 +208,10 @@ def search_integral_distinguisher(cipher, goal="INTEGRAL_TWOSUBSET", constraints
 
     # Step 1. Parse and set model and solver configurations.
     config_model, config_solver = _parse_and_set_configs(cipher, goal, objective_target, config_model, config_solver)
-    model_type = config_model.get("model_type", "milp")
+    model_type = config_model["model_type"]
 
     # Step 2. Generate round constraints and objective function for the cipher.
-    configure_model_version(cipher, goal, config_model)
-    round_constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, model_type, config_model)
+    round_constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, goal, config_model)
 
     # Step 3. Process additional constraints.
     model_cons = []
@@ -257,11 +234,11 @@ def search_integral_distinguisher(cipher, goal="INTEGRAL_TWOSUBSET", constraints
             return []
         return _extract_and_format_integral_distinguishers(cipher, goal, config_model, config_solver, [search_result])
 
-    solutions = milp_search.modeling_solving_milp(objective_target, model_cons, obj_fun, config_model, config_solver)
+    solutions = modeling_solving_milp(objective_target, model_cons, obj_fun, config_model, config_solver)
     if isinstance(solutions, list):
         return _extract_and_format_integral_distinguishers(cipher, goal, config_model, config_solver, solutions)
 
-    raise ValueError("No valid solutions found.")
+    raise ValueError(f"Solving did not return a list of solutions (got {type(solutions).__name__}); check the solver configuration.")
 
 
 # ---------------- Distinguisher Extraction and Visualization ----------------
