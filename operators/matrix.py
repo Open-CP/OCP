@@ -1,30 +1,23 @@
+"""Linear-layer operators over GF(2): ``Matrix`` (binary / MDS / polynomial matrices) and
+``GF2Linear_Trans``.
+
+Provides binary-matrix generation (including MDS polynomial-matrix expansion to a bit matrix),
+python/C/Verilog code generation, and SAT/MILP models built row by row as XOR constraints over
+the active input bits.
+"""
+
 import numpy as np
 import os
 import copy
-from pathlib import Path
-from operators.operators import Operator, UnaryOperator, RaiseExceptionVersionNotExisting
-from tools.model_constraints import gen_matrix_constraints, gen_constraints_obj_func_from_template, generate_and_save_constraints, gen_word_matrix_constraints, gen_word_nxor_constraints
+from operators.operators import Operator, UnaryOperator, RaiseExceptionVersionNotExisting, raise_unknown_implementation_type, raise_unknown_model_type
+from tools.operator_constraints import gen_matrix_constraints, gen_matrix_declarations, binary_declaration, integer_declaration, gen_equivalence_constraints
+from tools.model_templates import generate_and_save_constraints, gen_constraints_obj_func_from_template, instantiate_constraints_template
+from tools.paths import get_matrix_constraints_files_dir
 from itertools import product
 
-ROOT = Path(__file__).resolve().parents[1]  # this file -> operators -> <ROOT>
-BASE_PATH = ROOT / "files/matrix_modeling"
-BASE_PATH.mkdir(parents=True, exist_ok=True)
 
-
-def find_primitive_element_gf2m(mod_poly, degree): # Find a primitive root for GF(2^m)
-    for candidate in range(2, 1 << degree):
-        num_elements = (1 << degree) - 1
-        generated = set()
-        current_value = 1
-        for _ in range(num_elements):
-            generated.add(current_value)
-            current_value = gf2_multiply(current_value, candidate, mod_poly, degree)
-        if len(generated) == num_elements:
-            return candidate
-    raise ValueError("No primitive root found.")
-
-
-def gf2_multiply(a, b, mod_poly, degree): #  Multiply two elements in GF(2^m) under a given modulus polynomial
+def gf2_multiply(a, b, mod_poly, degree):
+    """Multiply two elements of GF(2^m) modulo ``mod_poly``."""
     result = 0
     while b > 0:
         if b & 1:
@@ -86,23 +79,27 @@ def gf2_inv(a, mod_poly, degree):
     return gf2_pow(a, (1 << degree) - 2, mod_poly, degree)
 
 
-def generate_gf2_elements_and_exponents(pri, mod_poly, degree): # Generate all elements of GF(2^m) and map them to their corresponding exponents (α^k).
-    num_elements = (1 << degree)
-    elements_to_exponents = {}
-    exponents_to_elements = {}
-    current_value = 1
-    for k in range(num_elements - 1):
-        elements_to_exponents[current_value] = k
-        exponents_to_elements[k] = current_value
-        current_value = gf2_multiply(current_value, pri, mod_poly, degree)
-    return elements_to_exponents, exponents_to_elements
+def _is_irreducible_gf2(poly, degree):
+    """Test whether ``poly`` (with its x^degree term) is irreducible over GF(2)."""
+    def poly_mod(a, b):
+        db = b.bit_length()
+        while a.bit_length() >= db:
+            a ^= b << (a.bit_length() - db)
+        return a
+    for d in range(2, 1 << (degree // 2 + 1)):
+        if poly_mod(poly, d) == 0:
+            return False
+    return True
 
 
 def generate_binary_matrix_1(degree):
+    """Identity matrix -- the bit-matrix of the GF(2^m) element 1."""
     return [[1 if i == j else 0 for j in range(degree)] for i in range(degree)]
 
 
-def generate_binary_matrix_2(mod_poly, degree): # Construct the binary matrix for GF(2^m) based on its modulus polynomial.
+def generate_binary_matrix_2(mod_poly, degree):
+    """Companion "multiply-by-x" bit-matrix for GF(2^m), derived from the modulus polynomial."""
+    mod_poly = _normalize_mod_poly(mod_poly, degree)
     matrix = [[0 for _ in range(degree)] for _ in range(degree)]
     coefficients = [(mod_poly >> i) & 1 for i in range(degree)]
     for i in range(degree):
@@ -112,61 +109,54 @@ def generate_binary_matrix_2(mod_poly, degree): # Construct the binary matrix fo
     return matrix
 
 
-def generate_binary_matrix_3(mod_poly, degree): # Generate the binary matrix representation for the element 3 (x + 1) in GF(2^m).
-    matrix1 = generate_binary_matrix_1(degree)
-    matrix2 = generate_binary_matrix_2(mod_poly, degree)
-    matrix = [[(matrix1[i][j] + matrix2[i][j]) % 2 for j in range(len(matrix1[0]))] for i in range(len(matrix1))]
-    return matrix
+def matrix_multiply_mod2(A, B):
+    """Multiply two matrices over GF(2) (entrywise mod 2); supports non-square shapes."""
+    columns = list(zip(*B))
+    return [
+        [sum(a & b for a, b in zip(row, col)) & 1 for col in columns]
+        for row in A
+    ]
 
 
-def matrix_multiply_mod2(A, B): # Multiply two matrices in GF(2) (mod 2).
-    size = len(A)
-    result = [[0 for _ in range(size)] for _ in range(size)]
-    for i in range(size):
-        for j in range(size):
-            result[i][j] = sum(A[i][k] * B[k][j] for k in range(size)) % 2
-    return result
+def generate_pmr_for_mds(mds, mod_poly, degree):
+    """Expand a word-level GF(2^m) matrix into its bit-level binary (PMR) form.
 
-
-def matrix_power_mod2(matrix, power): # Compute the power of a matrix (mod 2).
-    size = len(matrix)
-    result = [[1 if i == j else 0 for j in range(size)] for i in range(size)]  # Identity matrix.
-    base = matrix
-    while power:
-        if power % 2 == 1:
-            result = matrix_multiply_mod2(result, base)
-        base = matrix_multiply_mod2(base, base)
-        power //= 2
-    return result
-
-
-def generate_pmr_for_mds(mds, mod_poly, degree): # Generate the Primitive Matrix Representation (PMR) for a given MDS matrix.
-    sig_degree = (1 << degree)
-    if isinstance(mod_poly, str):
-        mod_poly = int(mod_poly, 0)
-    if mod_poly < sig_degree: mod_poly += sig_degree
-    matrix2 = generate_binary_matrix_2(mod_poly, degree)
-    matrix3 = generate_binary_matrix_3(mod_poly, degree)
-    pri = find_primitive_element_gf2m(mod_poly, degree)
-    elements_to_exponents, exponents_to_elements = generate_gf2_elements_and_exponents(pri, mod_poly, degree)
-    if pri == 2: companion_matrix = matrix2
-    elif pri == 3: companion_matrix = matrix3
-    matrix_representation = {exp: matrix_power_mod2(companion_matrix, exp) for exp in range((1 << degree) - 1)}
+    multiply-by-c is linear over GF(2): its bit-matrix is the XOR of the companion "multiply-by-x"
+    powers selected by the bits of c. This handles c == 0 (zero block) and needs no discrete logs.
+    """
+    mod_poly = _normalize_mod_poly(mod_poly, degree)
+    assert _is_irreducible_gf2(mod_poly, degree), f"mod_poly {hex(mod_poly)} is not irreducible over GF(2), so GF(2^{degree}) is not a field (check that degree matches the word bitsize)"
+    field_size = 1 << degree
+    companion_x = generate_binary_matrix_2(mod_poly, degree)        # binary matrix of multiply-by-x
+    powers = [generate_binary_matrix_1(degree)]                     # powers[k] = companion_x^k, built incrementally
+    for _ in range(1, degree):
+        powers.append(matrix_multiply_mod2(powers[-1], companion_x))
+    cache = {}
+    def mult_by(c):                                                 # binary matrix of multiply-by-c
+        if not (0 <= c < field_size):                              # a coefficient must be a valid GF(2^degree) element
+            raise ValueError(f"generate_pmr_for_mds: coefficient {c} is out of range for GF(2^{degree}); "
+                             f"expected 0 <= c < {field_size}.")
+        if c not in cache:
+            acc = [[0] * degree for _ in range(degree)]
+            for k in range(degree):
+                if (c >> k) & 1:
+                    acc = [[acc[i][j] ^ powers[k][i][j] for j in range(degree)] for i in range(degree)]
+            cache[c] = acc
+        return cache[c]
     size = len(mds)
-    pmr = [[matrix_representation[elements_to_exponents[mds[i][j]]]for j in range(size)] for i in range(size)]
+    pmr = [[mult_by(mds[i][j]) for j in range(size)] for i in range(size)]
     pmr_new = [[0 for _ in range(size * degree)] for _ in range(size * degree)]
-    # print("\nPMR Binary Matrix Representation:\n", pmr)
     for i in range(size):
         for row_offset in range(degree):
             base_index = i * degree + row_offset
             for j in range(size):
                 start_index = j * degree
-                end_index = start_index + degree
-                pmr_new[base_index][start_index:end_index] = pmr[i][j][row_offset]
+                pmr_new[base_index][start_index:start_index + degree] = pmr[i][j][row_offset]
     return pmr_new
 
 
 def generate_bin_matrix(mat, bitsize):
+    """Expand a GF(2) word-level matrix into block-binary form (1 -> identity block, 0 -> zero block)."""
     bin_matrix = []
     for i in range(len(mat)):
         row = []
@@ -175,19 +165,46 @@ def generate_bin_matrix(mat, bitsize):
                 row.append(np.eye(bitsize, dtype=int))
             elif mat[i][j] == 0:
                 row.append(np.zeros((bitsize, bitsize), dtype=int))
+            else:
+                raise ValueError(f"generate_bin_matrix expects a binary (0/1) matrix, but got {mat[i][j]} at ({i},{j}).")
         bin_matrix.append(row)
-    bin_matrix = np.block(bin_matrix)
-    return bin_matrix
+    return np.block(bin_matrix)
 
 
-class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the matrix "mat" (stored as a list of lists) to the input vector of variables, towards the output vector of variables
+class Matrix(Operator):
+    """Matrix multiplication operator: apply the matrix ``mat`` (stored as a list of lists) to the input
+    vector of variables, towards the output vector of variables.
+
+    The optional ``polynomial`` defines the GF(2^m) reduction polynomial (e.g. 0x1b for AES); when
+    omitted, ``mat`` is interpreted over GF(2). See :meth:`__init__` for the three supported matrix layouts.
+    """
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDDIFF_2", "TRUNCATEDLINEAR", "TRUNCATEDLINEAR_1", "TRUNCATEDLINEAR_2"),
+        "milp": ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDDIFF_2", "TRUNCATEDLINEAR", "TRUNCATEDLINEAR_1", "TRUNCATEDLINEAR_2"),
+    }
+    SUPPORTED_IMPLEMENTATIONS = ("python", "c")
+
                           # The optional "polynomial" allors to define the polynomial reduction (not implemted yet)
     def __init__(self, name, input_vars, output_vars, mat, polynomial = None, ID = None):
+        """Matrix operator applying ``mat`` to the input word vector.
+
+        Three matrix definitions are currently supported:
+          1. GF(2^m) word-level matrix with a reduction polynomial (not None): mat is n*n over GF(2^m),
+             entries are field elements (e.g. AES MixColumns [[2,3,1,1],...] with polynomial=0x1b, bitsize=8).
+          2. GF(2) word-level matrix: mat is n*n with entries in {0,1} and len(input_vars) == len(mat)
+             (e.g. the SKINNY MixColumns 4*4 binary matrix [[1,0,1,1],...], applied per column).
+          3. Bit-level binary matrix: mat is already the full (n*bitsize)*(n*bitsize) {0,1} matrix, detected
+             by bitsize*len(input_vars) == len(mat) (e.g. SKINNY-64 MixColumns on one column, expanded to 16*16).
+        """
         r, c = len(mat), len(mat[0])
         for i in mat:
-            if len(i)!=c: raise Exception(str(self.__class__.__name__) + ": matrix size not consistent")
-        if len(input_vars)!=c: raise Exception(str(self.__class__.__name__) + ": input vector does not match matrix size")
-        if len(output_vars)!=r: raise Exception(str(self.__class__.__name__) + ": output vector does not match matrix size")
+            if len(i) != c:
+                raise ValueError(f"{self.__class__.__name__}: matrix size not consistent")
+        if len(input_vars) != c:
+            raise ValueError(f"{self.__class__.__name__}: input vector does not match matrix size")
+        if len(output_vars) != r:
+            raise ValueError(f"{self.__class__.__name__}: output vector does not match matrix size")
         super().__init__(input_vars, output_vars, ID = ID)
         self.name = name
         self.mat = mat
@@ -266,11 +283,13 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
 
         return I
 
-    def differential_branch_number(self): # Return differential branch number of the Matrix. TO DO
-        pass
+    def differential_branch_number(self):
+        """Differential branch number of the matrix (not implemented)."""
+        raise NotImplementedError("Matrix differential branch number computation is not implemented.")
 
-    def linear_branch_number(self): # Return linear branch number of the Matrix. TO DO
-        pass
+    def linear_branch_number(self):
+        """Linear branch number of the matrix (not implemented)."""
+        raise NotImplementedError("Matrix linear branch number computation is not implemented.")
 
     def zero_star_io_patterns(self):
         """
@@ -516,17 +535,61 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
 
         return results
 
+    def _word_model_vars(self, dim=1):
+        """Return (var_in, var_out) as word-level (activity) model variables for every input/output word."""
+        var_in, var_out = [], []
+        for i in range(len(self.input_vars)):
+            var_in += self.get_var_model('in', i, bitwise=False, dim=dim)
+        for i in range(len(self.output_vars)):
+            var_out += self.get_var_model('out', i, bitwise=False, dim=dim)
+        return var_in, var_out
+
+    def _binary_matrix_representation(self):
+        """Return the bit-level GF(2) matrix, dispatching on the three ``mat`` definitions (see __init__)."""
+        if self.polynomial:  # case 1: GF(2^m) word matrix -> expand to its primitive matrix representation
+            return generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
+        if len(self.input_vars) == len(self.mat):  # case 2: GF(2) word matrix -> block expansion (1 -> I, 0 -> 0)
+            return generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
+        if self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat):  # case 3: already a bit-level matrix
+            return self.mat
+        raise ValueError(f"Matrix {self.mat} not supported.")
+
+    def _generate_bit_matrix_constraints(self, model_type, bin_matrix, source_vars, target_vars, dummy_prefix=None):
+        """Per output bit, constrain it to the XOR of the input bits selected by ``bin_matrix``; for MILP
+        append the Binary declaration (and Integer dummies for rows with >=3 active inputs).
+
+        Flattens the word/bit variables into plain bit-name lists and delegates the row-by-row
+        modeling to the matrix-level helpers in operator_constraints.
+        """
+        bits_per_source = source_vars[0].bitsize
+        bits_per_target = target_vars[0].bitsize
+        source_bits = [sv.ID + (f"_{l}" if bits_per_source > 1 else "")
+                       for sv in source_vars for l in range(bits_per_source)]
+        target_bits = [tv.ID + (f"_{j}" if bits_per_target > 1 else "")
+                       for tv in target_vars for j in range(bits_per_target)]
+        model_list = gen_matrix_constraints(bin_matrix, source_bits, target_bits, model_type, dummy_prefix)
+        if model_type == 'milp':
+            model_list += gen_matrix_declarations(bin_matrix, source_bits, target_bits, dummy_prefix)
+        return model_list
+
     def generate_implementation(self, implementation_type='python', unroll=False):
+        """Emit a call to the matrix macro: ``(out...) = name(in...)`` (python) or ``name(in..., out...);`` (c)."""
+        self.check_supported_implementation(implementation_type)
+        input_args = ", ".join(self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars)))
+        output_args = ", ".join(self.get_var_ID('out', i, unroll) for i in range(len(self.output_vars)))
         if implementation_type == 'python':
-            return ['(' + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ") = " + self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ")"]
+            return [f"({output_args}) = {self.name}({input_args})"]
         elif implementation_type == 'c':
-            return [self.name + "(" + ''.join([self.get_var_ID('in', i, unroll) + ", " for i in range(len(self.input_vars))])[:-2] + ", " + ''.join([self.get_var_ID('out', i, unroll) + ", " for i in range(len(self.output_vars))])[:-2] + ");"]
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + implementation_type + "'")
+            return [f"{self.name}({input_args}, {output_args});"]
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def get_header_ID(self):
+        """Identity used to de-duplicate headers: class, version, bitsize, matrix and polynomial."""
         return [self.__class__.__name__, self.model_version, self.input_vars[0].bitsize, self.mat, self.polynomial]
 
     def generate_implementation_header_unique(self, implementation_type='python'):
+        """Emit the shared GF(2^m) multiplication macro (GMUL), once per distinct header."""
         if implementation_type == 'python':
             model_list = ["#Galois Field Multiplication Macro", "def GMUL(a, b, p, d):\n\tresult = 0\n\twhile b > 0:\n\t\tif b & 1:\n\t\t\tresult ^= a\n\t\ta <<= 1\n\t\tif a & (1 << d):\n\t\t\ta ^= p\n\t\tb >>= 1\n\treturn result & ((1 << d) - 1)\n\n"]
         elif implementation_type == 'c':
@@ -534,6 +597,7 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
         return model_list
 
     def generate_implementation_header(self, implementation_type='python'):
+        """Emit the matrix's macro definition (each output word = XOR / GMUL of the input words)."""
         if implementation_type == 'python':
             model_list= ["#Matrix Macro "]
             model_list.append("def " + self.name + "(" + ''.join(["x" + str(i) + ", " for i in range (len(self.mat[0]))])[:-2]  + "):")
@@ -548,9 +612,9 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         else: model = model + " ^ " + "x" + str(j)
                     elif self.mat[i][j] != 0:
                         if first:
-                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + str(self.polynomial) + "," + str(self.input_vars[0].bitsize) + ")"
                             first = False
-                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + str(self.polynomial) + "," + str(self.input_vars[0].bitsize) + ")"
                 model_list.append(model)
             model_list.append("\treturn (" + ''.join(["y" + str(i) + ", " for i in range (len(self.mat))])[:-2]  + ")")
             return model_list
@@ -568,166 +632,90 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
                         else: model = model + " ^ " + "x" + str(j)
                     elif self.mat[i][j] != 0:
                         if first:
-                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
+                            model = model + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + str(self.polynomial) + "," + str(self.input_vars[0].bitsize) + ")"
                             first = False
-                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + self.polynomial + "," + str(self.input_vars[0].bitsize) + ")"
+                        else: model = model + " ^ " + "GMUL(" + "x" + str(j) + "," + str(self.mat[i][j]) + "," + str(self.polynomial) + "," + str(self.input_vars[0].bitsize) + ")"
                 model_list.append(model + "; \\")
             model_list.append("} ")
             return model_list
 
     def generate_model(self, model_type='sat', branch_num=None, tool_type="minimize_logic", filename_load=True):
+        """Generate the SAT/MILP model. XORDIFF/LINEAR use the bit-matrix; the TRUNCATED* versions use
+        either the branch-number inequalities (when ``branch_num`` is given) or the valid-pattern template."""
+        self.check_supported_model_version(model_type)
         # Modeling for differential / linear cryptanalysis
         if model_type in ['sat', 'milp'] and self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
-            # Convert the (word-level) matrix into a binary matrix representation:
-            # 1. polynomial is specified: expand the matrix over GF(2^m) into its binary PMR form.
-            if self.polynomial: # Example: AES MDS matrix
-                bin_matrix = generate_pmr_for_mds(self.mat, self.polynomial, self.input_vars[0].bitsize)
-            # 2. word-level matrix: expand each word coefficient into a binary submatrix
-            elif len(self.input_vars) == len(self.mat): # Example: SKINNY 4*4 matrix
-                bin_matrix = generate_bin_matrix(self.mat, self.input_vars[0].bitsize)
-            # 3. matrix is already given in binary form: use it directly
-            elif self.input_vars[0].bitsize * len(self.input_vars) == len(self.mat): # Example: SKINNY 64*64 binary matrix
-                bin_matrix = self.mat
-            else:
-                raise ValueError(f"Matrix {self.mat} not supported.")
+            bin_matrix = self._binary_matrix_representation()
+            dummy_prefix = self.ID + '_d' if model_type == 'milp' else None
             if self.model_version == self.__class__.__name__ + "_XORDIFF":
-                return self._generate_model_diff(model_type, bin_matrix)
+                # XORDIFF: each output bit = XOR of the input bits (rows of the bit-matrix).
+                return self._generate_bit_matrix_constraints(model_type, bin_matrix, self.input_vars, self.output_vars, dummy_prefix)
             elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                return self._generate_model_linear(model_type, bin_matrix)
+                # LINEAR: masks propagate through the transpose (input mask = XOR of output masks).
+                return self._generate_bit_matrix_constraints(model_type, np.transpose(bin_matrix), self.output_vars, self.input_vars, dummy_prefix)
 
         # Modeling for truncated differential / linear cryptanalysis
         elif model_type in ['sat', 'milp'] and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1", self.__class__.__name__ + "_TRUNCATEDDIFF_2", self.__class__.__name__ + "_TRUNCATEDLINEAR_2"]:
-            if model_type in ['milp'] and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
-                if branch_num is not None: # If the branch number is provided, generate the MILP model for describing the branch number property
-                    return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
-                # else: # TO DO: Branch number computation is not implemented yet.
-                    # if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
-                        # branch_num =self.differential_branch_number()
-                    # elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
-                        # branch_num =self.linear_branch_number()
-                    # return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
+            # If a branch number is provided, use the MILP branch-number model.
+            # TODO: auto-compute branch_num via differential_branch_number()/linear_branch_number() (not implemented).
+            if model_type == 'milp' and branch_num is not None and self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
+                return self._generate_model_truncated_diff_linear_branch_num(model_type, branch_num)
+            # Otherwise fall back to the exact valid-pattern model (the _2 variant).
+            effective_version = self.model_version
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
-                self.model_version = self.__class__.__name__ + "_TRUNCATEDDIFF_2"
-                print(f"[WARNING] The {model_type} model for differential branch number = {branch_num} is not implemented. Turn to model_version " + self.model_version)
+                effective_version = self.__class__.__name__ + "_TRUNCATEDDIFF_2"
+                print(f"[WARNING] The {model_type} model for differential branch number = {branch_num} is not implemented. Turn to model_version {effective_version}")
             elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
-                self.model_version = self.__class__.__name__ + "_TRUNCATEDLINEAR_2"
-                print(f"[WARNING] The {model_type} model for linear branch number = {branch_num} is not implemented. Turn to model_version " + self.model_version)
-            # Generate the model for describing all valid input/output patterns.
-            self.model_filename = str(BASE_PATH / f"constraints_{model_type}_{self.name}_{self.model_version}_{tool_type}.txt")
+                effective_version = self.__class__.__name__ + "_TRUNCATEDLINEAR_2"
+                print(f"[WARNING] The {model_type} model for linear branch number = {branch_num} is not implemented. Turn to model_version {effective_version}")
+            # Generate the model describing all valid input/output patterns.
+            self.model_filename = str(get_matrix_constraints_files_dir() / f"constraints_{model_type}_{self.name}_{effective_version}_{tool_type}.txt")
             self.filename_load = filename_load
-            return self._generate_model_truncated_diff_linear_valid_patterns(model_type, tool_type)
+            return self._generate_model_truncated_diff_linear_valid_patterns(model_type, tool_type, effective_version)
 
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'" + self.model_version)
-
-    def _generate_model_diff(self, model_type, bin_matrix): # Modeling for bit-wise differential cryptanalysis
-        model_list = []
-        input_words = len(self.input_vars)
-        output_words = len(self.output_vars)
-        bits_per_input = self.input_vars[0].bitsize
-        bits_per_output = self.output_vars[0].bitsize
-        if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
-            for i in range(output_words):  # Loop over the ith output word
-                for j in range(bits_per_output):  # Loop over the jth bit in the ith word
-                    var_in = []
-                    for k in range(input_words): # Loop over the kth input word
-                        for l in range(bits_per_input): # Loop over the lth bit in the kth word
-                            if bin_matrix[bits_per_output*i+j][bits_per_input*k+l] == 1:
-                                if bits_per_output > 1:
-                                    var_in.append(self.input_vars[k].ID + '_' + str(l))
-                                else:
-                                    var_in.append(self.input_vars[k].ID)
-                    if bits_per_output > 1:
-                        var_out = self.output_vars[i].ID + '_' + str(j)
-                    else:
-                        var_out = self.output_vars[i].ID
-                    if model_type == 'milp':
-                        d = self.ID + '_d_' + str(i) + '_' + str(j)
-                    else:
-                        d = None
-                    model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
-            return model_list
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
         else:
-            Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
-
-    def _generate_model_linear(self, model_type, bin_matrix): # Modeling for bit-wise linear cryptanalysis
-        model_list = []
-        input_words = len(self.input_vars)
-        output_words = len(self.output_vars)
-        bits_per_input = self.input_vars[0].bitsize
-        bits_per_output = self.output_vars[0].bitsize
-        # Modeling for linear cryptanalysis
-        if self.model_version in [self.__class__.__name__ + "_LINEAR"]:
-            bin_matrix = np.transpose(bin_matrix)
-            for i in range(input_words):  # Loop over the ith input word
-                for j in range(bits_per_input):  # Loop over the jth bit in the ith word
-                    var_in = []
-                    for k in range(output_words): # Loop over the kth output word
-                        for l in range(bits_per_output): # Loop over the lth bit in the kth word
-                            if bin_matrix[bits_per_input*i+j][bits_per_output*k+l] == 1:
-                                if bits_per_output > 1:
-                                    var_in.append(self.output_vars[k].ID + '_' + str(l))
-                                else:
-                                    var_in.append(self.output_vars[k].ID)
-                    if bits_per_output > 1:
-                        var_out = self.input_vars[i].ID + '_' + str(j)
-                    else:
-                        var_out = self.input_vars[i].ID
-                    if model_type == 'milp':
-                        d = self.ID + '_d_' + str(i) + '_' + str(j)
-                    else:
-                        d = None
-                    model_list.extend(gen_matrix_constraints(var_in, var_out, model_type, v_dummy=d))
-            return model_list
-        else:
-            Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            raise_unknown_model_type(self.__class__.__name__, model_type, context=self.model_version)
 
     def _generate_model_truncated_diff_linear_branch_num(self, model_type, branch_num):
-        # Generate the MILP model for truncated differential or truncated linear propagation using the branch number of the matrix.
-        # The branch number enforces a lower bound on the total number of active input/output words when the propagation is nonzero.
-        var_in = []
-        for i in range(len(self.input_vars)):
-            var_in += self.get_var_model('in', i, bitwise=False)
-        var_out = []
-        for i in range(len(self.output_vars)):
-            var_out += self.get_var_model('out', i, bitwise=False)
+        """MILP truncated model from the matrix branch number: it lower-bounds the total number of active
+        input/output words whenever the propagation is nonzero (word-level activity variables)."""
+        var_in, var_out = self._word_model_vars()
         var_d = [f"{self.ID}_d"]
         if model_type == 'milp':
             # The first type of modeling. Reference: Nicky Mouha, Qingju Wang, Dawu Gu, and Bart Preneel. Differential and linear cryptanalysis using mixed-integer linear programming.
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [f"{var_d[0]} - {var} >= 0" for var in var_in + var_out]
-                model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
+                model_list.append(binary_declaration(var_in, var_out, var_d))
                 return model_list
             # The second type of modeling. Reference: [1] Christina Boura, Patrick Derbez and Margot Funk. Related-Key Differential Analysis of the AES. [2] Patrick Derbez, Marie Euler, Pierre-Alain Fouque, Phuong Hoa Nguyen. Revisiting Related-Key Boomerang attacks on AES using computer-aided tool.
             elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_1", self.__class__.__name__ + "_TRUNCATEDLINEAR_1"]:
                 model_list = [" + ".join(var_in + var_out) + f" - {branch_num} {var_d[0]} >= 0"]
                 model_list += [" + ".join(var_in + var_out) + f" - {len(var_in+var_out)} {var_d[0]} <= 0"]
-                model_list.append('Binary\n' + ' '.join(var_in + var_out + var_d))
+                model_list.append(binary_declaration(var_in, var_out, var_d))
                 return model_list
         else:
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
 
-    def _generate_model_truncated_diff_linear_valid_patterns(self, model_type, tool_type):
+    def _generate_model_truncated_diff_linear_valid_patterns(self, model_type, tool_type, effective_version):
+        """MILP/SAT truncated model from the exact set of valid word-activity patterns: build the truth table
+        of feasible (x,y) patterns, then compile it to constraints (cached to a template file).
+        """
         input_words = len(self.input_vars)
         output_words = len(self.output_vars)
-        var_in = []
-        for i in range(input_words):
-            var_in += self.get_var_model('in', i, bitwise=False, dim=1)
-        var_out = []
-        for i in range(output_words):
-            var_out += self.get_var_model('out', i, bitwise=False, dim=1)
+        var_in, var_out = self._word_model_vars(dim=1)
 
         if self.filename_load and os.path.exists(self.model_filename):
             model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
             return model_list
 
-        if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_2"]:
+        if effective_version in [self.__class__.__name__ + "_TRUNCATEDDIFF_2"]:
             all_patterns = self.patterns_where_a_star_is_forced_zero()
             patterns = [(xp, yp) for xp, yp, tag in all_patterns if tag == '0']
             patterns.append(((0,) * input_words, (0,) * output_words))
 
-        elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR_2"]:
+        elif effective_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR_2"]:
             mat = copy.deepcopy(self.mat)
             mat_trans = np.transpose(self.mat)
             self.mat = mat_trans
@@ -736,33 +724,58 @@ class Matrix(Operator):   # Operator of the Matrix multiplication: appplies the 
             patterns.append(((0,) * input_words, (0,) * output_words))
             self.mat = mat
         else:
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, effective_version, model_type)
 
-        ttable = ""
+        pattern_set = set(patterns)
+        truth_bits = []
         for i in range(2**input_words):
             x = tuple('*' if b == '1' else 0 for b in format(i, f"0{input_words}b"))
             for j in range(2**output_words):
                 y = tuple('*' if b == '1' else 0 for b in format(j, f"0{output_words}b"))
                 pattern = (x, y)
-                if pattern in patterns:
-                    ttable += "1"
-                else: ttable += "0"
+                truth_bits.append("1" if pattern in pattern_set else "0")
+        ttable = "".join(truth_bits)
 
         input_variables, output_variables = [f"a{i}" for i in range(len(var_in))], [f"b{i}" for i in range(len(var_out))]
-        generate_and_save_constraints(model_type, tool_type, 0, ttable, input_variables, output_variables, model_filename=self.model_filename)
-        model_list, _ = gen_constraints_obj_func_from_template(self.model_filename, var_in, var_out)
+        constraints, template_obj_fun = generate_and_save_constraints(
+            model_type,
+            tool_type,
+            0,
+            ttable,
+            input_variables,
+            output_variables,
+            model_filename=self.model_filename,
+        )
+        model_list, _ = instantiate_constraints_template(
+            constraints,
+            template_obj_fun,
+            var_in,
+            var_out,
+        )
         return model_list
 
 
-class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation in GF(2^n) defined by a binary matrix: y = M*x
+class GF2Linear_Trans(UnaryOperator):
+    """Linear transformation over GF(2^n) defined by a binary matrix (y = M*x)."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+        "milp": ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+    }
+    SUPPORTED_IMPLEMENTATIONS = ("python", "c")
+
     def __init__(self, input_vars, output_vars, mat, ID = None, constants=None):
+        """Build a GF(2)-linear transform y = M*x defined by the square binary matrix ``mat`` (optional constants)."""
         super().__init__(input_vars, output_vars, ID = ID)
-        assert len(mat) == len(mat[0]), "The matrix should be a square matrix."
+        if len(mat) != len(mat[0]):
+            raise ValueError("GF2Linear_Trans: the matrix should be square.")
         self.mat = mat
         self.constants = constants
 
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        """Emit y = M*x expanded bit-by-bit (each output bit = XOR of the selected input bits, plus any constant)."""
+        self.check_supported_implementation(implementation_type)
         var_in = self.get_var_ID('in', 0, unroll)
         var_out = self.get_var_ID('out', 0, unroll)
         if implementation_type == 'python':
@@ -801,30 +814,35 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     s += f") << {n-i-1} | "
             s = s.rstrip(' | ') + ';'
             return [s]
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
+
+    def _bit_diff_linear_constraints(self, matrix, source_id, target_id, model_type):
+        """Per target bit i, constrain it to the XOR of the source bits j with ``matrix[i][j] == 1``.
+
+        Builds the source/target bit-name lists for this single-word transform and delegates to the
+        matrix-level helpers in operator_constraints.
+        """
+        source_bits = [f"{source_id}_{j}" for j in range(len(matrix[0]))]
+        target_bits = [f"{target_id}_{i}" for i in range(len(matrix))]
+        dummy_prefix = self.ID + '_d' if model_type == 'milp' else None
+        model_list = gen_matrix_constraints(matrix, source_bits, target_bits, model_type, dummy_prefix)
+        if model_type == 'milp':
+            model_list += gen_matrix_declarations(matrix, source_bits, target_bits, dummy_prefix)
+        return model_list
 
     def generate_model(self, model_type='sat'):
-        model_list = []
-        if model_type in ['sat', 'milp'] and (self.model_version in [self.__class__.__name__ + "_XORDIFF"]):
-            for i in range(self.output_vars[0].bitsize):
-                var_in = []
-                for j in range(self.input_vars[0].bitsize):
-                    if self.mat[i][j] == 1:
-                        var_in.append(self.input_vars[0].ID + '_' + str(j))
-                var_out = self.output_vars[0].ID + '_' + str(i)
-                model_list.extend(gen_matrix_constraints(var_in, var_out, model_type))
-            return model_list
-        elif model_type in ['sat', 'milp'] and (self.model_version in [self.__class__.__name__ + "_LINEAR"]):
-            mat = np.transpose(self.mat)
-            for i in range(self.output_vars[0].bitsize):
-                var_in = []
-                for j in range(self.input_vars[0].bitsize):
-                    if mat[i][j] == 1:
-                        var_in.append(self.output_vars[0].ID + '_' + str(j))
-                var_out = self.input_vars[0].ID + '_' + str(i)
-                model_list.extend(gen_matrix_constraints(var_in, var_out, model_type))
-            return model_list
-        elif model_type == 'sat':
+        """SAT/MILP model: XORDIFF/LINEAR expand each bit as an XOR over the (transposed for LINEAR) matrix row;
+        the TRUNCATED* versions collapse to a single word-activity equality when the matrix is (near-)a permutation."""
+        self.check_supported_model_version(model_type)
+        if model_type in ['sat', 'milp']:
+            # Differential: each output bit = XOR of the input bits selected by its matrix row.
+            if self.model_version == self.__class__.__name__ + "_XORDIFF":
+                return self._bit_diff_linear_constraints(self.mat, self.input_vars[0].ID, self.output_vars[0].ID, model_type)
+            # Linear: masks propagate through the transposed matrix (input mask = XOR of output masks).
+            if self.model_version == self.__class__.__name__ + "_LINEAR":
+                return self._bit_diff_linear_constraints(np.transpose(self.mat), self.output_vars[0].ID, self.input_vars[0].ID, model_type)
+            # Truncated: if the matrix is (near-)a permutation of unit rows, model as a single word-activity equality.
             if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
                 unit_vectors = set()
@@ -832,23 +850,12 @@ class GF2Linear_Trans(UnaryOperator):  # Operator for the linear transformation 
                     if row.count(1) == 1 and all(x in (0, 1) for x in row):
                         unit_vectors.add(tuple(row))
                 if len(unit_vectors) >= len(self.mat) - 1:
-                    model_list = [f'{var_in[0]} -{var_out[0]}', f'-{var_in[0]} {var_out[0]}']
+                    model_list = gen_equivalence_constraints(var_in, var_out, model_type)
+                    if model_type == 'milp':
+                        model_list.append(binary_declaration(var_in, var_out))
                     return model_list
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-
-        elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                unit_vectors = set()
-                for row in self.mat:
-                    if row.count(1) == 1 and all(x in (0, 1) for x in row):
-                        unit_vectors.add(tuple(row))
-                if len(unit_vectors) >= len(self.mat) - 1:
-                    model_list = [f'{var_in[0]} - {var_out[0]} = 0']
-                    model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                    return model_list
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+                RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else:
+            raise_unknown_model_type(self.__class__.__name__, model_type)

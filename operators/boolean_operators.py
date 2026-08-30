@@ -1,153 +1,165 @@
-from operators.operators import Operator, BinaryOperator, UnaryOperator, RaiseExceptionVersionNotExisting
-from tools.model_constraints import gen_xor_constraints, gen_word_xor_constraints, gen_nxor_constraints, gen_word_nxor_constraints
+"""Bitwise boolean operators: AND, OR, XOR, N_XOR (n-ary XOR), NOT, ConstantXOR, and ANDXOR.
 
-class AND(BinaryOperator):  # Operator for the bitwise AND operation: compute the bitwise AND on the two input variables towards the output variable
+Each provides python/C/Verilog code generation and SAT/MILP model generation across the
+differential / linear / truncated / integral model versions.
+"""
+
+from operators.operators import Operator, BinaryOperator, UnaryOperator, RaiseExceptionVersionNotExisting, raise_unknown_implementation_type, raise_unknown_model_type
+from tools.operator_constraints import gen_xor_constraints, gen_word_xor_constraints, gen_nxor_constraints, gen_word_nxor_constraints, binary_declaration, integer_declaration, gen_equivalence_constraints, gen_or_constraints, gen_implication_constraints
+
+
+class AND(BinaryOperator):
+    """Bitwise AND of the two input variables into the output."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR"),
+        "milp": ("XORDIFF", "LINEAR", "INTEGRAL_TWOSUBSET"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
+        lhs, left, right = self.get_var_ID('out', 0, unroll), self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll)
         if implementation_type == 'python':
-            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll)]
-        elif implementation_type == 'c':
-            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
-        elif implementation_type == 'verilog':
-            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            return [f"{lhs} = {left} & {right}"]
+        if implementation_type == 'c':
+            return [f"{lhs} = {left} & {right};"]
+        if implementation_type == 'verilog':
+            return [f"assign {lhs} = {left} & {right};"]
+        raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
-        if model_type == 'sat':
+        var_in1, var_in2, var_out = self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0)
+        var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+        if model_type in ('sat', 'milp'):
+            # Differential: the weight bit is active iff either input difference is (p = i1 OR i2),
+            # and the output difference can only be active where p is (o -> p).
             if self.model_version == self.__class__.__name__ + "_XORDIFF":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{i1} {i2} -{o}', f'{i1} {i2} -{p}', f'-{i1} {p}', f'-{i2} {p}']
-                self.weight = var_p
+                for i1, i2, o, p in zip(var_in1, var_in2, var_out, var_p):
+                    model_list.extend(gen_or_constraints(i1, i2, p, model_type))
+                    model_list.extend(gen_implication_constraints(o, p, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p))
+                self.weight = [" + ".join(var_p)] if model_type == 'milp' else var_p
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{p} -{i1}', f'{p} -{i2}', f'{p} -{o}', f'-{p} {o}']
-                self.weight = var_p
+            # Linear: each input mask implies the weight bit, which equals the output mask (p = o).
+            if self.model_version == self.__class__.__name__ + "_LINEAR":
+                for i1, i2, o, p in zip(var_in1, var_in2, var_out, var_p):
+                    model_list.extend(gen_implication_constraints(i1, p, model_type))
+                    model_list.extend(gen_implication_constraints(i2, p, model_type))
+                    model_list.extend(gen_equivalence_constraints([p], [o], model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p))
+                self.weight = [" + ".join(var_p)] if model_type == 'milp' else var_p
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version == self.__class__.__name__ + "_XORDIFF":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i1} + {i2} - {p} >= 0', f'- {i1} + {p} >= 0', f'- {i2} + {p} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
-                self.weight = [" + ".join(var_p)]
+            # Two-subset integral: the output division-property bit is i1 OR i2.
+            if model_type == 'milp' and self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
+                for i1, i2, o in zip(var_in1, var_in2, var_out):
+                    model_list.extend(gen_or_constraints(i1, i2, o, model_type))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out))
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {o} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
-                self.weight = [" + ".join(var_p)]
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0))
-                for i in range(len(var_in1)):
-                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                    model_list += [f'{o} - {i1} >= 0', f'{o} - {i2} >= 0', f'{o} - {i1} - {i2} <= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class OR(BinaryOperator):  # Operator for the bitwise OR operation: compute the bitwise OR on the two input variables towards the output variable
+class OR(BinaryOperator):
+    """Bitwise OR of the two input variables into the output."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR"),
+        "milp": ("XORDIFF", "LINEAR"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
+        lhs, left, right = self.get_var_ID('out', 0, unroll), self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll)
         if implementation_type == 'python':
-            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll)]
-        elif implementation_type == 'c':
-           return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
-        elif implementation_type == 'verilog':
-           return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' | ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            return [f"{lhs} = {left} | {right}"]
+        if implementation_type == 'c':
+            return [f"{lhs} = {left} | {right};"]
+        if implementation_type == 'verilog':
+            return [f"assign {lhs} = {left} | {right};"]
+        raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
-        if model_type == 'sat':
+        var_in1, var_in2, var_out = self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0)
+        var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
+        if model_type in ('sat', 'milp'):
+            # OR shares AND's activity-propagation model (support behaves the same under XOR / masks).
+            # Differential: p = i1 OR i2, and o -> p.
             if self.model_version == self.__class__.__name__ + "_XORDIFF":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{i1} {i2} -{o}', f'{i1} {i2} -{p}', f'-{i1} {p}', f'-{i2} {p}']
-                self.weight = var_p
+                for i1, i2, o, p in zip(var_in1, var_in2, var_out, var_p):
+                    model_list.extend(gen_or_constraints(i1, i2, p, model_type))
+                    model_list.extend(gen_implication_constraints(o, p, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p))
+                self.weight = [" + ".join(var_p)] if model_type == 'milp' else var_p
                 return model_list
-            elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{p} -{i1}', f'{p} -{i2}', f'{p} -{o}', f'-{p} {o}']
-                self.weight = var_p
+            # Linear: each input mask implies the weight bit, which equals the output mask (p = o).
+            if self.model_version == self.__class__.__name__ + "_LINEAR":
+                for i1, i2, o, p in zip(var_in1, var_in2, var_out, var_p):
+                    model_list.extend(gen_implication_constraints(i1, p, model_type))
+                    model_list.extend(gen_implication_constraints(i2, p, model_type))
+                    model_list.extend(gen_equivalence_constraints([p], [o], model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p))
+                self.weight = [" + ".join(var_p)] if model_type == 'milp' else var_p
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version == self.__class__.__name__+"_XORDIFF":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{i1} + {i2} - {o} >= 0', f'{i1} + {i2} - {p} >= 0',  f'- {i1} + {p} >= 0', f'- {i2} + {p} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
-                self.weight = [" + ".join(var_p)]
-                return model_list
-            elif self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, o, p = var_in1[i], var_in2[i], var_out[i], var_p[i]
-                    model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {o} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
-                self.weight = [" + ".join(var_p)]
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute the bitwise XOR on the two input variables towards the output variable
+class XOR(BinaryOperator):
+    """Bitwise XOR of the two input variables into the output."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDLINEAR"),
+        "milp": ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDLINEAR", "INTEGRAL_TWOSUBSET"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
+        lhs, left, right = self.get_var_ID('out', 0, unroll), self.get_var_ID('in', 0, unroll), self.get_var_ID('in', 1, unroll)
         if implementation_type == 'python':
-            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll)]
-        elif implementation_type == 'c':
-            return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
-        elif implementation_type == 'verilog':
-            return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + self.get_var_ID('in', 1, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            return [f"{lhs} = {left} ^ {right}"]
+        if implementation_type == 'c':
+            return [f"{lhs} = {left} ^ {right};"]
+        if implementation_type == 'verilog':
+            return [f"assign {lhs} = {left} ^ {right};"]
+        raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
         if model_type in ['sat', 'milp']:
             # Modeling for differential cryptanalysis
             if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1", self.__class__.__name__ + "_XORDIFF_2"]:
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
+                var_in1, var_in2, var_out = self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0)
                 version = int(t) if (t := self.model_version.rsplit('_', 1)[-1]).isdigit() else 0
+                dummies = []
                 for i in range(len(var_in1)):
                     if model_type == 'milp' and version in [1, 2]:
                         d = self.ID + '_d_' + str(i)
+                        dummies.append(d)
                     else:
                         d = None
                     model_list.extend(gen_xor_constraints(var_in1[i], var_in2[i], var_out[i], model_type, v_dummy=d, version=version))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, dummies))
                 return model_list
             # Modeling for word truncated differential cryptanalysis
             elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDDIFF_1"]:
@@ -158,81 +170,84 @@ class XOR(BinaryOperator):  # Operator for the bitwise XOR operation: compute th
                 else:
                     d = None
                 model_list.extend(gen_word_xor_constraints(var_in1[0], var_in2[0], var_out[0], model_type, v_dummy=d, version=version))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out, [d] if d else []))
                 return model_list
-            # Modeling for linear cryptanalysis
-            elif model_type == 'sat' and self.model_version in [self.__class__.__name__ + "_LINEAR"]:
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                for i in range(len(var_in1)):
-                    i1, i2, o = var_in1[i],var_in2[i],var_out[i]
-                    model_list += [f'{i1} -{o}', f'-{i1} {o}', f'{i2} -{o}', f'-{i2} {o}']
+            # Modeling for linear cryptanalysis: both input masks equal the output mask.
+            elif self.model_version == self.__class__.__name__ + "_LINEAR":
+                var_in1, var_in2, var_out = self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0)
+                model_list.extend(gen_equivalence_constraints(var_in1, var_out, model_type))
+                model_list.extend(gen_equivalence_constraints(var_in2, var_out, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out))
                 return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
-                for i in range(len(var_in1)):
-                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                    model_list += [f'{i1} - {o} = 0', f'{i2} - {o} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
-                return model_list
-            # Modeling for word truncated linear cryptanalysis
-            elif model_type == 'sat' and self.model_version in [self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False),  self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                model_list = [f'{var_in1[0]} -{var_out[0]}', f'-{var_in1[0]} {var_out[0]}', f'{var_in2[0]} -{var_out[0]}', f'-{var_in2[0]} {var_out[0]}']
-                return model_list
-            elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                model_list += [f'{var_in1[0]} - {var_out[0]} = 0', f'{var_in2[0]} - {var_out[0]} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
-                return model_list
+            # Modeling for two-subset integral cryptanalysis (MILP only)
             elif model_type == 'milp' and self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
-                var_in1, var_in2, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0))
-                for i in range(len(var_in1)):
-                    i1, i2, o = var_in1[i], var_in2[i], var_out[i]
+                var_in1, var_in2, var_out = self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("out", 0)
+                for i1, i2, o in zip(var_in1, var_in2, var_out):
                     model_list += [f'{i1} + {i2} - {o} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out))
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            # Modeling for word truncated linear cryptanalysis: both input activities equal the output.
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
+                var_in1, var_in2, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("in", 1, bitwise=False), self.get_var_model("out", 0, bitwise=False))
+                model_list.extend(gen_equivalence_constraints(var_in1, var_out, model_type))
+                model_list.extend(gen_equivalence_constraints(var_in2, var_out, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in1, var_in2, var_out))
+                return model_list
+            else: RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
+class N_XOR(Operator):
+    """N-ary XOR of all input variables into the output (a_0 xor a_1 xor ... xor a_n = b)."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "XORDIFF_1", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+        "milp": ("XORDIFF", "XORDIFF_1", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
+        expression = " ^ ".join(self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars)))
         if implementation_type == 'python':
-            expression = ' ^ '.join(self.get_var_ID('in', i, unroll) for i in range(len(self.input_vars)))
             return [self.get_var_ID('out', 0, unroll) + ' = ' + expression]
         elif implementation_type == 'c':
-            expression_parts = []
-            for i in range(len(self.input_vars)):
-                expression_parts.append(self.get_var_ID('in', i, unroll))
-            expression = ' ^ '.join(expression_parts)
             return [self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
         elif implementation_type == 'verilog':
-            expression_parts = []
-            for i in range(len(self.input_vars)):
-                expression_parts.append(self.get_var_ID('in', i, unroll))
-            expression = ' ^ '.join(expression_parts)
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + expression + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else: raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
         if model_type in ['sat', 'milp']:
             # Modeling for differential cryptanalysis
             if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
                 var_in, var_out = ([self.get_var_model("in", i) for i in range(len(self.input_vars))], self.get_var_model("out", 0))
+                all_in = sum(var_in, [])  # every input bit, for the Binary declaration
                 var_in = [list(group) for group in zip(*var_in)]
                 version = int(t) if (t := self.model_version.rsplit('_', 1)[-1]).isdigit() else 0
+                integer_dummies, binary_dummies = [], []
                 for i in range(self.input_vars[0].bitsize):
                     if model_type == 'milp' and version in [0]:
                         d = self.ID + '_d_' + str(i)
+                        integer_dummies.append(d)  # version 0 uses a single integer dummy per bit
                     elif model_type == 'milp' and version in [1]:
                         d = [f"{self.ID}_d_{i}_{j}" for j in range(int((len(self.input_vars)+1)/2))]
+                        binary_dummies.extend(d)  # version 1 uses binary dummies
                     else:
                         d = None
                     model_list.extend(gen_nxor_constraints(var_in[i], var_out[i], model_type, v_dummy=d, version=version))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(all_in, var_out, binary_dummies))
+                    if integer_dummies:
+                        model_list.append(integer_declaration(integer_dummies))
                 return model_list
             # Modeling for word truncated differential cryptanalysis
             elif len(self.input_vars) >= 2 and self.model_version == self.__class__.__name__ + "_TRUNCATEDDIFF":  # Reference: Related-Key Differential Analysis of the AES.
@@ -240,75 +255,80 @@ class N_XOR(Operator): # Operator of the n-xor: a_0 xor a_1 xor ... xor a_n = b
                 inputs = [iv[0] for iv in var_in]
                 output = var_out[0]
                 model_list.extend(gen_word_nxor_constraints(inputs, output, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(inputs, [output]))
                 return model_list
-            # Modeling for linear cryptanalysis
-            elif model_type == "sat" and self.model_version in [self.__class__.__name__ + "_LINEAR"]:
+            # Modeling for linear cryptanalysis: every input mask equals the output mask.
+            elif self.model_version == self.__class__.__name__ + "_LINEAR":
                 var_in, var_out = ([self.get_var_model("in", i) for i in range(len(self.input_vars))], self.get_var_model("out", 0))
-                for i in range(self.input_vars[0].bitsize):
-                    for j in range(len(var_in)):
-                        model_list += [f"{var_out[i]} -{var_in[j][i]}", f"-{var_out[i]} {var_in[j][i]}"]
-                return model_list
-            elif model_type == "milp" and self.model_version == self.__class__.__name__ + "_LINEAR":
-                var_in, var_out = ([self.get_var_model("in", i) for i in range(len(self.input_vars))], self.get_var_model("out", 0))
-                for i in range(self.input_vars[0].bitsize):
-                    for j in range(len(var_in)):
-                        model_list += [f"{var_out[i]} - {var_in[j][i]} = 0"]
-                model_list.append('Binary\n' + ' '.join(sum(var_in, []) + var_out))
+                for input_bits in var_in:
+                    model_list.extend(gen_equivalence_constraints(var_out, input_bits, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(sum(var_in, []), var_out))
                 return model_list
             # Modeling for word truncated linear cryptanalysis
-            elif model_type == "sat" and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
+            elif self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
                 var_in, var_out = ([self.get_var_model("in", i, bitwise=False) for i in range(len(self.input_vars))], self.get_var_model("out", 0, bitwise=False))
-                for j in range(len(var_in)):
-                    model_list += [f"{var_out[0]} -{var_in[j][0]}", f"-{var_out[0]} {var_in[j][0]}"]
+                for input_word in var_in:
+                    model_list.extend(gen_equivalence_constraints(var_out, input_word, model_type))
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(sum(var_in, []), var_out))
                 return model_list
-            elif model_type == "milp" and self.model_version == self.__class__.__name__ + "_TRUNCATEDLINEAR":
-                var_in, var_out = ([self.get_var_model("in", i, bitwise=False) for i in range(len(self.input_vars))], self.get_var_model("out", 0, bitwise=False))
-                for j in range(len(var_in)):
-                    model_list += [f"{var_out[0]} - {var_in[j][0]} = 0"]
-                model_list.append('Binary\n' + ' '.join(sum(var_in, []) + var_out))
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            else: RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class NOT(UnaryOperator): # Operator for the bitwise NOT operation: compute the bitwise NOT operation on the input variable towards the output variable
+class NOT(UnaryOperator):
+    """Bitwise NOT of the input variable into the output."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR"),
+        "milp": ("XORDIFF", "LINEAR"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
         if implementation_type == 'python':
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1)]
         elif implementation_type == 'c':
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
         elif implementation_type == 'verilog':
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ~' + self.get_var_ID('in', 0, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else: raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
-        if model_type == 'sat':
+        self.check_supported_model_version(model_type)
+        if model_type in ('sat', 'milp'):
             if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
                 var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
+                model_list = gen_equivalence_constraints(var_in, var_out, model_type)
+                if model_type == 'milp':
+                    model_list.append(binary_declaration(var_in, var_out))
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+            else: RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class ConstantXOR(UnaryOperator): # Operator for the constant addition using xor, to incorporate the constant with value "constant" to the input variable and result is stored in the output variable
+class ConstantXOR(UnaryOperator):
+    """XOR a round constant into the input variable (constant addition via XOR)."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+        "milp": ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
+    }
+
     def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.table = constant_table
         self.table_r, self.table_i = round, index
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
         if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
         else: my_constant=f"RC[i][{self.table_i}]"
         if implementation_type == 'python':
@@ -317,7 +337,7 @@ class ConstantXOR(UnaryOperator): # Operator for the constant addition using xor
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant.replace("//", "/") + ';']
         elif implementation_type == 'verilog':
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else: raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python':
@@ -332,105 +352,123 @@ class ConstantXOR(UnaryOperator): # Operator for the constant addition using xor
         else: return None
 
     def generate_model(self, model_type='sat'):
-        if model_type == 'sat':
+        self.check_supported_model_version(model_type)
+        if model_type in ('sat', 'milp'):
+            # Each branch only selects the variable granularity; the equivalence and the single
+            # Binary declaration are emitted once below.
             if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                return [clause for vin, vout in zip(var_in, var_out) for clause in (f"-{vin} {vout}", f"{vin} -{vout}")]
+                var_in, var_out = self.get_var_model("in", 0), self.get_var_model("out", 0)
             elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                return [f"-{var_in[0]} {var_out[0]}", f"{var_in[0]} -{var_out[0]}"]
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_LINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0), self.get_var_model("out", 0))
-                model_list = [f'{var_in[i]} - {var_out[i]} = 0' for i in range(len(var_in))]
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list
-            elif self.model_version in [self.__class__.__name__ + "_TRUNCATEDDIFF", self.__class__.__name__ + "_TRUNCATEDLINEAR"]:
-                var_in, var_out = (self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False))
-                model_list = [f'{var_in[0]} - {var_out[0]} = 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in + var_out))
-                return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+                var_in, var_out = self.get_var_model("in", 0, bitwise=False), self.get_var_model("out", 0, bitwise=False)
+            else:
+                RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+            model_list = gen_equivalence_constraints(var_in, var_out, model_type)
+            if model_type == 'milp':
+                model_list.append(binary_declaration(var_in, var_out))
+            return model_list
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute the bitwise AND then XOR on the three input variables towards the output variable
-    # out = (in0 & in1) ^ in2
+class ANDXOR(Operator):
+    """Bitwise AND-XOR: out = (in0 & in1) ^ in2."""
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR"),
+        "milp": ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "XORDIFF_3", "LINEAR", "LINEAR_1"),
+    }
+
     def __init__(self, input_vars, output_vars, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
         if implementation_type == 'python':
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll)]
         elif implementation_type == 'c':
             return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
         elif implementation_type == 'verilog':
             return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' & ' + self.get_var_ID('in', 1, unroll) + ') ^ ' + self.get_var_ID('in', 2, unroll) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else: raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
+        var_in1, var_in2, var_in3, var_out = (
+            self.get_var_model("in", 0),
+            self.get_var_model("in", 1),
+            self.get_var_model("in", 2),
+            self.get_var_model("out", 0),
+        )
+        var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
         if model_type == 'sat':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
-                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
-                    if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
-                        model_list += [f'{i1} {i2} -{p}', f'{i1} {i2} -{i3} {o}', f'-{i1} {p}', f'{i1} {i2} {i3} -{o}', f'-{i2} {p}']
+            if self.model_version == self.__class__.__name__ + "_XORDIFF":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [
+                        f'{i1} {i2} -{p}',
+                        f'{i1} {i2} -{i3} {o}',
+                        f'-{i1} {p}',
+                        f'{i1} {i2} {i3} -{o}',
+                        f'-{i2} {p}',
+                    ]
                 self.weight = var_p
                 return model_list
-            elif self.model_version in [self.__class__.__name__ + "_LINEAR"]:
-                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0), self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
+            if self.model_version == self.__class__.__name__ + "_LINEAR":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
                     model_list += [f'-{i3} {p}', f'-{i1} {p}', f'-{i2} {p}', f'{i3} -{o}', f'{o} -{p}']
                 self.weight = var_p
                 return model_list
-            else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
         elif model_type == 'milp':
-            if self.model_version in [self.__class__.__name__ + "_XORDIFF", self.__class__.__name__ + "_XORDIFF_1"]:
-                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
-                    if self.model_version in [self.__class__.__name__ + "_XORDIFF"]:
-                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{i1} + {i2} + {i3} - {o} >= 0', f'{i1} + {i2} - {i3} + {o} >= 0']
-                    elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":
-                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{o} - {i3} + {p} >= 0', f'{i3} - {o} + {p} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_in3 + var_out + var_p))
+            if self.model_version == self.__class__.__name__ + "_XORDIFF":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{i1} + {i2} + {i3} - {o} >= 0', f'{i1} + {i2} - {i3} + {o} >= 0']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
                 self.weight = [" + ".join(var_p)]
                 return model_list
-            elif self.model_version in [self.__class__.__name__ + "_LINEAR", self.__class__.__name__ + "_LINEAR_1"]:
-                var_in1, var_in2, var_in3, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("in", 2), self.get_var_model("out", 0))
-                var_p = [self.ID + '_p_' + str(i) for i in range(self.input_vars[0].bitsize)]
-                for i in range(len(var_in1)):
-                    i1, i2, i3, o, p = var_in1[i], var_in2[i], var_in3[i], var_out[i], var_p[i]
-                    if self.model_version in [self.__class__.__name__ + "_LINEAR"]:
-                        model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {i3} >= 0', f'{i3} - {o} >= 0', f'{o} - {p} >= 0']
-                    elif self.model_version == self.__class__.__name__ + "_LINEAR_1":
-                        model_list += [f'{i3} - {i2} >= 0', f'{o} - {i3} >= 0', f'{i3} - {i1} >= 0', f'{i3} - {o} >= 0', f'{p} - {i3} >= 0', f'{i3} - {p} >= 0']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_in3 + var_out + var_p))
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_1":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{i1} + {i2} - {p} >= 0', f'{o} - {i3} + {p} >= 0', f'{i3} - {o} + {p} >= 0']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
                 self.weight = [" + ".join(var_p)]
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
-
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_2":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{p} = 0 -> {i1} = 0', f'{p} = 0 -> {i2} = 0', f'{p} = 0 -> {i3} - {o} = 0', f'{p} = 1 -> {i1} + {i2} >= 1']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            elif self.model_version == self.__class__.__name__ + "_XORDIFF_3":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{p} = 0 -> {i1} = 0', f'{p} = 0 -> {i2} = 0', f'{p} = 0 -> {i3} - {o} = 0', f'{p} - {i1} - {i2} <= 0']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            elif self.model_version == self.__class__.__name__ + "_LINEAR":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{p} - {i1} >= 0', f'{p} - {i2} >= 0', f'{p} - {i3} >= 0', f'{i3} - {o} >= 0', f'{o} - {p} >= 0']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            elif self.model_version == self.__class__.__name__ + "_LINEAR_1":
+                for i1, i2, i3, o, p in zip(var_in1, var_in2, var_in3, var_out, var_p):
+                    model_list += [f'{i3} - {i2} >= 0', f'{o} - {i3} >= 0', f'{i3} - {i1} >= 0', f'{i3} - {o} >= 0', f'{p} - {i3} >= 0', f'{i3} - {p} >= 0']
+                model_list.append(binary_declaration(var_in1, var_in2, var_in3, var_out, var_p))
+                self.weight = [" + ".join(var_p)]
+                return model_list
+            else: RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else: raise_unknown_model_type(self.__class__.__name__, model_type)
 
     @staticmethod
-    def _eval_bit(x): # x = in0 || in1 || in2
+    def _eval_bit(x):  # x = in0 || in1 || in2
         in0 = (x >> 2) & 1
         in1 = (x >> 1) & 1
         in2 = x & 1
         return (in0 & in1) ^ in2
 
     @staticmethod
-    def bit_andxor_ddt(): # ddt[dx][dy] = #{x : F(x) ^ F(x ^ dx) = dy}
+    def bit_andxor_ddt():
         ddt = [[0 for _ in range(2)] for _ in range(8)]
         for dx in range(8):
             for x in range(8):
@@ -439,41 +477,40 @@ class ANDXOR(Operator):  # Operator for the bitwise AND-XOR operation: compute t
         return ddt
 
     @staticmethod
-    def bit_andxor_lat(): # lat[a][b] = sum_x (-1)^(<a,x> ^ <b,F(x)>)
+    def bit_andxor_lat():
         def parity(x):
             return bin(x).count("1") & 1
+
         lat = [[0 for _ in range(2)] for _ in range(8)]
-        for a in range(8):      # input mask
-            for b in range(2):  # output mask
-                s = 0
+        for a in range(8):
+            for b in range(2):
+                total = 0
                 for x in range(8):
-                    e = parity(a & x) ^ parity(b & ANDXOR._eval_bit(x))
-                    s += 1 if e == 0 else -1
-                lat[a][b] = s
+                    exponent = parity(a & x) ^ parity(b & ANDXOR._eval_bit(x))
+                    total += 1 if exponent == 0 else -1
+                lat[a][b] = total
         return lat
-    
+
     @staticmethod
-    def bit_andxor_diff_truth_table(): # Return possible differential propagation truth table. Each row is [din0, din1, din2, dout, weight], where weight = -log2(Pr[din -> dout])
+    def bit_andxor_diff_truth_table():
         ddt = ANDXOR.bit_andxor_ddt()
         ttable = ''
-        for n in range(1 << 5):  # 3 input diff bits + 1 output diff bit + 1 weight bit
+        for n in range(1 << 5):
             dx = n >> 2
             dy = (n >> 1) & 1
             wbit = n & 1
-            c = ddt[dx][dy]
-
-            ttable += '1' if (c == 8 and wbit == 0) or (c == 4 and wbit == 1) else '0'
-
+            count = ddt[dx][dy]
+            ttable += '1' if (count == 8 and wbit == 0) or (count == 4 and wbit == 1) else '0'
         return ttable
 
     @staticmethod
-    def bit_andxor_linear_truth_table(): # Return linear-mask propagation truth table. Each row is [min0, min1, min2, mout, weight], where weight = -log2(Cor(mask_in, mask_out)). 
+    def bit_andxor_linear_truth_table():
         lat = ANDXOR.bit_andxor_lat()
         ttable = ''
-        for n in range(1 << 5):  # 3 input mask bits + 1 output mask bit + 1 weight bit
+        for n in range(1 << 5):
             mx = n >> 2
             my = (n >> 1) & 1
             wbit = n & 1
-            c = abs(lat[mx][my])
-            ttable += '1' if (c == 8 and wbit == 0) or (c == 4 and wbit == 1) else '0'
+            count = abs(lat[mx][my])
+            ttable += '1' if (count == 8 and wbit == 0) or (count == 4 and wbit == 1) else '0'
         return ttable

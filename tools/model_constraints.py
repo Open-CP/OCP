@@ -480,7 +480,13 @@ def normalize_fixed_value_bits(fixed_value, bit_count, value_name):
 
     text = fixed_value.strip().lower()
     if text.startswith("0b"):
-        bits = text[2:].zfill(bit_count)
+        digits = text[2:]
+        if any(c not in "01" for c in digits):  # 0x validates via int(); 0b must too
+            raise ValueError(
+                f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+                "Expected binary (0b...) or hexadecimal (0x...) string."
+            )
+        bits = digits.zfill(bit_count)
     elif text.startswith("0x"):
         try:
             bits = bin(int(text, 16))[2:].zfill(bit_count)

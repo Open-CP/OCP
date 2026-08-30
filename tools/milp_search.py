@@ -88,6 +88,7 @@ def _attach_milp_solution_objectives(solutions, objective_function):
 
 def write_milp_model(constraints, obj_fun=None, filename="milp.lp"):
     """Generate and write a standard LP-format MILP model."""
+    filename = filename or "milp.lp"
     dir_path = os.path.dirname(filename)
     if dir_path:
         os.makedirs(dir_path, exist_ok=True)

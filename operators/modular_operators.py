@@ -1,32 +1,64 @@
-import math
-from operators.operators import BinaryOperator, UnaryOperator, RaiseExceptionVersionNotExisting
+"""Modular arithmetic operators: ``ModAdd``, ``ModMul``, and ``ConstantAdd``.
+
+Support a word-size (2^n) modulus or an explicit non-power-of-two modulus, with python/C/Verilog
+code generation. ``ModAdd`` also builds SAT/MILP differential/linear models (with carry/weight
+dummies).
+"""
+
+from operators.operators import BinaryOperator, UnaryOperator, RaiseExceptionVersionNotExisting, raise_unknown_implementation_type, raise_unknown_model_type
+from tools.operator_constraints import binary_declaration
 
 
-class ModAdd(BinaryOperator): # Operator for the modular addition: add the two input variables together towards the output variable
-                              # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
+def _word_mask(bitsize):
+    return hex(2**bitsize - 1)
+
+
+def _uses_word_mask(modulo, bitsize):
+    return modulo is None or modulo == 2**bitsize
+
+
+def _modular_expression(left, right, operator, modulo, bitsize):
+    expr = f"({left} {operator} {right})"
+    if _uses_word_mask(modulo, bitsize):
+        return f"{expr} & {_word_mask(bitsize)}"
+    return f"{expr} % {modulo}"
+
+
+class ModAdd(BinaryOperator):
+    """Modular addition of the two input variables into the output.
+
+    ``modulo`` optionally sets the modulus; by default it uses 2^bitsize.
+    """
+
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  ("XORDIFF", "LINEAR"),
+        "milp": ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "XORDIFF_3", "LINEAR", "INTEGRAL_TWOSUBSET"),
+    }
+
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.modulo = modulo
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
+        var_out = self.get_var_ID('out', 0, unroll)
+        var_in1 = self.get_var_ID('in', 0, unroll)
+        var_in2 = self.get_var_ID('in', 1, unroll)
+        bitsize = self.input_vars[0].bitsize
+        expr = _modular_expression(var_in1, var_in2, "+", self.modulo, bitsize)
         if implementation_type == 'python':
-            if self.modulo == None:
-                return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-            else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
+            return [f"{var_out} = {expr}"]
         elif implementation_type == 'c':
-            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ") & " + hex(2**self.input_vars[0].bitsize - 1) + ';']
-            else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
+            return [f"{var_out} = {expr};"]
         elif implementation_type == 'verilog':
-            if self.modulo == None: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + self.get_var_ID('in', 1, unroll) + ";"]
+            if self.modulo == None: return ["assign " + var_out + ' = ' + var_in1 + ' + ' + var_in2 + ";"]
             else:
-                raise Exception(str(self.__class__.__name__) + ": addition modulo not a power a 2 is not yet handled for verilog '")
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+                raise NotImplementedError(f"{self.__class__.__name__}: non-power-of-two modulo is not handled for verilog")
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
         if model_type == 'sat':
             if self.model_version in [self.__class__.__name__ + "_XORDIFF"]: # Reference: [1] Nicky Mouha and Bart Preneel. Towards finding optimal differential charac- teristics for ARX. [2] Ling Sun, Wei Wang, and Meiqin Wang. Accelerating the search of differential and linear characteristics with the SAT method
@@ -93,7 +125,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     model_list += [f'{a} -{c} {d}', f'-{a} {c} {d}', f'{b} -{c} {d}', f'-{b} {c} {d}']
                 self.weight = var_p
                 return model_list
-            else: RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
+            else: RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
         elif model_type == 'milp':
             if self.model_version in [self.__class__.__name__ + "_XORDIFF"]: # Reference: Kai Fu, Meiqin Wang, Yinghua Guo, Siwei Sun, Lei Hu. MILP-Based Automatic Search Algorithms for Differential and Linear Trails for Speck
                 var_in1, var_in2, var_out = (self.get_var_model("in", 0),  self.get_var_model("in", 1), self.get_var_model("out", 0))
@@ -119,7 +151,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list += [var_d[0] + ' - ' + var_in1[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p, var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_1": # Type 1 constraint using the Indicator constraint provided by Gurobi
@@ -143,7 +175,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list += [var_d[0] + ' - ' + var_in1[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p, var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_2": # Type 2 constraint using the Indicator constraint provided by Gurobi
@@ -164,7 +196,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list += [var_d[0] + ' - ' + var_in1[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p, var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_XORDIFF_3": # Type 3 constraint using the Indicator constraint provided by Gurobi
@@ -182,7 +214,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 model_list += [var_d[0] + ' - ' + var_in1[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_in2[-1] + ' >= 0 ']
                 model_list += [var_d[0] + ' - ' + var_out[-1] + ' >= 0 ']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p + var_d))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p, var_d))
                 self.weight = [" + ".join(var_p)]
                 return model_list
             # Modeling for linear cryptanalysis
@@ -200,7 +232,7 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                     model_list += [var_p[i]+' - '+a[0]+' + '+a[1]+' + '+a[2]+' - '+var_p[i+1]+' >= 0']
                     model_list += [a[0]+' - '+var_p[i]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' >= 0']
                     model_list += [var_p[i]+' + '+a[0]+' + '+a[1]+' + '+a[2]+' + '+var_p[i+1]+' <= 4']
-                model_list.append('Binary\n' +  ' '.join(v for v in var_in1 + var_in2 + var_out + var_p))
+                model_list.append(binary_declaration(var_in1, var_in2, var_out, var_p))
                 self.weight = [" + ".join(var_p[:self.input_vars[0].bitsize])]
                 return model_list
             elif self.model_version == self.__class__.__name__ + "_INTEGRAL_TWOSUBSET":
@@ -248,42 +280,53 @@ class ModAdd(BinaryOperator): # Operator for the modular addition: add the two i
                 self.weight = []
                 return model_list
             else:
-                RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+                RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else:
+            raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class ModMul(BinaryOperator):  # Operator for the modular multiplication: multiply the two input variables together towards the output variable
-                               # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
+class ModMul(BinaryOperator):
+    """Modular multiplication of the two input variables into the output.
+
+    ``modulo`` optionally sets the modulus; by default it uses 2^bitsize.
+    """
+
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID )
-        self.modulo = None
-        pass # TODO
+        self.modulo = modulo
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        var_out = self.get_var_ID('out', 0, unroll)
+        var_in1 = self.get_var_ID('in', 0, unroll)
+        var_in2 = self.get_var_ID('in', 1, unroll)
+        bitsize = self.input_vars[0].bitsize
+        expr = _modular_expression(var_in1, var_in2, "*", self.modulo, bitsize)
         if implementation_type == 'python':
-            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-            else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo)]
+            return [f"{var_out} = {expr}"]
         elif implementation_type == 'c':
-            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ';']
+            if self.modulo == None: return [var_out + ' = ' + var_in1 + ' * ' + var_in2 + ';']
             else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' * ' + self.get_var_ID('in', 1, unroll) + ') % ' + str(self.modulo) + ';']
+                return [f"{var_out} = {expr};"]
         elif implementation_type == 'verilog':
-            raise Exception(str(self.__class__.__name__) + ": multiplication is not yet handled for verilog '")
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            raise NotImplementedError(f"{self.__class__.__name__}: multiplication is not handled for verilog")
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_model(self, model_type='sat', unroll=True):
-        if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+        if model_type == 'sat': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'milp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else:
+            raise_unknown_model_type(self.__class__.__name__, model_type)
 
 
-class ConstantAdd(UnaryOperator): # Operator for the constant addition: use modular addition to incorporate the constant with value "constant" to the input variable and result is stored in the output variable
-                                  # (optional "modulo" defines the modular value in case of a modular addition, by default it uses 2^bitsize as modular value)
+class ConstantAdd(UnaryOperator):
+    """Add a round constant to the input variable via modular addition.
+
+    ``modulo`` optionally sets the modulus; by default it uses 2^bitsize.
+    """
+
     def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID)
         self.modulo = modulo
@@ -293,22 +336,22 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use modu
     def generate_implementation(self, implementation_type='python', unroll=False):
         if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
         else: my_constant=f"RC[i][{self.table_i}]"
+        var_out = self.get_var_ID('out', 0, unroll)
+        var_in = self.get_var_ID('in', 0, unroll)
+        bitsize = self.input_vars[0].bitsize
+        expr = _modular_expression(var_in, my_constant, "+", self.modulo, bitsize)
         if implementation_type == 'python':
-            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + " + " + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-            else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1)]
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo)]
+            return [f"{var_out} = {expr}"]
         elif implementation_type == 'c':
-            if self.modulo == None: return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
+            if self.modulo == None: return [var_out + ' = ' + var_in + ' + ' + my_constant + ';']
             else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                else: return [self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
+                return [f"{var_out} = {expr};"]
         elif implementation_type == 'verilog':
-            if self.modulo == None: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ';']
+            if self.modulo == None: return ["assign " + var_out + ' = ' + var_in + ' + ' + my_constant + ';']
             else:
-                if int(math.log2(self.input_vars[0].bitsize))==math.log2(self.input_vars[0].bitsize): return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') & ' + hex(2**self.input_vars[0].bitsize - 1) + ';']
-                else: return ["assign " + self.get_var_ID('out', 0, unroll) + ' = (' + self.get_var_ID('in', 0, unroll) + ' + ' + my_constant + ') % ' + str(self.modulo) + ';']
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+                return [f"assign {var_out} = {expr};"]
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_implementation_header(self, implementation_type='python'):
         if implementation_type == 'python':
@@ -323,7 +366,8 @@ class ConstantAdd(UnaryOperator): # Operator for the constant addition: use modu
         else: return None
 
     def generate_model(self, model_type='sat'):
-        if model_type == 'sat': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'milp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+        if model_type == 'sat': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'milp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else:
+            raise_unknown_model_type(self.__class__.__name__, model_type)

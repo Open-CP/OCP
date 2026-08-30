@@ -1,3 +1,11 @@
+"""Bit-based two-subset division-property trails for an S-box.
+
+From an S-box lookup table this derives, via the ANF (Mobius transform) of every output mask,
+the minimal set of division trails ``(input mask -> output mask)``, and packs them into a
+truth-table string.
+"""
+
+
 def _mobius_transform_in_place(table, bit_size): # Compute the Mobius transform in place to convert a truth table into ANF coefficients.
     for i in range(bit_size):
         step = 2 ** (bit_size - 1 - i)

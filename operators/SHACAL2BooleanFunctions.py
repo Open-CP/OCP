@@ -1,4 +1,8 @@
-# Not ready for use, still in development.
+"""SHACAL-2 boolean helper operators: the Sigma0/Sigma1/Sum0/Sum1 rotate-shift-XOR functions
+and the Maj/Ch bitwise functions of the SHACAL-2 (SHA-256) compression round.
+
+Not ready for use, still in development.
+"""
 import copy
 from operators.operators import Operator, Rot, Shift, RaiseExceptionVersionNotExisting
 from operators.boolean_operators import NOT, AND, N_XOR, XOR

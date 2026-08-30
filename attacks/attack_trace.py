@@ -1,3 +1,10 @@
+"""Attack results: representation, formatting, and persistence.
+
+Defines the ``AttackTrace`` abstract base and its concrete trails (``DifferentialTrail`` /
+``LinearTrail``) built from a solver solution, plus the shared helpers used to turn a solution
+into per-round trail structures and render/save them.
+"""
+
 from abc import ABC, abstractmethod
 from pathlib import Path
 import json
@@ -492,7 +499,7 @@ def extract_and_format_trails(
             continue
         trail_structs.append(trail_struct)
         data = {
-            "cipher": f"{cipher.functions['PERMUTATION'].nbr_rounds}_round_{cipher.name}",
+            "cipher": f"{cipher.nbr_rounds}_round_{cipher.name}",
             "functions": config_model["functions"],
             "rounds": config_model["rounds"],
             "config_model": config_model,

@@ -1,30 +1,63 @@
-from operators.operators import Operator, Equal, RaiseExceptionVersionNotExisting
+"""Composite AES round operator.
+
+``AESround`` assembles one AES round from sub-operators -- SubBytes (AES_Sbox), ShiftRows
+(Equal wiring), MixColumns (Matrix over GF(2^8)), and an optional AddRoundKey (XOR) -- and
+delegates code/model generation to them, propagating its model version to each inner operator
+(the S-box keeps the full version suffix; the other operators take the base version).
+"""
+
+from operators.operators import Operator, Equal, RaiseExceptionVersionNotExisting, raise_unknown_implementation_type, raise_unknown_model_type
 from operators.Sbox import AES_Sbox
 from operators.matrix import Matrix
 from operators.boolean_operators import XOR
 from variables.variables import Variable
 
 
-class AESround(Operator): # One full AES round (16-byte state) as a composite operator: SubBytes -> ShiftRows -> MixColumns -> AddRoundKey (only if a subkey is given). 
+def _iter_layer_constraints(layers):
+    for layer in layers:
+        for constraint in layer:
+            yield constraint
+
+
+class AESround(Operator):
+    """One AES round (SubBytes/ShiftRows/MixColumns/AddRoundKey) over a 16-byte state."""
+
+    # The round propagates each version to its inner operators (see _inner_model_version):
+    # S-boxes keep the full suffix, other operators take the base version.
+    _MODEL_VERSIONS = (
+        "XORDIFF", "XORDIFF_A", "XORDIFF_PR",
+        "LINEAR", "LINEAR_A", "LINEAR_PR",
+        "TRUNCATEDDIFF", "TRUNCATEDDIFF_A",
+        "TRUNCATEDLINEAR", "TRUNCATEDLINEAR_A",
+    )
+    SUPPORTED_MODEL_VERSIONS = {
+        "sat":  _MODEL_VERSIONS,
+        "milp": _MODEL_VERSIONS,
+    }
+    SUPPORTED_IMPLEMENTATIONS = ("python", "c")
+
     def __init__(self, input_vars, output_vars, subkey=None, ID = None):
-        if len(input_vars) != 16: raise Exception(str(self.__class__.__name__) + ": Input does not contain exactly 16 elements")
-        if len(output_vars) != 16: raise Exception(str(self.__class__.__name__) + ": Output does not contain exactly 16 elements")
-        if subkey is not None and len(subkey) != 16: raise Exception(str(self.__class__.__name__) + ": Subkey does not contain exactly 16 elements")
+        if len(input_vars) != 16:
+            raise ValueError(f"{self.__class__.__name__}: expected exactly 16 input variables, got {len(input_vars)}")
+        if len(output_vars) != 16:
+            raise ValueError(f"{self.__class__.__name__}: expected exactly 16 output variables, got {len(output_vars)}")
+        if subkey is not None and len(subkey) != 16:
+            raise ValueError(f"{self.__class__.__name__}: expected exactly 16 subkey variables, got {len(subkey)}")
         super().__init__(input_vars, output_vars, ID = ID)
         self.subkey = subkey
         self.layers = []
         self.vars = []
         base_id = self.ID if self.ID is not None else self.__class__.__name__
 
-        # create intermediate variables
+        # create intermediate variables (each layer operator gets a unique per-position ID so that
+        # per-operator auxiliary variables, e.g. the MixColumns branch dummies, never collide)
         self.vars.append(input_vars)
         suffixes = ["_SB", "_SR"] + (["_MC"] if subkey is not None else [])
         for suffix in suffixes:
             temp_vars = []
             for i, var in enumerate(input_vars):
                 var_id = var.ID if var.ID is not None else f"{base_id}_in_{i}"
-                new_var = Variable(var.bitsize, ID=var_id + suffix)
-                temp_vars.append(new_var)
+                temp_vars.append(Variable(var.bitsize, ID=var_id + suffix))
             self.vars.append(temp_vars)
         self.vars.append(output_vars)
 
@@ -47,44 +80,45 @@ class AESround(Operator): # One full AES round (16-byte state) as a composite op
         elif implementation_type == 'c':
             model_list = ["//Galois Field Multiplication Macro", "#define GMUL(a, b, p, d) ({ \\", "\tunsigned int result = 0; \\", "\tunsigned int temp_a = a; \\", "\tunsigned int temp_b = b; \\", "\twhile (temp_b > 0) { \\", "\t\tif (temp_b & 1) \\", "\t\t\tresult ^= temp_a; \\", "\t\ttemp_a <<= 1; \\", "\t\tif (temp_a & (1 << d)) \\", "\t\t\ttemp_a ^= p; \\", "\t\ttemp_b >>= 1; \\", "\t} \\", "\tresult & ((1 << d) - 1); \\","})"];
         else:
-            raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
         return model_list
 
     def generate_implementation_header(self, implementation_type='python'):
         header_set = []
         code_list = []
-        for i in range(len(self.layers)):
-            for j in range(len(self.layers[i])):
-                cons = self.layers[i][j]
-                if [cons.__class__.__name__] not in header_set:
-                    header_set.append([cons.__class__.__name__])
-                    if cons.generate_implementation_header(implementation_type) != None:
-                        code_list += cons.generate_implementation_header(implementation_type)
+        for cons in _iter_layer_constraints(self.layers):
+            if [cons.__class__.__name__] not in header_set:
+                header_set.append([cons.__class__.__name__])
+                header = cons.generate_implementation_header(implementation_type)
+                if header is not None:
+                    code_list += header
         return code_list
 
     def generate_implementation(self, implementation_type='python', unroll=False):
+        self.check_supported_implementation(implementation_type)
         if implementation_type == 'python' or implementation_type == 'c':
             code_list = []
             if implementation_type == 'c':
                 var_ids = [var.ID if unroll else var.remove_round_from_ID() for i in range(1, len(self.vars)-1) for var in self.vars[i]]
                 claim_var_c = "uint8_t " + ", ".join(var_ids) + ";"
                 code_list += [claim_var_c]
-            for i in range(len(self.layers)):
-                for j in range(len(self.layers[i])):
-                    code_list += self.layers[i][j].generate_implementation(implementation_type, unroll=unroll)
+            for cons in _iter_layer_constraints(self.layers):
+                code_list += cons.generate_implementation(implementation_type, unroll=unroll)
             return code_list
-        else: raise Exception(str(self.__class__.__name__) + ": unknown implementation type '" + implementation_type + "'")
+        else:
+            raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
-    def _get_inner_model_version(self, cons):
-        if self.model_version is None:
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp/sat")
+    def _inner_model_version(self, cons):
+        """Map this round's ``model_version`` onto an inner layer constraint.
+
+        The round-level suffix (e.g. ``XORDIFF_PR``) is an S-box tag. S-box constraints
+        keep the full suffix; the other operators (Equal/Matrix/XOR) only implement the
+        base versions (``XORDIFF``/``LINEAR``/``TRUNCATEDDIFF``/``TRUNCATEDLINEAR``), so a
+        trailing ``_A``/``_P``/``_PR`` is stripped for them.
+        """
         prefix = self.__class__.__name__ + "_"
-        if not self.model_version.startswith(prefix):
-            RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, "milp/sat")
-
         suffix = self.model_version[len(prefix):]
-        is_sbox = "Sbox" in cons.__class__.__name__
-        if not is_sbox: # Non-S-box operators (Equal/Matrix/XOR) only apply the base versions (e.g. "XORDIFF", "LINEAR"), so strip the trailing "_A"/"_PR" tag.
+        if "Sbox" not in cons.__class__.__name__:
             for tag in ("_PR", "_P", "_A"):
                 if suffix.endswith(tag):
                     suffix = suffix[:-len(tag)]
@@ -92,24 +126,21 @@ class AESround(Operator): # One full AES round (16-byte state) as a composite op
         return cons.__class__.__name__ + "_" + suffix
 
     def generate_model(self, model_type='sat'):
+        self.check_supported_model_version(model_type)
         model_list = []
         self.weight = []
         if model_type == 'sat' or model_type == 'milp':
-            for i in range(len(self.layers)):
-                for j in range(len(self.layers[i])):
-                    cons = self.layers[i][j]
-                    cons.model_version = self.model_version.replace(self.__class__.__name__, cons.__class__.__name__)
-                    if "Sbox" in cons.__class__.__name__ and cons.model_version == cons.__class__.__name__+"_TRUNCATEDDIFF":
-                        cons.model_version += "_A"
-                    if cons.__class__.__name__ == "Matrix" and ("TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version):
-                        model_list += cons.generate_model(model_type, branch_num=5)
-                    cons.model_version = self._get_inner_model_version(cons)
-                    if cons.__class__.__name__ == "Matrix" and model_type == 'milp' and ("TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version):
-                        model_list += cons.generate_model(model_type, branch_num=5) # Use the branch_num=5 constraint for the MixColumns layer in the truncated differential/linear models.
-                    else:
-                        model_list += cons.generate_model(model_type)
-                    if hasattr(cons, 'weight'):
-                        self.weight += cons.weight
+            # The MixColumns matrix uses its branch-number model in the truncated settings.
+            use_branch_number_model = "TRUNCATEDDIFF" in self.model_version or "TRUNCATEDLINEAR" in self.model_version
+            for cons in _iter_layer_constraints(self.layers):
+                cons.model_version = self._inner_model_version(cons)
+                if cons.__class__.__name__ == "Matrix" and use_branch_number_model:
+                    model_list += cons.generate_model(model_type, branch_num=5)
+                else:
+                    model_list += cons.generate_model(model_type)
+                if hasattr(cons, 'weight'):
+                    self.weight += cons.weight
             return model_list
-        elif model_type == 'cp': RaiseExceptionVersionNotExisting(str(self.__class__.__name__), self.model_version, model_type)
-        else: raise Exception(str(self.__class__.__name__) + ": unknown model type '" + model_type + "'")
+        elif model_type == 'cp': RaiseExceptionVersionNotExisting(self.__class__.__name__, self.model_version, model_type)
+        else:
+            raise_unknown_model_type(self.__class__.__name__, model_type)
