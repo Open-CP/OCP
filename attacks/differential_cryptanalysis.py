@@ -5,6 +5,7 @@ Provides:
 1. search for differential trails
 """
 
+import time
 from math import log2
 from attacks.attack_trace import DifferentialTrail, extract_and_format_trails
 from tools.model_constraints import gen_input_non_zero_constraints, gen_required_fixed_boundary_constraints
@@ -79,6 +80,7 @@ def search_diff_trail(
         list: The differential trail objects found.
     """
 
+    t_start = time.time()  # Start of the whole search (for total_time).
     if constraints is None:
         constraints = ["INPUT_NOT_ZERO"]
     _validate_request(goal, constraints, objective_target, show_mode, config_model, config_solver)
@@ -90,6 +92,7 @@ def search_diff_trail(
     # Step 1. Parse and set model and solver configurations.
     config_model, config_solver = _parse_and_set_configs(cipher, goal, objective_target, config_model, config_solver)
     model_type = config_model["model_type"]
+    config_solver["solving_time"] = []  # Per-call solve times; pure-solver total = sum(solving_time).
 
     # Step 2. Generate round constraints and objective function for the cipher.
     round_constraints, obj_fun = gen_round_model_constraint_obj_fun(cipher, goal, config_model)
@@ -115,6 +118,10 @@ def search_diff_trail(
             )
         )
 
+    # Time 1: model generation (entry through Step 3: validation + config parsing + model building).
+    t_step4 = time.time()
+    config_solver["generation_time"] = round(t_step4 - t_start, 2)
+
     # Step 4: Modeling and Solving.
     if model_type == "milp":
         solutions = modeling_solving_milp(objective_target, model_cons, obj_fun, config_model, config_solver)
@@ -131,10 +138,18 @@ def search_diff_trail(
     else:
         raise ValueError(f"Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
 
+    # Time 2: modeling + solving (Step 4: writing the model file and solving it, end-to-end).
+    config_solver["modeling_solving_time"] = round(time.time() - t_step4, 2)
+
     # Step 5: Extract and Visualize Trails from Solutions.
     if isinstance(solutions, list):
-        return _extract_and_format_diff_trails(cipher, goal, config_model, config_solver, show_mode, solutions)
-
+        trails = _extract_and_format_diff_trails(cipher, goal, config_model, config_solver, show_mode, solutions)
+        # Total time of the whole search (Step 1-5, including post-processing).
+        config_solver["total_time"] = round(time.time() - t_start, 2)
+        print(f"--- [TIME] generation_time ---: {config_solver['generation_time']} s  (config setup + constraint/objective generation)")
+        print(f"--- [TIME] modeling_solving_time ---: {config_solver['modeling_solving_time']} s  (write model + solve, of which pure solving = {round(sum(config_solver['solving_time']), 2)} s)")
+        print(f"--- [TIME] total_time ---: {config_solver['total_time']} s  (whole search, incl. post-processing)")
+        return trails
     raise ValueError(f"Solving did not return a list of solutions (got {type(solutions).__name__}); check the solver configuration.")
 
 

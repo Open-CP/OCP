@@ -177,6 +177,69 @@ def _load_ortools_cpsat():
         return None
 
 
+# ------------------------------ Solver Versions ------------------------------
+def _module_version(module_name):
+    """Return a module's ``__version__`` string ('not installed' / 'unknown' when unavailable)."""
+    try:
+        module = import_module(module_name)
+    except ImportError:
+        return "not installed"
+    return getattr(module, "__version__", "unknown")
+
+
+def _milp_solver_version(config_solver):
+    """Resolve the MILP solver (Gurobi / SCIP) version string for ``config_solver`` (no printing)."""
+    solver = normalize_milp_solver_name(config_solver.get("solver", "DEFAULT"))
+    if solver == "GUROBI":
+        gurobipy = _load_gurobi()
+        if gurobipy is None:
+            return "gurobipy not installed"
+        try:
+            return "Gurobi " + ".".join(str(part) for part in gurobipy.gurobi.version())
+        except AttributeError:
+            return "gurobipy " + _module_version("gurobipy")
+    scip_model = _load_scip_model()
+    if scip_model is None:
+        return "pyscipopt not installed"
+    try:
+        return "SCIP " + str(scip_model().version())
+    except _scip_error_types():
+        return "pyscipopt " + _module_version("pyscipopt")
+
+
+def _pysat_solver_version(solver):
+    """Best-effort version of a PySAT-bundled solver (python-sat release; pycryptosat for CryptoMinisat)."""
+    if "crypto" in solver.lower():
+        crypto_version = _module_version("pycryptosat")
+        if crypto_version not in ("not installed", "unknown"):
+            return "pycryptosat " + crypto_version
+    return "bundled with python-sat " + _module_version("pysat")
+
+
+def _sat_solver_version(config_solver):
+    """Resolve the SAT solver (PySAT-bundled or OR-Tools CPSAT) version string (no printing)."""
+    solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"))
+    if solver == "ORTools":
+        return "OR-Tools " + _module_version("ortools")
+    return _pysat_solver_version(solver)  # "DEFAULT" and every PySAT solver
+
+
+def get_solver_version(kind, config_solver=None):
+    """Report (print and return) the concrete solver name and version for a 'milp'/'sat' route."""
+    config_solver = config_solver or {}
+    kind = kind.lower()
+    if kind == "milp":
+        solver = normalize_milp_solver_name(config_solver.get("solver", "DEFAULT"))
+        version = _milp_solver_version(config_solver)
+    elif kind == "sat":
+        solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"))
+        version = _sat_solver_version(config_solver)
+    else:
+        raise ValueError(f"Unsupported solver kind: {kind!r}. Supported: 'milp', 'sat'.")
+    print(f"[INFO] {kind} solver: {solver} | version: {version}")
+    return {"kind": kind, "solver": solver, "solver_version": version}
+
+
 def solve_milp(filename, config_solver=None):
     """
     Solve a MILP model.
@@ -197,6 +260,8 @@ def solve_milp(filename, config_solver=None):
         raise ValueError(f"Invalid config_solver: {config_solver}. Expected a dictionary or None.")
     solver = normalize_milp_solver_name(config_solver.get("solver", "DEFAULT"))
     config_solver["solver"] = solver
+    if "solver_version" not in config_solver:  # resolve once (guard: setdefault would recompute every call)
+        config_solver["solver_version"] = _milp_solver_version(config_solver)
     print(f"[INFO] Solving MILP model with settings: {config_solver}")
     monitor = RuntimeResourceMonitor(interval=0.2)
     monitor.start()
@@ -208,7 +273,9 @@ def solve_milp(filename, config_solver=None):
             return solve_milp_scip(filename, config_solver)
     finally:
         config_solver["resource_usage"] = monitor.stop()
-        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
+        elapsed = round(time.time() - time_start, 2)
+        config_solver.setdefault("solving_time", []).append(elapsed)  # per-call trace; total = sum(solving_time)
+        print(f"[INFO] solve #{len(config_solver['solving_time'])}: {elapsed} s | cumulative solver time: {round(sum(config_solver['solving_time']), 2)} s")
 
 
 def solve_milp_gurobi(filename, config_solver):
@@ -319,6 +386,8 @@ def solve_sat(filename, variable_map, config_solver=None):
         raise ValueError(f"Invalid config_solver: {config_solver}. Expected a dictionary or None.")
     solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"))
     config_solver["solver"] = solver
+    if "solver_version" not in config_solver:  # resolve once (guard: setdefault would recompute every call)
+        config_solver["solver_version"] = _sat_solver_version(config_solver)
     print(f"[INFO] Solving SAT model with settings: {config_solver}")
     monitor = RuntimeResourceMonitor(interval=0.2)
     monitor.start()
@@ -334,7 +403,9 @@ def solve_sat(filename, variable_map, config_solver=None):
         return solutions if solutions is not None else []
     finally:
         config_solver["resource_usage"] = monitor.stop()
-        config_solver["solving_time(s)"] = round(time.time() - time_start, 2)
+        elapsed = round(time.time() - time_start, 2)
+        config_solver.setdefault("solving_time", []).append(elapsed)  # per-call trace; total = sum(solving_time)
+        print(f"[INFO] solve #{len(config_solver['solving_time'])}: {elapsed} s | cumulative solver time: {round(sum(config_solver['solving_time']), 2)} s")
 
 
 def solve_sat_pysat(filename, variable_map, config_solver):

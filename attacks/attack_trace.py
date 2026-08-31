@@ -83,9 +83,15 @@ class AttackTrace(ABC):
             dict: A mapping with the keys ``"type"`` (uppercased attack type),
             ``"data"``, ``"solution_trace"``, and ``"tool"`` (the OCP version tag).
         """
+        data = dict(self.data)
+        config_model = data.get("config_model")
+        if isinstance(config_model, dict) and "decimal_objective_function" in config_model:
+            config_model = dict(config_model)
+            config_model.pop("decimal_objective_function", None)
+            data["config_model"] = config_model
         return {
             "type": str(self.type).upper(),
-            "data": dict(self.data),
+            "data": data,
             "solution_trace": dict(self.solution_trace),
             "tool": "OCP1.0",
         }
@@ -155,7 +161,8 @@ class Trail(AttackTrace):
         trail_dict = self.to_dict()
         Path(self.json_filename).parent.mkdir(parents=True, exist_ok=True)
         with open(self.json_filename, "w", encoding="utf-8") as f:
-            json.dump(trail_dict, f, ensure_ascii=False, indent='\t')
+            json.dump(trail_dict, f, ensure_ascii=False, indent='\t',
+                      default=lambda o: f"<{type(o).__name__}>")
 
     def save_txt(self, show_mode=2, hex_format=True):
         """Save the trail as human-readable text to a ``.txt`` file.
@@ -507,6 +514,7 @@ def extract_and_format_trails(
             "trail_struct": trail_struct,
             weight_key: solution.get("obj_fun_value"),
             rounds_weight_key: solution.get("rounds_obj_fun_values"),
+            "integer_obj_fun_value": solution.get("integer_obj_fun_value"),
         }
         trail = trail_class(data, solution_trace=solution)
         if i > 0:

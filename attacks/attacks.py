@@ -119,6 +119,7 @@ def two_stage_trail_search(
         active S-box count and the stage-2 best trail weight, or None if no
         truncated trail is found.
     """
+    time_start = time.time()
     if goal == "DIFFERENTIALPATH_PROB":
         stage1_goal, weight_key, attack = "TRUNCATEDDIFF_SBOXCOUNT", "diff_weight", diff_attacks
     elif goal == "LINEARPATH_CORR":
@@ -139,6 +140,7 @@ def two_stage_trail_search(
     ) or []
     if not trails1:
         print("[INFO] no truncated trail found.")
+        print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
         return None
     min_active = trails1[0].data[weight_key]
     print(f"[Stage 1] minimum active S-boxes = {min_active}")
@@ -170,6 +172,7 @@ def two_stage_trail_search(
     ) or []
     best_weight = trails2[0].data[weight_key] if trails2 else None
     print(f"[Stage 2] best trail weight = {best_weight}")
+    print(f"--- Total Time ---: {time.time() - time_start:.2f} seconds")
     return min_active, best_weight
 
 
