@@ -4,11 +4,12 @@ Emits an executable implementation of a primitive/cipher in Python, C, or Verilo
 """
 
 import os, os.path
+import sys
 import subprocess
 import ctypes
 import traceback
 import numpy as np
-import importlib
+import importlib.util
 from contextlib import redirect_stdout
 import shutil
 
@@ -333,6 +334,26 @@ def generate_implementation(my_prim, filename, language = 'python', unroll = Fal
             pass  # To be implemented in the future
 
 
+def _fresh_import_generated(cipher_name):
+    """Import files.<cipher_name>, recompiled from the current source.
+
+    A plain import/reload can reuse a stale .pyc when the file is rewritten within the same
+    mtime tick (as the KAT self-repair does), so drop the cached module and its bytecode first.
+    """
+    mod_name = f"files.{cipher_name}"
+    sys.modules.pop(mod_name, None)
+    try:
+        import files as _files_pkg
+        src = os.path.join(list(_files_pkg.__path__)[0], f"{cipher_name}.py")
+        pyc = importlib.util.cache_from_source(src)
+        if os.path.exists(pyc):
+            os.remove(pyc)
+    except Exception:
+        pass                                     # best effort: a missing pkg/pyc just means a clean import
+    importlib.invalidate_caches()
+    return importlib.import_module(mod_name)
+
+
 def evaluate_python(cipher, inputs, cipher_name=None, output_len=None):
     """Run a cipher's generated Python implementation on concrete inputs.
 
@@ -343,8 +364,7 @@ def evaluate_python(cipher, inputs, cipher_name=None, output_len=None):
     """
     cipher_name = cipher_name or cipher.name
     with open(os.devnull, "w") as f, redirect_stdout(f):
-        imp_cipher = importlib.import_module(f"files.{cipher_name}")
-        importlib.reload(imp_cipher)
+        imp_cipher = _fresh_import_generated(cipher_name)
     func = getattr(imp_cipher, f"{cipher.name}")
     if output_len is None:
         output_len = sum(len(cipher.outputs[name]) for name in cipher.outputs)

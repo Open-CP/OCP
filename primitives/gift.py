@@ -1,3 +1,5 @@
+"""GIFT: the GIFT round permutation and block cipher (GIFT-64/128)."""
+
 from primitives.primitives import Permutation, Block_cipher
 from operators.Sbox import GIFT_Sbox
 from operators.boolean_operators import XOR
@@ -9,16 +11,20 @@ class GIFT_permutation(Permutation):
     def __init__(self, name, version, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
         Initialize the GIFT internal permutation
-        :param name: Name of the permutation
-        :param version: Bit size of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            version: Bit size of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
-        if nbr_rounds==None: nbr_rounds=28 if version==64 else 40 if version==128 else None
+        full_rounds = {64: 28, 128: 40}
+        if nbr_rounds is None: nbr_rounds = full_rounds.get(version)
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (3, version, 0, 1)
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for GIFT_permutation.")
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         s = self.functions["PERMUTATION"]
         constant_table = self.gen_rounds_constant_table()
@@ -28,7 +34,7 @@ class GIFT_permutation(Permutation):
         # create constraints
         if represent_mode==0:
             for i in range(1,nbr_rounds+1):
-                s.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer
+                s.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(j, j + 4)) for j in range(0, nbr_words, 4)])  # Sbox layer
                 s.PermutationLayer("P", i, 1, perm) # Permutation layer
                 s.AddConstantLayer("C", i, 2, "xor", [True]+[None]*(version-25)+[True]+[None, None, None, True]*5, constant_table)# Constant layer
 
@@ -39,8 +45,8 @@ class GIFT_permutation(Permutation):
             constant_table.append([1, (const[i-1]>>5)&1, (const[i-1]>>4)&1, (const[i-1]>>3)&1, (const[i-1]>>2)&1, (const[i-1]>>1)&1, (const[i-1])&1])
         return constant_table
 
-    def gen_test_vectors(self, version):
-        if version == 64:
+    def gen_test_vectors(self, version, rounds):
+        if version == 64 and (rounds == 28 or rounds is None):
             IN =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             OUT = [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0]
             self.test_vectors.append([[IN], OUT])
@@ -52,7 +58,7 @@ class GIFT_permutation(Permutation):
             IN = [1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1]
             OUT = [1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0]
             self.test_vectors.append([[IN], OUT])
-        elif version == 128:
+        elif version == 128 and (rounds == 40 or rounds is None):
             IN = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             OUT = [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0]
             self.test_vectors.append([[IN], OUT])
@@ -69,7 +75,7 @@ class GIFT_permutation(Permutation):
 def GIFT_PERMUTATION(r=None, version=64, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(version)], [var.Variable(1,ID="out"+str(i)) for i in range(version)]
     my_permutation = GIFT_permutation(f"GIFT{version}_PERM", version, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors(version=version)
+    my_permutation.gen_test_vectors(version=version, rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
@@ -79,17 +85,21 @@ class GIFT_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
         Initializes the GIFT block cipher.
-        :param name: Cipher name
-        :param version: (p_bitsize, k_bitsize)
-        :param p_input: Plaintext input
-        :param k_input: Key input
-        :param c_output: Ciphertext output
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+
+        Args:
+            name: Cipher name
+            version: (p_bitsize, k_bitsize)
+            p_input: Plaintext input
+            k_input: Key input
+            c_output: Ciphertext output
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
         p_bitsize, k_bitsize = version[0], version[1]
-        if nbr_rounds==None: nbr_rounds=28 if p_bitsize==64 else 40 if p_bitsize==128 else None
+        full_rounds = {64: 28, 128: 40}
+        if nbr_rounds is None: nbr_rounds = full_rounds.get(p_bitsize)
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, p_bitsize, 0, 1),  (1, k_bitsize, 0, 1),  (1, int(p_bitsize/2), 0, 1)
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for GIFT_block_cipher.")
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
         S = self.functions["PERMUTATION"]
@@ -110,7 +120,7 @@ class GIFT_block_cipher(Block_cipher):
                 KS.PermutationLayer("k_PERM", i, 0, [110,111]+[i for i in range(96,110)]+[i for i in range(116,128)]+[i for i in range(112,116)]+[i for i in range(96)]) # key schedule
 
                 # Internal permutation
-                S.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(i, i + 4)) for i in range(0, s_nbr_words, 4)])  # Sbox layer
+                S.SboxLayer("SB", i, 0, GIFT_Sbox,index=[list(range(j, j + 4)) for j in range(0, s_nbr_words, 4)])  # Sbox layer
                 S.PermutationLayer("P", i, 1, perm) # Permutation layer
                 S.AddConstantLayer("C", i, 2, "xor", [True]+[None]*(p_bitsize-25)+[True]+[None, None, None, True]*5, constant_table)# Constant layer
                 if p_bitsize == 64:
@@ -126,9 +136,9 @@ class GIFT_block_cipher(Block_cipher):
             constant_table.append([1, (const[i-1]>>5)&1, (const[i-1]>>4)&1, (const[i-1]>>3)&1, (const[i-1]>>2)&1, (const[i-1]>>1)&1, (const[i-1])&1])
         return constant_table
 
-    def gen_test_vectors(self, version):
+    def gen_test_vectors(self, version, rounds):
         # test vectors from # https://github.com/giftcipher/gift/tree/master/implementations/test%20vectors
-        if version == [64, 128]:
+        if version == [64, 128] and (rounds == 28 or rounds is None):
             plaintext =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             key =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             ciphertext =  [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0]
@@ -143,7 +153,7 @@ class GIFT_block_cipher(Block_cipher):
             key =  [1, 0, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 0, 0, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 1, 1]
             ciphertext =  [1, 1, 1, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 1, 1, 0, 1, 0, 1, 0, 0, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1]
             self.test_vectors.append([[plaintext, key], ciphertext])
-        elif version == [128, 128]:
+        elif version == [128, 128] and (rounds == 40 or rounds is None):
             plaintext = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             ciphertext = [1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 0, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 0, 1, 0, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1, 0, 0, 1, 0]
@@ -164,6 +174,6 @@ def GIFT_BLOCKCIPHER(r=None, version = [64, 128], represent_mode=0, copy_operato
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = GIFT_block_cipher(f"GIFT{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.gen_test_vectors(version=version)
+    my_cipher.gen_test_vectors(version=version, rounds=r)
     my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

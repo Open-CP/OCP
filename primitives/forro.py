@@ -1,3 +1,5 @@
+"""Forro: the Forro permutation and its keyed variant."""
+
 from primitives.primitives import Permutation
 from operators.modular_operators import ModAdd
 from operators.boolean_operators import XOR
@@ -10,15 +12,17 @@ class Forro_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_subrounds=None, represent_mode=0):
         """
         Initialize the Forro internal permutation
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_subrounds: Number of subrounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_subrounds: Number of subrounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
-            if nbr_subrounds ==None: nbr_subrounds = 14*4
+            if nbr_subrounds is None: nbr_subrounds = 14*4
             nbr_layers = 12 # 1 for each of the 12 operations in 1 subround round
             nbr_words = 16 # Words in the state of Forro
             nbr_temp_words = 0
@@ -49,25 +53,27 @@ class Forro_permutation(Permutation):
                 S.SingleOperatorLayer("XOR3", i, 9, XOR, [[SR[2], SR[1]]], [SR[1]] )
                 S.SingleOperatorLayer("Add6", i, 10, ModAdd, [[SR[1], SR[0]]], [SR[0]])
                 S.RotationLayer("Rot3", i, 11, [['l', 8, SR[0], SR[0]]])
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Forro_permutation.")
 
 
-    def gen_test_vectors(self):
-        # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
-        IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,
-                0x00000000, 0x00000000, 0x746c6f76, 0x61616461,
-                0x70207261, 0x6520726f, 0x20657473, 0x73696170,
-                0x74736f6d, 0x61206f72, 0x72626173, 0x61636e61]
-        OUT = [ 0xf9fe4058, 0x45dc7391, 0x5075018e, 0xf7eb3f6d,
-                0x25821062, 0x11334ef1, 0x06d33da0, 0x9c9f3bed,
-                0x1e167e5f, 0x4d289ed3, 0x77dd96f8, 0x47d21a6b,
-                0x6382742c, 0xc7cfac37, 0xd42a0926, 0x901b01f0]
-        self.test_vectors.append([[IN], OUT])
+    def gen_test_vectors(self, rounds):
+        if rounds == 56 or rounds is None:
+            # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
+            IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,
+                    0x00000000, 0x00000000, 0x746c6f76, 0x61616461,
+                    0x70207261, 0x6520726f, 0x20657473, 0x73696170,
+                    0x74736f6d, 0x61206f72, 0x72626173, 0x61636e61]
+            OUT = [ 0xf9fe4058, 0x45dc7391, 0x5075018e, 0xf7eb3f6d,
+                    0x25821062, 0x11334ef1, 0x06d33da0, 0x9c9f3bed,
+                    0x1e167e5f, 0x4d289ed3, 0x77dd96f8, 0x47d21a6b,
+                    0x6382742c, 0xc7cfac37, 0xd42a0926, 0x901b01f0]
+            self.test_vectors.append([[IN], OUT])
     
 
 def FORRO_PERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Forro_permutation("Forro_PERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation    
     
@@ -77,15 +83,17 @@ class Forro_keypermutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_subrounds=None, represent_mode=0):
         """
         Initialize the Forro internal permutation
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_subrounds: Number of subrounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_subrounds: Number of subrounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         
         if represent_mode==0:
-            if nbr_subrounds ==None: nbr_subrounds = 14*4+1 # the last round is used to add the initial state to obtain the final key stream
+            if nbr_subrounds is None: nbr_subrounds = 14*4+1 # the last round is used to add the initial state to obtain the final key stream
             nbr_layers = 13 # 1 for each of the 12 operations in 1 subround round
             nbr_words = 16 # Words in the state of forro
             nbr_temp_words = 16 # To retain the initial input for adding with final state to obtain the key stream
@@ -133,28 +141,25 @@ class Forro_keypermutation(Permutation):
                     S.SingleOperatorLayer("XOR3", i, 10, XOR, [[SR[2], SR[1]]], [SR[1]] )
                     S.SingleOperatorLayer("Add6", i, 11, ModAdd, [[SR[1], SR[0]]], [SR[0]])
                     S.RotationLayer("Rot3", i, 12, [['l', 8, SR[0], SR[0]]])
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Forro_keypermutation.")
 
-    def gen_test_vectors(self):
-        # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
-        IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,
-                0x00000000, 0x00000000, 0x746c6f76, 0x61616461,
-                0x70207261, 0x6520726f, 0x20657473, 0x73696170,
-                0x74736f6d, 0x61206f72, 0x72626173, 0x61636e61]  
-        OUT = [0x626ca9c5, 0xaf5293f2, 0xb59562f2, 0x5c59a08d,
-               0x25821062, 0x11334ef1, 0x7b3fad16, 0xfe00a04e,
-               0x8e36f0c0, 0xb2491142, 0x98430b6b, 0xbb3b7bdb,
-               0xd7f5e399, 0x28f01ba9, 0x468c6a99, 0xf17e7051]
-        self.test_vectors.append([[IN], OUT])   
+    def gen_test_vectors(self, rounds):
+        if rounds == 57 or rounds is None:
+            # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
+            IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,
+                    0x00000000, 0x00000000, 0x746c6f76, 0x61616461,
+                    0x70207261, 0x6520726f, 0x20657473, 0x73696170,
+                    0x74736f6d, 0x61206f72, 0x72626173, 0x61636e61]  
+            OUT = [0x626ca9c5, 0xaf5293f2, 0xb59562f2, 0x5c59a08d,
+                   0x25821062, 0x11334ef1, 0x7b3fad16, 0xfe00a04e,
+                   0x8e36f0c0, 0xb2491142, 0x98430b6b, 0xbb3b7bdb,
+                   0xd7f5e399, 0x28f01ba9, 0x468c6a99, 0xf17e7051]
+            self.test_vectors.append([[IN], OUT])   
 
 
 def FORRO_KEYPERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(32,ID="in"+str(i)) for i in range(16)], [var.Variable(32,ID="out"+str(i)) for i in range(16)]
     my_permutation = Forro_keypermutation("Forro_KEYPERM", my_input, my_output, nbr_subrounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation     
-
-
-
-
-

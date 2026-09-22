@@ -1,7 +1,11 @@
+"""SipHash: the SipHash permutation."""
+
 from primitives.primitives import Permutation
 from operators.boolean_operators import XOR
 from operators.modular_operators import ModAdd
 import variables.variables as var
+
+SIPHASH_DEFAULT_ROUNDS = 4 # default to SipHash-2-4 finalization;
 
 
 # The SipHash internal permutation
@@ -9,17 +13,20 @@ class SipHash_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
         Initialize the SipHash internal permutation
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
-        if nbr_rounds is None: nbr_rounds = 4   # default to SipHash-2-4 finalization;
+        if nbr_rounds is None: nbr_rounds = SIPHASH_DEFAULT_ROUNDS   
         nbr_layers = 10
         nbr_words = 4 
         nbr_temp_words = 0
         word_bitsize = 64
+        if represent_mode != 0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for SipHash_permutation.")
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         S = self.functions["PERMUTATION"]
 
@@ -37,13 +44,14 @@ class SipHash_permutation(Permutation):
                 S.RotationLayer("ROT4", i, 8, [['l', 32, 0]]) # Rotation layer
                 S.PermutationLayer("PERM2", i, 9, [2,1,0,3]) # Permutation layer
    
-    def gen_test_vectors(self):
+    def gen_test_vectors(self, rounds):
+        if rounds is None: rounds = SIPHASH_DEFAULT_ROUNDS
         # Test values from https://www.aumasson.jp/siphash/siphash.pdf (Appendix A, SipHash-2-4 intermediate states).
-        if self.nbr_rounds == 2:    # compression: 2 SipRounds
+        if rounds == 2:    # compression: 2 SipRounds
             IN  = [0x7469686173716475, 0x6b617f6d656e6665, 0x6b7f62616d677361, 0x7c6d6c6a717c6d7b]
             OUT = [0x4d07749cdd0858e0, 0x0d52f6f62a4f59a4, 0x634cb3577b01fd3d, 0xa5224d6f55c7d9c8]
             self.test_vectors.append([[IN], OUT])
-        elif self.nbr_rounds == 4:  # finalization: 4 SipRounds
+        elif rounds == 4:  # finalization: 4 SipRounds
             IN  = [0x3c85b3ab6f55be51, 0x414fc3fb98efe374, 0xccf13ea527b9f442, 0x5293f5da84008f82]
             OUT = [0xf6bcd53893fecff1, 0x54b9964c7ea0d937, 0x1b38329c099bb55a, 0x1814bb89ad7be679]
             self.test_vectors.append([[IN], OUT])
@@ -51,6 +59,6 @@ class SipHash_permutation(Permutation):
 def SIPHASH_PERMUTATION(r=None, represent_mode=0, copy_operator=False): 
     my_input, my_output = [var.Variable(64,ID="in"+str(i)) for i in range(4)], [var.Variable(64,ID="out"+str(i)) for i in range(4)]
     my_permutation = SipHash_permutation("SipHash_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation

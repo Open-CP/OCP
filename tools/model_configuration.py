@@ -38,7 +38,7 @@ def fill_functions_rounds_layers_positions(
     """
     Fill in functions, rounds, layers, and positions to full coverage when the corresponding argument is None; otherwise, keep user-supplied values.
 
-    Parameters:
+    Args:
         cipher (object): The cipher object.
         functions (list[str]): List of functions. If None, use all functions of the cipher. Example: ["PERMUTATION", "KEY_SCHEDULE", "SUBKEYS"].
         rounds (dict): Dictionary specifying rounds. If None, use all. Example: {"PERMUTATION": [1, 2, 3]}.

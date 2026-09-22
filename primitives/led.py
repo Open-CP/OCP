@@ -1,3 +1,5 @@
+"""LED: the LED round permutation and block cipher."""
+
 from primitives.primitives import Permutation, Block_cipher
 from operators.Sbox import PRESENT_Sbox
 from operators.boolean_operators import XOR
@@ -37,15 +39,18 @@ class LED_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
         Initialize the LED internal permutation
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
-        if nbr_rounds==None: nbr_rounds=32
+        if nbr_rounds is None: nbr_rounds=32
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, 4)
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for LED_permutation.")
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         S = self.functions["PERMUTATION"]
 
@@ -62,18 +67,19 @@ class LED_permutation(Permutation):
                 S.PermutationLayer("SR", i, 2, shift_rows)  # ShiftRows layer
                 S.MatrixLayer("led_matrix", i, 3, mix_columns_matrix, mix_columns_index, "0x3")  # MixColumnsSerial layer (over GF(2^4) with irreducible polynomial x^4 + x + 1)
 
-    def gen_test_vectors(self, version = None):
+    def gen_test_vectors(self, rounds, version=None):
         # Test vectors for LED permutation (same as LED64 with all-zero key)
-        IN = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
-        OUT = [0x3, 0x4, 0x0, 0xC, 0x9, 0x0, 0x3, 0x7, 0xC, 0x1, 0xA, 0x9, 0x2, 0x0, 0x0, 0x8]
-        self.test_vectors.append([[IN], OUT])
+        if rounds == 32 or rounds is None:
+            IN = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
+            OUT = [0x3, 0x4, 0x0, 0xC, 0x9, 0x0, 0x3, 0x7, 0xC, 0x1, 0xA, 0x9, 0x2, 0x0, 0x0, 0x8]
+            self.test_vectors.append([[IN], OUT])
 
 
 def LED_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
     my_input = [var.Variable(4, ID="in"+str(i)) for i in range(16)]
     my_output = [var.Variable(4, ID="out"+str(i)) for i in range(16)]
     my_permutation = LED_permutation("LED_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
@@ -83,27 +89,32 @@ class LED_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
         Initializes the LED block cipher.
-        :param name: Cipher name
-        :param version: (p_bitsize, k_bitsize) - (64, 64) for LED-64 or (64, 128) for LED-128
-        :param p_input: Plaintext input
-        :param k_input: Key input
-        :param c_output: Ciphertext output
-        :param nbr_rounds: Number of rounds (optional)
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+
+        Args:
+            name: Cipher name
+            version: (p_bitsize, k_bitsize) - (64, 64) for LED-64 or (64, 128) for LED-128
+            p_input: Plaintext input
+            k_input: Key input
+            c_output: Ciphertext output
+            nbr_rounds: Number of rounds (optional)
+            represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
 
-        assert version in [[64, 64], [64, 128]], f"LED only supports (64, 64) and (64, 128) versions, got {version}"
+        if version not in [[64, 64], [64, 128]]:
+            raise ValueError(f"LED only supports (64, 64) and (64, 128) versions, got {version}")
         p_bitsize, k_bitsize = version[0], version[1]
 
         # LED-64: 8 steps × 4 rounds = 32 rounds, 9 key additions (8 before each step + 1 final)
         # LED-128: 12 steps × 4 rounds = 48 rounds, 13 key additions (12 before each step + 1 final)
-        if nbr_rounds == None: nbr_rounds = 32 if k_bitsize == 64 else 48
+        full_rounds = {64: 32, 128: 48}
+        if nbr_rounds is None: nbr_rounds = full_rounds.get(k_bitsize)
 
         if represent_mode==0:
             (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize) = (5, 16, 0, 4)
             (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize) = (1, k_bitsize // 4, 0, 4)
             (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (1, 16, 0, 4)
             k_nbr_rounds = (nbr_rounds//4)+1
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for LED_block_cipher.")
 
         super().__init__(name, p_input, k_input, c_output, nbr_rounds+1, k_nbr_rounds,
                         [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize],
@@ -150,9 +161,9 @@ class LED_block_cipher(Block_cipher):
             S.AddIdentityLayer("ID", nbr_rounds+1, 3)
             S.AddIdentityLayer("ID", nbr_rounds+1, 4)
 
-    def gen_test_vectors(self, version=None):
+    def gen_test_vectors(self, rounds, version=None):
         # Test vectors from LED paper (https://eprint.iacr.org/2012/600.pdf)
-        if version == [64, 64]:
+        if version == [64, 64] and (rounds == 32 or rounds is None):
             # LED-64 test vector (all zeros)
             P = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
             K = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
@@ -165,7 +176,7 @@ class LED_block_cipher(Block_cipher):
             C = [0xA, 0x5, 0x3, 0xF, 0x0, 0x5, 0x8, 0xC, 0x0, 0x1, 0x9, 0x5, 0x3, 0xE, 0x3, 0x8]
             self.test_vectors.append([[P, K], C])
 
-        elif version == [64, 128]:
+        elif version == [64, 128] and (rounds == 48 or rounds is None):
             # LED-128 test vector (all zeros)
             P = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
             K = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0,
@@ -184,14 +195,16 @@ class LED_block_cipher(Block_cipher):
 def LED_BLOCKCIPHER(r=None, version=[64, 64], represent_mode=0, copy_operator=False):
     """
     LED block cipher
-    :param r: Number of rounds (optional)
-    :param version: (p_bitsize, k_bitsize) - [64, 64] for LED-64 or [64, 128] for LED-128
-    :param represent_mode: Representation mode
+
+    Args:
+        r: Number of rounds (optional)
+        version: (p_bitsize, k_bitsize) - [64, 64] for LED-64 or [64, 128] for LED-128
+        represent_mode: Representation mode
     """
     my_plaintext = [var.Variable(4, ID="p"+str(i)) for i in range(16)]
     my_key = [var.Variable(4, ID="k"+str(i)) for i in range(16 if version[1] == 64 else 32)]
     my_ciphertext = [var.Variable(4, ID="c"+str(i)) for i in range(16)]
     my_cipher = LED_block_cipher(f"LED{version[1]}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.gen_test_vectors(version=version)
+    my_cipher.gen_test_vectors(rounds=r, version=version)
     my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

@@ -28,7 +28,8 @@ def cdd_eq_to_coeff_rhs(eq):
     Convert a cddlib-style equality [b, a1, ..., an] (meaning b + a x = 0) into 2 inequalities matching is_sat() format (a * x >= b_form):
       1)  a * x >= -b
       2) (-a) * x >= b
-    Return: a list of two inequalities, each as [a1, ..., an, rhs]
+    Returns:
+        a list of two inequalities, each as [a1, ..., an, rhs]
     """
     b = eq[0]
     a = eq[1:]

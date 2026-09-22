@@ -191,7 +191,7 @@ def inequality_to_constraint_sat(inequality, variables):
     
     Example:
         inequality = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
-        Return: 'x1 -x2 -x4'
+        -> 'x1 -x2 -x4'
     """
     terms = []
     for coeff, var in zip(inequality[:-1], variables):
@@ -211,7 +211,7 @@ def inequality_to_constraint_milp(inequality, variables):
     
     Example:
         ineq = [1, -1, 0, -1, -1], variables = ['x1', 'x2', 'x3', 'x4']
-        Return: 'x1 - x2 - x4 >= -1'
+        -> 'x1 - x2 - x4 >= -1'
     """
     terms = []
     rhs = inequality[-1]

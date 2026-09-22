@@ -1,3 +1,5 @@
+"""TWINE: the TWINE round permutation and block cipher."""
+
 from primitives.primitives import Permutation, Block_cipher, generateID
 from operators.Sbox import TWINE_Sbox
 from operators.boolean_operators import XOR
@@ -11,14 +13,16 @@ class TWINE_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
         Initialize the TWINE internal permutation.
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
-        if nbr_rounds==None: nbr_rounds=36
+        if nbr_rounds is None: nbr_rounds=36
         if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 8, 4)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
@@ -39,8 +43,8 @@ class TWINE_permutation(Permutation):
             S.SingleOperatorLayer("XOR", i, 2, XOR, [[2*j+1, 16+j] for j in range(8)], [2*j+1 for j in range(8)])
             S.PermutationLayer("SHUFFLE", i, 3, shuffle)
 
-    def gen_test_vectors(self):
-        if self.nbr_rounds == 36:
+    def gen_test_vectors(self, rounds):
+        if rounds == 36 or rounds is None:
             plaintext = [0] * 16
             ciphertext = [0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0]
             self.test_vectors.append([[plaintext], ciphertext])
@@ -49,7 +53,7 @@ class TWINE_permutation(Permutation):
 def TWINE_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(4,ID="in"+str(i)) for i in range(16)], [var.Variable(4,ID="out"+str(i)) for i in range(16)]
     my_permutation = TWINE_permutation("TWINE_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
@@ -59,18 +63,20 @@ class TWINE_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
         Initializes the TWINE block cipher.
-        :param name: Cipher name
-        :param version: (p_bitsize, k_bitsize)
-        :param p_input: Plaintext input
-        :param k_input: Key input
-        :param c_output: Ciphertext output
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+
+        Args:
+            name: Cipher name
+            version: (p_bitsize, k_bitsize)
+            p_input: Plaintext input
+            k_input: Key input
+            c_output: Ciphertext output
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
 
         assert version in [[64,80], [64,128]], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
-        if nbr_rounds==None: nbr_rounds=36
+        if nbr_rounds is None: nbr_rounds=36
         if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 8, 4),  (5, k_bitsize//4, 2 if k_bitsize == 80 else 3, 4),  (1, 8, 0, 4)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
@@ -130,13 +136,13 @@ class TWINE_block_cipher(Block_cipher):
         ]
         return [[con >> 3, con & 0x7] for con in con_table]
 
-    def gen_test_vectors(self, version): # Test vectors from Table 11 of the TWINE specification.
-        if version == [64, 80]:
+    def gen_test_vectors(self, version, rounds): # Test vectors from Table 11 of the TWINE specification.
+        if version == [64, 80] and (rounds == 36 or rounds is None):
             plaintext = [int(nibble, 16) for nibble in "0123456789ABCDEF"]
             key = [int(nibble, 16) for nibble in "00112233445566778899"]
             ciphertext = [int(nibble, 16) for nibble in "7C1F0F80B1DF9C28"]
             self.test_vectors.append([[plaintext, key], ciphertext])
-        elif version == [64, 128]:
+        elif version == [64, 128] and (rounds == 36 or rounds is None):
             plaintext = [int(nibble, 16) for nibble in "0123456789ABCDEF"]
             key = [int(nibble, 16) for nibble in "00112233445566778899AABBCCDDEEFF"]
             ciphertext = [int(nibble, 16) for nibble in "979FF9B379B5A9B8"]
@@ -147,6 +153,6 @@ def TWINE_BLOCKCIPHER(r=None, version = [64,80], represent_mode=0, copy_operator
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(4,ID="in"+str(i)) for i in range(p_bitsize//4)], [var.Variable(4,ID="k"+str(i)) for i in range(k_bitsize//4)], [var.Variable(4,ID="out"+str(i)) for i in range(p_bitsize//4)]
     my_cipher = TWINE_block_cipher(f"TWINE{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.gen_test_vectors(version=version)
+    my_cipher.gen_test_vectors(version=version, rounds=r)
     my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

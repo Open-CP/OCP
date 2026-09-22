@@ -1,4 +1,7 @@
-# Not ready for use, still in development.
+"""SHACAL-2: the SHACAL-2 (SHA-256-based) block cipher.
+
+Not ready for use, still in development."""
+
 from primitives.primitives import Block_cipher
 from operators.modular_operators import ModAdd
 from operators.SHACAL2BooleanFunctions import SHACAL2_Sigma0, SHACAL2_Sigma1, SHACAL2_Sum0, SHACAL2_Sum1, SHACAL2_Maj, SHACAL2_Ch
@@ -7,18 +10,21 @@ import variables.variables as var
 class SHACAL2_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
-        Initializes the Simon block cipher.
-        :param name: Cipher name
-        :param version: p_bitsize
-        :param p_input: Plaintext input
-        :param k_input: Key input
-        :param c_output: Ciphertext output
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+        Initializes the SHACAL-2 block cipher.
+
+        Args:
+            name: Cipher name
+            version: p_bitsize
+            p_input: Plaintext input
+            k_input: Key input
+            c_output: Ciphertext output
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
         wordSize = 32 if version == 256 else 64
-        if nbr_rounds==None: (nbr_rounds, k_nbr_rounds) = (64, 49) if version==256 else (80, 65)
+        if nbr_rounds is None: (nbr_rounds, k_nbr_rounds) = (64, 49) if version==256 else (80, 65)
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (10, 8, 4, wordSize),  (6, 16, 2, wordSize),  (1, 1, 0, wordSize)
+        else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for SHACAL2_block_cipher.")
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, k_nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
         S = self.functions["PERMUTATION"]

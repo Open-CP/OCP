@@ -1,3 +1,5 @@
+"""LBlock: the LBlock round permutation and block cipher."""
+
 from primitives.primitives import Permutation, Block_cipher, generateID
 from operators.Sbox import LBlock_Sbox0, LBlock_Sbox1, LBlock_Sbox2, LBlock_Sbox3, LBlock_Sbox4, LBlock_Sbox5, LBlock_Sbox6, LBlock_Sbox7, LBlock_Sbox8, LBlock_Sbox9
 from operators.boolean_operators import XOR
@@ -10,14 +12,16 @@ class LBlock_permutation(Permutation):
     def __init__(self, name, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
         Initialize the LBlock internal permutation.
-        :param name: Name of the permutation
-        :param s_input: Input state
-        :param s_output: Output state
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the permutation.
+
+        Args:
+            name: Name of the permutation
+            s_input: Input state
+            s_output: Output state
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
 
-        if nbr_rounds==None: nbr_rounds=32
+        if nbr_rounds is None: nbr_rounds=32
         if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (6, 64, 32, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
@@ -45,8 +49,8 @@ class LBlock_permutation(Permutation):
             S.SingleOperatorLayer("XOR", i, 4, XOR, [[j, 32+j] for j in range(32)], [j for j in range(32)])
             S.PermutationLayer("SWAP", i, 5, feistel_swap)
 
-    def gen_test_vectors(self):
-        if self.nbr_rounds == 32:
+    def gen_test_vectors(self, rounds):
+        if rounds == 32 or rounds is None:
             plaintext = [0] * 64
             ciphertext = [int(bit) for bit in f"{0x405ffcf045c8c91a:064b}"]
             self.test_vectors.append([[plaintext], ciphertext])
@@ -55,7 +59,7 @@ class LBlock_permutation(Permutation):
 def LBLOCK_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
     my_input, my_output = [var.Variable(1,ID="in"+str(i)) for i in range(64)], [var.Variable(1,ID="out"+str(i)) for i in range(64)]
     my_permutation = LBlock_permutation("LBLOCK_PERM", my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
-    my_permutation.gen_test_vectors()
+    my_permutation.gen_test_vectors(rounds=r)
     my_permutation.post_initialization(copy_operator=copy_operator)
     return my_permutation
 
@@ -65,18 +69,20 @@ class LBlock_block_cipher(Block_cipher):
     def __init__(self, name, version, p_input, k_input, c_output, nbr_rounds=None, represent_mode=0):
         """
         Initializes the LBlock block cipher.
-        :param name: Cipher name
-        :param version: (p_bitsize, k_bitsize)
-        :param p_input: Plaintext input
-        :param k_input: Key input
-        :param c_output: Ciphertext output
-        :param nbr_rounds: Number of rounds
-        :param represent_mode: Integer specifying the mode of representation used for encoding the cipher.
+
+        Args:
+            name: Cipher name
+            version: (p_bitsize, k_bitsize)
+            p_input: Plaintext input
+            k_input: Key input
+            c_output: Ciphertext output
+            nbr_rounds: Number of rounds
+            represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
 
         assert version == [64,80], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
-        if nbr_rounds==None: nbr_rounds=32
+        if nbr_rounds is None: nbr_rounds=32
         if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (8, p_bitsize, 32, 1),  (3, k_bitsize, 0, 1),  (1, 32, 0, 1)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
@@ -132,8 +138,8 @@ class LBlock_block_cipher(Block_cipher):
     def gen_rounds_constant_table(self):
         return [[(i >> j) & 1 for j in reversed(range(5))] for i in range(1, self.functions["KEY_SCHEDULE"].nbr_rounds)]
 
-    def gen_test_vectors(self, version): # Test vectors from Appendix I of the LBlock specification.
-        if version == [64, 80]:
+    def gen_test_vectors(self, version, rounds): # Test vectors from Appendix I of the LBlock specification.
+        if version == [64, 80] and (rounds == 32 or rounds is None):
             plaintext = [int(bit) for bit in f"{0x0000000000000000:064b}"]
             key = [int(bit) for bit in f"{0x00000000000000000000:080b}"]
             ciphertext = [int(bit) for bit in f"{0xc218185308e75bcd:064b}"]
@@ -149,6 +155,6 @@ def LBLOCK_BLOCKCIPHER(r=None, version = [64,80], represent_mode=0, copy_operato
     p_bitsize, k_bitsize = version[0], version[1]
     my_plaintext, my_key, my_ciphertext = [var.Variable(1,ID="in"+str(i)) for i in range(p_bitsize)], [var.Variable(1,ID="k"+str(i)) for i in range(k_bitsize)], [var.Variable(1,ID="out"+str(i)) for i in range(p_bitsize)]
     my_cipher = LBlock_block_cipher(f"LBLOCK{p_bitsize}_{k_bitsize}", version, my_plaintext, my_key, my_ciphertext, nbr_rounds=r, represent_mode=represent_mode)
-    my_cipher.gen_test_vectors(version=version)
+    my_cipher.gen_test_vectors(version=version, rounds=r)
     my_cipher.post_initialization(copy_operator=copy_operator)
     return my_cipher

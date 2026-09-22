@@ -42,7 +42,7 @@ def _find_external_espresso():
 
 def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list of integer coefficients representing a linear inequality of the form: sum_i (coeff_i * x_i) >= rhs
     """
-    Parameters:
+    Args:
         pattern (str): A string consisting of characters '0', '1', or '-'. Each character corresponds to one variable:
                          '0' -> +1 coefficient (positive)
                          '1' -> -1 coefficient (negative)
@@ -60,7 +60,7 @@ def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list
             x4 = '1' -> -1
             Coefficients = [1, -1, 0, -1], RHS = -2 (from two '1's) + 1 = -1
             Inequality becomes: x1 - x2 - x4 >= -1
-        Return: [1, -1, 0, -1, -1]
+        -> [1, -1, 0, -1, -1]
     """
     coeffs = []
     rhs = 0
