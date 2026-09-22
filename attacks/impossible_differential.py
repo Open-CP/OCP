@@ -2,7 +2,8 @@
 
 Provides:
 
-1. search for impossible-differential distinguishers (by feasibility enumeration)
+1. search_impossible_differential: strategy dispatcher (default "ENUMERATION")
+2. search_id_distinguisher_enumeration: distinguisher search by feasibility enumeration
 """
 
 from pathlib import Path
@@ -74,6 +75,22 @@ def _verify_impossible_differential(base_cons, obj, fix_constraints, model_type,
     else:
         raise ValueError(f"Unsupported model_type: {model_type}. Expected 'milp' or 'sat'.")
     return not solutions   # no trail -> confirmed impossible
+
+
+# ---------------------------- strategy dispatcher ----------------------------
+def search_impossible_differential(cipher, goal="IMPOSSIBLETRUNCATEDDIFF", strategy="ENUMERATION",
+                                   config_model=None, config_solver=None, show_mode=0):
+    """Impossible differential search:
+           Delta_in --> Delta_X --[distinguisher]--> Delta_Y --> Delta_out
+
+    goal: "IMPOSSIBLETRUNCATEDDIFF" (word-level truncated) or "IMPOSSIBLEDIFF" (bit-level).
+    strategy: the search strategy; 
+        "ENUMERATION": see :func:`search_id_distinguisher_enumeration`.
+    """
+    if strategy == "ENUMERATION":
+        return search_id_distinguisher_enumeration(cipher, goal=goal, config_model=config_model,
+                                                   config_solver=config_solver, show_mode=show_mode)
+    raise ValueError(f"Unsupported strategy: {strategy!r}. Expected 'ENUMERATION'.")
 
 
 # ---------------------------- distinguisher search ----------------------------

@@ -212,22 +212,24 @@ def integral_attacks(
 def impossible_differential_attacks(
     cipher,
     goal="IMPOSSIBLETRUNCATEDDIFF",
+    strategy="ENUMERATION",
     config_model=None,
     config_solver=None,
     show_mode=0,
 ):
     """Search for impossible-differential distinguishers of the given cipher.
 
-    See :func:`~attacks.impossible_differential.search_id_distinguisher_enumeration`
-    for the accepted parameters.
+    See :func:`~attacks.impossible_differential.search_impossible_differential`
+    for the accepted strategies and parameters.
 
     Returns:
         list: The impossible ``(in_positions, out_positions)`` pairs found.
     """
     time_start = time.time()
-    distinguishers = impossible_diff.search_id_distinguisher_enumeration(
+    distinguishers = impossible_diff.search_impossible_differential(
         cipher,
         goal=goal,
+        strategy=strategy,
         config_model=config_model,
         config_solver=config_solver,
         show_mode=show_mode,
@@ -240,22 +242,24 @@ def impossible_differential_attacks(
 def zero_correlation_attacks(
     cipher,
     goal="ZEROCORRELATIONTRUNCATEDLINEAR",
+    strategy="ENUMERATION",
     config_model=None,
     config_solver=None,
     show_mode=0,
 ):
     """Search for zero-correlation linear distinguishers of the given cipher.
 
-    See :func:`~attacks.zero_corr_linear.search_zc_distinguisher_enumeration` for
-    the accepted parameters.
+    See :func:`~attacks.zero_corr_linear.search_zero_correlation` for the
+    accepted strategies and parameters.
 
     Returns:
         list: The zero-correlation ``(in_positions, out_positions)`` pairs found.
     """
     time_start = time.time()
-    distinguishers = zero_corr.search_zc_distinguisher_enumeration(
+    distinguishers = zero_corr.search_zero_correlation(
         cipher,
         goal=goal,
+        strategy=strategy,
         config_model=config_model,
         config_solver=config_solver,
         show_mode=show_mode,

@@ -2,7 +2,8 @@
 
 Provides:
 
-1. search for zero-correlation distinguishers (by feasibility enumeration)
+1. search_zero_correlation: strategy dispatcher (default "ENUMERATION")
+2. search_zc_distinguisher_enumeration: distinguisher search by feasibility enumeration
 """
 
 from pathlib import Path
@@ -74,6 +75,22 @@ def _verify_zero_correlation(base_cons, obj, fix_constraints, model_type, config
     else:
         raise ValueError(f"Unsupported model_type: {model_type}. Expected 'milp' or 'sat'.")
     return not solutions   # no trail -> confirmed zero-correlation
+
+
+# ---------------------------- strategy dispatcher ----------------------------
+def search_zero_correlation(cipher, goal="ZEROCORRELATIONTRUNCATEDLINEAR", strategy="ENUMERATION",
+                            config_model=None, config_solver=None, show_mode=0):
+    """Zero-correlation linear search:
+           Gamma_in --> Gamma_X --[distinguisher]--> Gamma_Y --> Gamma_out
+
+    goal: "ZEROCORRELATIONTRUNCATEDLINEAR" (word-level truncated) or "ZEROCORRELATIONLINEAR" (bit-level).
+    strategy: the search strategy.
+        "ENUMERATION": see :func:`search_zc_distinguisher_enumeration`.
+    """
+    if strategy == "ENUMERATION":
+        return search_zc_distinguisher_enumeration(cipher, goal=goal, config_model=config_model,
+                                                   config_solver=config_solver, show_mode=show_mode)
+    raise ValueError(f"Unsupported strategy: {strategy!r}. Expected 'ENUMERATION'.")
 
 
 # ---------------------------- distinguisher search ----------------------------
