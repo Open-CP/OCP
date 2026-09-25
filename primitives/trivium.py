@@ -137,7 +137,7 @@ class Trivium_Stream_Cipher(Stream_cipher):
                 # For now, using a simplified pass-through
                 KEYSTREAM.AddIdentityLayer("KEYSTREAM_GEN", i, 0)
     
-    def gen_test_vectors(self):
+    def gen_test_vectors(self, rounds=None, version=None):
         """
         Generate test vectors for Trivium
         Test vectors can be found in the eSTREAM documentation

@@ -65,7 +65,7 @@ class Salsa_permutation(Permutation):
                 S.SingleOperatorLayer("XOR4", i, 11, XOR, [[TW[0], QR1[0]], [TW[1], QR2[0]], [TW[2], QR3[0]], [TW[3], QR4[0]]], [QR1[0], QR2[0], QR3[0], QR4[0]])
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Salsa_permutation.")
                                      
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 20 or rounds is None:
             # Test vectors from https://cr.yp.to/snuffle/salsafamily-20071225.pdf
             IN = [  0x61707865, 0x04030201, 0x08070605, 0x0c0b0a09,
@@ -163,7 +163,7 @@ class Salsa_keypermutation(Permutation):
                     S.SingleOperatorLayer("XOR4", i, 12, XOR, [[TW[0], QR1[0]], [TW[1], QR2[0]], [TW[2], QR3[0]], [TW[3], QR4[0]]], [QR1[0], QR2[0], QR3[0], QR4[0]])
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Salsa_keypermutation.")
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 21 or rounds is None:
             # Test vectors from https://cr.yp.to/snuffle/salsafamily-20071225.pdf
             IN = [  0x61707865, 0x04030201, 0x08070605, 0x0c0b0a09,

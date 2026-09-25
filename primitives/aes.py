@@ -53,7 +53,7 @@ class AES_permutation(Permutation):
             constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff] * 4)
         return constant_table
 
-    def gen_test_vectors(self, rounds): # test vectors
+    def gen_test_vectors(self, rounds=None, version=None): # test vectors
         if rounds == 10 or rounds is None:
             IN = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
             OUT = [0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24, 0x97, 0xaf, 0x99, 0x24]
@@ -175,7 +175,7 @@ class AES_block_cipher(Block_cipher):
             constant_table.append([Rcon[i-1]>>24&0xff, Rcon[i-1]>>16&0xff, Rcon[i-1]>>8&0xff, Rcon[i-1]&0xff])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # test vectors
         if version == [128, 128] and (rounds == 10 or rounds is None): # https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.197-upd1.pdf
             plaintext = [0x32, 0x43, 0xf6, 0xa8, 0x88, 0x5a, 0x30, 0x8d, 0x31, 0x31, 0x98, 0xa2, 0xe0, 0x37, 0x07, 0x34]

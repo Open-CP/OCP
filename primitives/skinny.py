@@ -54,7 +54,7 @@ class Skinny_permutation(Permutation):
             constant_table.append([c0,c1,c2])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if version == 64 and (rounds == 32 or rounds is None):
             IN = [0x0, 0x6, 0x0, 0x3, 0x4, 0xf, 0x9, 0x5, 0x7, 0x7, 0x2, 0x4, 0xd, 0x1, 0x9, 0xd]
             OUT = [0x2, 0xe, 0x4, 0xc, 0xa, 0xa, 0x8, 0x1, 0xa, 0xc, 0xc, 0x4, 0x8, 0x7, 0x5, 0x6]
@@ -174,7 +174,7 @@ class Skinny_block_cipher(Block_cipher):
             constant_table.append([c0,c1,c2])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # test vectors from https://eprint.iacr.org/2016/660.pdf and https://github.com/inmcm/skinny_cipher/blob/master/Python/skinny.py
         if version == [64, 64] and (rounds == 32 or rounds is None):
             plaintext = [0x0, 0x6, 0x0, 0x3, 0x4, 0xf, 0x9, 0x5, 0x7, 0x7, 0x2, 0x4, 0xd, 0x1, 0x9, 0xd]

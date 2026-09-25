@@ -77,7 +77,7 @@ class SHACAL2_block_cipher(Block_cipher):
             pass
         return constant_table
 
-    def gen_test_vectors(self, version=256):
+    def gen_test_vectors(self, rounds=None, version=None):
         # TODO: add test vectors that are non-all-zero and give link to them
         if version == 256:
             KEY = [0x80000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000]

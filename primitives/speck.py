@@ -39,7 +39,7 @@ class Speck_permutation(Permutation):
                 S.RotationLayer("ROT2", i, 2, ['l', rotl, 1]) # Rotation layer
                 S.SingleOperatorLayer("XOR", i, 3, XOR, [[0,1]], [1]) # XOR layer
 
-    def gen_test_vectors(self, version, rounds): # Generated from the block cipher with all-zero subkeys
+    def gen_test_vectors(self, rounds=None, version=None): # Generated from the block cipher with all-zero subkeys
         if version == 32 and (rounds == 22 or rounds is None):
             IN = [0x6574, 0x694c]
             OUT = [0x689d, 0x44b7]
@@ -133,7 +133,7 @@ class Speck_block_cipher(Block_cipher):
             constant_table.append([i-1])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # test vectors from https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
         if version == [32, 64] and (rounds == 22 or rounds is None):
             plaintext = [0x6574, 0x694c]

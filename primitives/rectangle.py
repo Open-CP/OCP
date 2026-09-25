@@ -22,7 +22,7 @@ class RECTANGLE_permutation(Permutation):
         """
 
         if nbr_rounds is None: nbr_rounds=25
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (2, 64, 0, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         S = self.functions["PERMUTATION"]
@@ -34,7 +34,7 @@ class RECTANGLE_permutation(Permutation):
             S.SboxLayer("SB", i, 0, RECTANGLE_Sbox, index=sbox_indexes)  # Sbox layer
             S.PermutationLayer("SR", i, 1, shift_rows) # ShiftRow layer
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 25 or rounds is None:
             plaintext = [0] * 64
             ciphertext = [int(bit) for row in [
@@ -75,7 +75,7 @@ class RECTANGLE_block_cipher(Block_cipher):
         if nbr_rounds is None or nbr_rounds==25:
             nbr_rounds=26
             print(f"[INFO] For RECTANGLE, after 25 round transformations, there is still a final AddRoundKey layer. Hence, the internal modeling round number is set to {nbr_rounds}. Please keep this in mind when interpreting subsequent relative files.")
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, p_bitsize, 0, 1),  (3, k_bitsize, 0, 1),  (1, p_bitsize, 0, 1)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
@@ -150,7 +150,7 @@ class RECTANGLE_block_cipher(Block_cipher):
             rc = ((rc << 1) & 0x1E) | (rc_bits[4] ^ rc_bits[2])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds): # Test vectors from Table 10 of the RECTANGLE specification.
+    def gen_test_vectors(self, rounds=None, version=None): # Test vectors from Table 10 of the RECTANGLE specification.
         if version == [64, 80] and (rounds is None or rounds == 25):
             plaintext = [0] * 64
             key = [0] * 80

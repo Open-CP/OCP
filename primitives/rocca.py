@@ -47,7 +47,7 @@ class Rocca_AD_permutation(Permutation):
                 S.SingleOperatorLayer("AES_r", r, 0, AESround, [[i for i in range(16)]] + [[i for i in range(16*2, 16*3)]] + [[i for i in range(16*4, 16*5)]] + [[i for i in range(16*5, 16*6)]], [[i for i in range(nbr_words, nbr_words+16)]] + [[i for i in range(16*2, 16*3)]] + [[i for i in range(nbr_words+16, nbr_words+16*2)]] + [[i for i in range(16*5, 16*6)]]) # AES round layer
                 S.SingleOperatorLayer("XOR", r, 1, XOR, [[i+7*16, i+16*(8+2*(r-1))] for i in range(16)] + [[i+nbr_words, i+16*7] for i in range(16)] + [[i+16*1, i+16*6] for i in range(16)] + [[i+16*2, i+16*1] for i in range(16)] + [[i+16*3, i+16*(8+2*(r-1)+1)] for i in range(16)] + [[i+nbr_words+16, i+16*3]  for i in range(16)] + [[i+16*5, i+16*4] for i in range(16)] + [[i, i+16*6] for i in range(16)],[i for i in range(16*8)]) # XOR layer 
         
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # The vectors are computed from the Rocca round function, not official test vectors.
         if rounds is None: rounds = ROCCA_AD_DEFAULT_ROUNDS
         IN = OUT = None

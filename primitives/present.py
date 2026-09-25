@@ -34,7 +34,7 @@ class PRESENT_permutation(Permutation):
                 S.SboxLayer("SB", i, 0, PRESENT_Sbox,index=[list(range(i, i + 4)) for i in range(0, nbr_words, 4)])  # Sbox layer
                 S.PermutationLayer("P", i, 1, perm) # Permutation layer
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         pass
 
 def PRESENT_PERMUTATION(r=None, represent_mode=0, copy_operator=False):
@@ -109,7 +109,7 @@ class PRESENT_block_cipher(Block_cipher):
     def gen_rounds_constant_table(self):
         return [[(i >> j) & 1 for j in reversed(range(5))] for i in range(1, self.functions["KEY_SCHEDULE"].nbr_rounds)]
 
-    def gen_test_vectors(self, version, rounds): # Test vectors for PRESENT-80 and PRESENT-128 from https://www.iacr.org/archive/ches2007/47270450/47270450.pdf
+    def gen_test_vectors(self, rounds=None, version=None): # Test vectors for PRESENT-80 and PRESENT-128 from https://www.iacr.org/archive/ches2007/47270450/47270450.pdf
         if version == [64, 80] and (rounds is None or rounds == 31):
             plaintext = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             key = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

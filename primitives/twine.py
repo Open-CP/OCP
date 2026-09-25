@@ -23,7 +23,7 @@ class TWINE_permutation(Permutation):
         """
 
         if nbr_rounds is None: nbr_rounds=36
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 8, 4)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         S = self.functions["PERMUTATION"]
@@ -43,7 +43,7 @@ class TWINE_permutation(Permutation):
             S.SingleOperatorLayer("XOR", i, 2, XOR, [[2*j+1, 16+j] for j in range(8)], [2*j+1 for j in range(8)])
             S.PermutationLayer("SHUFFLE", i, 3, shuffle)
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 36 or rounds is None:
             plaintext = [0] * 16
             ciphertext = [0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0, 0xC, 0x0]
@@ -77,7 +77,7 @@ class TWINE_block_cipher(Block_cipher):
         assert version in [[64,80], [64,128]], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds is None: nbr_rounds=36
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (5, 16, 8, 4),  (5, k_bitsize//4, 2 if k_bitsize == 80 else 3, 4),  (1, 8, 0, 4)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
@@ -136,7 +136,7 @@ class TWINE_block_cipher(Block_cipher):
         ]
         return [[con >> 3, con & 0x7] for con in con_table]
 
-    def gen_test_vectors(self, version, rounds): # Test vectors from Table 11 of the TWINE specification.
+    def gen_test_vectors(self, rounds=None, version=None): # Test vectors from Table 11 of the TWINE specification.
         if version == [64, 80] and (rounds == 36 or rounds is None):
             plaintext = [int(nibble, 16) for nibble in "0123456789ABCDEF"]
             key = [int(nibble, 16) for nibble in "00112233445566778899"]

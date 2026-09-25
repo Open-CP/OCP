@@ -61,7 +61,7 @@ class ChaCha_permutation(Permutation):
                 S.RotationLayer("Rot4", i, 11, [['l', 7, QR1[1], QR1[1]], ['l', 7, QR2[1], QR2[1]], ['l', 7, QR3[1], QR3[1]], ['l', 7, QR4[1], QR4[1]]])
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for ChaCha_permutation.")
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # Test vectors from https://datatracker.ietf.org/doc/html/rfc8439
         if rounds == 20 or rounds is None:
             IN = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000, 0x4a000000, 0x00000000]
@@ -148,7 +148,7 @@ class ChaCha_keypermutation(Permutation):
                     S.RotationLayer("Rot4", i, 12, [['l', 7, QR1[1], QR1[1]], ['l', 7, QR2[1], QR2[1]], ['l', 7, QR3[1], QR3[1]], ['l', 7, QR4[1], QR4[1]]])
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for ChaCha_keypermutation.")
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # Test vectors from https://datatracker.ietf.org/doc/html/rfc8439
         if rounds == 21 or rounds is None:
             IN = [0x61707865, 0x3320646e, 0x79622d32, 0x6b206574, 0x03020100, 0x07060504, 0x0b0a0908, 0x0f0e0d0c, 0x13121110, 0x17161514, 0x1b1a1918, 0x1f1e1d1c, 0x00000001, 0x09000000, 0x4a000000, 0x00000000]

@@ -46,7 +46,7 @@ class Simon_permutation(Permutation):
                 S.SingleOperatorLayer("XOR", i, 2, XOR, [[1, 4]], [1]) # XOR layer
                 S.PermutationLayer("PERM", i, 3, [1,0]) # Permutation layer
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if version == 32 and (rounds == 32 or rounds is None):
             IN = [0x6565, 0x6877]
             OUT = [0xdb3c, 0x569b]
@@ -159,7 +159,7 @@ class Simon_block_cipher(Block_cipher):
             constant_table.append([round_constant ^ ((z >> ((i-1) % 62)) & 1)])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # test vectors from https://github.com/inmcm/Simon_Speck_Ciphers/blob/master/Python/simonspeckciphers/tests/test_simonspeck.py
         if version == [32, 64] and (rounds == 32 or rounds is None):
             plaintext = [0x6565, 0x6877]

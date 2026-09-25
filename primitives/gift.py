@@ -45,7 +45,7 @@ class GIFT_permutation(Permutation):
             constant_table.append([1, (const[i-1]>>5)&1, (const[i-1]>>4)&1, (const[i-1]>>3)&1, (const[i-1]>>2)&1, (const[i-1]>>1)&1, (const[i-1])&1])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if version == 64 and (rounds == 28 or rounds is None):
             IN =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
             OUT = [1, 1, 1, 1, 0, 1, 1, 0, 0, 0, 1, 0, 1, 0, 1, 1, 1, 1, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 1, 0, 0, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 0, 1, 1, 0, 0]
@@ -136,7 +136,7 @@ class GIFT_block_cipher(Block_cipher):
             constant_table.append([1, (const[i-1]>>5)&1, (const[i-1]>>4)&1, (const[i-1]>>3)&1, (const[i-1]>>2)&1, (const[i-1]>>1)&1, (const[i-1])&1])
         return constant_table
 
-    def gen_test_vectors(self, version, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         # test vectors from # https://github.com/giftcipher/gift/tree/master/implementations/test%20vectors
         if version == [64, 128] and (rounds == 28 or rounds is None):
             plaintext =  [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]

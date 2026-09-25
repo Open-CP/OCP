@@ -67,7 +67,7 @@ class LED_permutation(Permutation):
                 S.PermutationLayer("SR", i, 2, shift_rows)  # ShiftRows layer
                 S.MatrixLayer("led_matrix", i, 3, mix_columns_matrix, mix_columns_index, "0x3")  # MixColumnsSerial layer (over GF(2^4) with irreducible polynomial x^4 + x + 1)
 
-    def gen_test_vectors(self, rounds, version=None):
+    def gen_test_vectors(self, rounds=None, version=None):
         # Test vectors for LED permutation (same as LED64 with all-zero key)
         if rounds == 32 or rounds is None:
             IN = [0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0]
@@ -161,7 +161,7 @@ class LED_block_cipher(Block_cipher):
             S.AddIdentityLayer("ID", nbr_rounds+1, 3)
             S.AddIdentityLayer("ID", nbr_rounds+1, 4)
 
-    def gen_test_vectors(self, rounds, version=None):
+    def gen_test_vectors(self, rounds=None, version=None):
         # Test vectors from LED paper (https://eprint.iacr.org/2012/600.pdf)
         if version == [64, 64] and (rounds == 32 or rounds is None):
             # LED-64 test vector (all zeros)

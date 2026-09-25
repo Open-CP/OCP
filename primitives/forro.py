@@ -56,7 +56,7 @@ class Forro_permutation(Permutation):
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Forro_permutation.")
 
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 56 or rounds is None:
             # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
             IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,
@@ -143,7 +143,7 @@ class Forro_keypermutation(Permutation):
                     S.RotationLayer("Rot3", i, 12, [['l', 8, SR[0], SR[0]]])
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Forro_keypermutation.")
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 57 or rounds is None:
             # Test vectors from https://github.com/murcoutinho/forro_cipher/blob/main/test/test_ref.c
             IN = [  0x686e696d, 0x69762061, 0x65206164, 0x646e6120,

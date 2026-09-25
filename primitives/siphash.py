@@ -44,7 +44,7 @@ class SipHash_permutation(Permutation):
                 S.RotationLayer("ROT4", i, 8, [['l', 32, 0]]) # Rotation layer
                 S.PermutationLayer("PERM2", i, 9, [2,1,0,3]) # Permutation layer
    
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds is None: rounds = SIPHASH_DEFAULT_ROUNDS
         # Test values from https://www.aumasson.jp/siphash/siphash.pdf (Appendix A, SipHash-2-4 intermediate states).
         if rounds == 2:    # compression: 2 SipRounds

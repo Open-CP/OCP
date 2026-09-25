@@ -22,7 +22,7 @@ class LBlock_permutation(Permutation):
         """
 
         if nbr_rounds is None: nbr_rounds=32
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (6, 64, 32, 1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
         S = self.functions["PERMUTATION"]
@@ -49,7 +49,7 @@ class LBlock_permutation(Permutation):
             S.SingleOperatorLayer("XOR", i, 4, XOR, [[j, 32+j] for j in range(32)], [j for j in range(32)])
             S.PermutationLayer("SWAP", i, 5, feistel_swap)
 
-    def gen_test_vectors(self, rounds):
+    def gen_test_vectors(self, rounds=None, version=None):
         if rounds == 32 or rounds is None:
             plaintext = [0] * 64
             ciphertext = [int(bit) for bit in f"{0x405ffcf045c8c91a:064b}"]
@@ -83,7 +83,7 @@ class LBlock_block_cipher(Block_cipher):
         assert version == [64,80], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds is None: nbr_rounds=32
-        if represent_mode!=0: raise Exception(f"{self.__class__.__name__}: represent_mode {represent_mode} not existing")
+        if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (8, p_bitsize, 32, 1),  (3, k_bitsize, 0, 1),  (1, 32, 0, 1)
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])
 
@@ -138,7 +138,7 @@ class LBlock_block_cipher(Block_cipher):
     def gen_rounds_constant_table(self):
         return [[(i >> j) & 1 for j in reversed(range(5))] for i in range(1, self.functions["KEY_SCHEDULE"].nbr_rounds)]
 
-    def gen_test_vectors(self, version, rounds): # Test vectors from Appendix I of the LBlock specification.
+    def gen_test_vectors(self, rounds=None, version=None): # Test vectors from Appendix I of the LBlock specification.
         if version == [64, 80] and (rounds == 32 or rounds is None):
             plaintext = [int(bit) for bit in f"{0x0000000000000000:064b}"]
             key = [int(bit) for bit in f"{0x00000000000000000000:080b}"]
