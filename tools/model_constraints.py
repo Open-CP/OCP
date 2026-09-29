@@ -508,6 +508,22 @@ def normalize_fixed_value_bits(fixed_value, bit_count, value_name):
     return bits
 
 
+def _fix_vars_to_bits(cons_vars, bits, model_type):
+    """Pin ``cons_vars`` to ``bits``, MSB first, consuming ``var.bitsize`` bits per variable.
+
+    A 1-bit variable is addressed by its plain ID, a wider one bit by bit as ``{ID}_{i}``.
+    """
+    constraints, offset = [], 0
+    for var in cons_vars:
+        for bit_index in range(var.bitsize):
+            var_id = var.ID if var.bitsize == 1 else f"{var.ID}_{bit_index}"
+            constraints += gen_predefined_constraints(
+                model_type, "EXACTLY", [var_id], int(bits[offset + bit_index]), bitwise=False
+            )
+        offset += var.bitsize
+    return constraints
+
+
 def gen_fixed_input_output_constraints(in_out, fixed_value, cipher, model_type, value_name="value"):
     """Generate constraints that fix input/output differences or masks."""
 
@@ -517,20 +533,53 @@ def gen_fixed_input_output_constraints(in_out, fixed_value, cipher, model_type, 
     cons_vars = _cipher_boundary_vars(in_out, cipher)
     bit_count = sum(var.bitsize for var in cons_vars)
     bits = normalize_fixed_value_bits(fixed_value, bit_count, value_name)
+    return _fix_vars_to_bits(cons_vars, bits, model_type)
 
+
+def gen_fixed_activity_constraints(cons_vars, active_positions, model_type="milp", bitwise=False):
+    """Fix an activity pattern over ``cons_vars``: positions in ``active_positions`` are 1, the
+    rest 0.
+
+    ``bitwise=False`` counts one position per variable (word-level, for a truncated model);
+    ``bitwise=True`` counts one per bit. Positions index the expanded list, so with ``bitwise``
+    the i-th position is the i-th BIT across all the variables.
+    """
+    ids = [vid for var in cons_vars for vid in expand_var_ids(var, bitwise=bitwise)]
+    active = set(active_positions)
     constraints = []
-    offset = 0
-    for var in cons_vars:
-        for bit_index in range(var.bitsize):
-            bit = bits[offset + bit_index]
-            var_id = var.ID if var.bitsize == 1 else f"{var.ID}_{bit_index}"
-            if model_type == "sat":
-                constraints.append(var_id if bit == "1" else f"-{var_id}")
-            else:  # milp
-                constraints.append(f"{var_id} = {bit}")
-                constraints.append("Binary\n" + var_id)
-        offset += var.bitsize
+    for i, var_id in enumerate(ids):
+        constraints += gen_predefined_constraints(
+            model_type, "EXACTLY", [var_id], 1 if i in active else 0, bitwise=False
+        )
     return constraints
+
+
+def gen_fixed_state_constraints(cipher, function, rnd, layer, fixed_value, model_type,
+                                nwords=None, value_name="value"):
+    """Fix the state of ``function`` at round ``rnd``, layer ``layer`` to ``fixed_value``.
+
+    Addresses ``cipher.functions[function].vars[rnd][layer]``, so the word count and the word
+    width are read from the cipher. ``fixed_value`` is the whole state as a ``"0x..."``/``"0b..."`` 
+    string, MSB first, and must match the target's width. Pick only the first ``nwords`` words.
+    """
+    if model_type not in ("milp", "sat"):
+        raise ValueError(f"Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
+    if function not in cipher.functions:
+        raise ValueError(f"Unknown function: {function!r}. Expected one of {list(cipher.functions)}.")
+
+    fn = cipher.functions[function]
+    if not 0 <= rnd < len(fn.vars):
+        raise ValueError(f"Round {rnd} out of range for {function!r} (0..{len(fn.vars) - 1}).")
+    if not 0 <= layer < len(fn.vars[rnd]):
+        raise ValueError(f"Layer {layer} out of range for {function!r} round {rnd} "
+                         f"(0..{len(fn.vars[rnd]) - 1}).")
+    if nwords is not None and not 0 < nwords <= fn.nbr_words:
+        raise ValueError(f"nwords {nwords} out of range for {function!r} (1..{fn.nbr_words}).")
+
+    cons_vars = fn.vars[rnd][layer][: nwords if nwords is not None else fn.nbr_words]
+    bit_count = sum(var.bitsize for var in cons_vars)
+    bits = normalize_fixed_value_bits(fixed_value, bit_count, value_name)
+    return _fix_vars_to_bits(cons_vars, bits, model_type)
 
 
 def gen_required_fixed_boundary_constraints(cipher, input_value, output_value, model_type):

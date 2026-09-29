@@ -6,18 +6,15 @@ Provides:
 2. search_id_distinguisher_enumeration: distinguisher search by feasibility enumeration
 """
 
-from pathlib import Path
 from itertools import combinations
 import time
 
 from tools.model_configuration import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun
-from tools.model_constraints import gen_predefined_constraints
+from tools.model_constraints import gen_fixed_activity_constraints
 
 import tools.milp_search as milp_search
 import tools.sat_search as sat_search
-
-ROOT = Path(__file__).resolve().parents[1]
-FILES_DIR = ROOT / "files"
+from tools.paths import get_files_dir
 
 
 _GOAL_MIDDLE = {"IMPOSSIBLETRUNCATEDDIFF": "TRUNCATEDDIFF_SBOXCOUNT",
@@ -43,25 +40,14 @@ def _parse_and_set_configs(cipher, goal, config_model, config_solver):
     # Set "solver" for solving the model
     config_solver.setdefault("solver", "DEFAULT")
 
-    FILES_DIR.mkdir(parents=True, exist_ok=True)  # ensure the output directory exists (lazy)
     # Set the model "filename".
+    files_dir = get_files_dir()
     if config_model["model_type"] == "milp":
-        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_milp_model.lp")
+        config_model["filename"] = str(files_dir / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_milp_model.lp")
     elif config_model["model_type"] == "sat":
-        config_model["filename"] = str(FILES_DIR / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_sat_model.cnf")
+        config_model["filename"] = str(files_dir / f"{cipher.nbr_rounds}round_{cipher.name}_{goal}_sat_model.cnf")
 
     return config_model, config_solver
-
-
-def _gen_fixed_activity_constraints(vars_, active_positions, model_type="milp", bitwise=False):
-    """Fix a difference pattern over the boundary vars: active positions -> 1, the rest -> 0.
-    bitwise=False: word-level (one unit per var); bitwise=True: bit-level (one unit per bit)."""
-    ids = [f"{v.ID}_{j}" for v in vars_ for j in range(v.bitsize)] if bitwise else [v.ID for v in vars_]
-    active = set(active_positions)
-    cons = []
-    for i, vid in enumerate(ids):
-        cons += gen_predefined_constraints(model_type, "EXACTLY", [vid], 1 if i in active else 0, bitwise=False)
-    return cons
 
 
 def _verify_impossible_differential(base_cons, obj, fix_constraints, model_type, config_model, config_solver):
@@ -138,13 +124,13 @@ def search_id_distinguisher_enumeration(cipher, goal="IMPOSSIBLETRUNCATEDDIFF",
     impossible, tested, start = [], 0, time.time()
     for wi in range(enum.get("min_active_in", 1), enum.get("max_active_in", 1) + 1):
         for in_pos in combinations(cand_in, wi):
-            fix_in = _gen_fixed_activity_constraints(dx_vars, in_pos, model_type, bitwise)   # built once per Delta_X
+            fix_in = gen_fixed_activity_constraints(dx_vars, in_pos, model_type, bitwise)   # built once per Delta_X
             for wo in range(enum.get("min_active_out", 1), enum.get("max_active_out", 1) + 1):
                 if max_total is not None and wi + wo > max_total:
                     continue
                 for out_pos in combinations(cand_out, wo):
                     tested += 1
-                    fix = fix_in + _gen_fixed_activity_constraints(dy_vars, out_pos, model_type, bitwise)
+                    fix = fix_in + gen_fixed_activity_constraints(dy_vars, out_pos, model_type, bitwise)
                     if _verify_impossible_differential(base_cons, obj, fix, model_type, config_model, config_solver):
                         impossible.append((in_pos, out_pos))
     if show_mode:
