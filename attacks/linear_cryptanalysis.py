@@ -9,7 +9,8 @@ import time
 from math import log2
 from attacks.attack_trace import LinearTrail, extract_and_format_trails
 from tools.model_constraints import gen_input_non_zero_constraints, gen_required_fixed_boundary_constraints
-from tools.model_configuration import parse_and_set_configs, gen_round_model_constraint_obj_fun
+from tools.model_configuration import (parse_and_set_configs, gen_round_model_constraint_obj_fun,
+                                       LINEAR_GOALS, OBJECTIVE_TARGETS, SHOW_MODES)
 from tools.model_objective import has_Sbox_with_decimal_weights, detect_Sbox
 from tools.milp_search import modeling_solving_milp
 from tools.sat_search import modeling_solving_sat
@@ -18,9 +19,9 @@ from tools.sat_search import modeling_solving_sat
 # ---------------------- Model and Solver Configuration ----------------------
 def _validate_request(goal, constraints, objective_target, show_mode, config_model, config_solver):
     """Validate the public ``search_linear_trail`` arguments, raising ``ValueError`` on any invalid one."""
-    allowed_goals = ["LINEAR_SBOXCOUNT", "LINEARPATH_CORR", "LINEARHULL_CORR", "TRUNCATEDLINEAR_SBOXCOUNT"]
-    allowed_objective_targets = ["OPTIMAL", "AT MOST", "EXACTLY", "AT LEAST", "EXISTENCE"]
-    allowed_show = [0, 1, 2, 3]
+    allowed_goals = list(LINEAR_GOALS)
+    allowed_objective_targets = list(OBJECTIVE_TARGETS)
+    allowed_show = list(SHOW_MODES)
     if not any(goal.startswith(prefix) for prefix in allowed_goals):
         raise ValueError(f"Invalid goal: {goal}. Expected one of {allowed_goals}.")
     if not isinstance(constraints, list) or any(not isinstance(c, str) for c in constraints):

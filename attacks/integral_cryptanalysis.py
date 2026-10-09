@@ -8,7 +8,9 @@ Provides:
 from pathlib import Path
 
 from attacks.attack_trace import IntegralDistinguisher
-from tools.model_configuration import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun
+from tools.model_configuration import (fill_functions_rounds_layers_positions,
+                                       gen_round_model_constraint_obj_fun, INTEGRAL_GOALS,
+                                       SHOW_MODES)
 from tools.model_constraints import gen_predefined_constraints
 from tools.milp_search import modeling_solving_milp
 from tools.paths import get_files_dir
@@ -190,14 +192,14 @@ def search_integral_distinguisher(cipher, goal="INTEGRAL_TWOSUBSET", constraints
     """
     constraints = constraints or []
 
-    if goal != "INTEGRAL_TWOSUBSET":
-        raise ValueError(f"Invalid goal: {goal}. Expected 'INTEGRAL_TWOSUBSET'.")
+    if goal not in INTEGRAL_GOALS:
+        raise ValueError(f"Invalid goal: {goal}. Expected one of {list(INTEGRAL_GOALS)}.")
     if not isinstance(constraints, list):
         raise ValueError(f"Invalid constraints: {constraints}. Expected a list of strings.")
     if objective_target != "EXISTENCE":
         raise ValueError("INTEGRAL_TWOSUBSET currently supports objective_target='EXISTENCE'.")
-    if show_mode not in (0, 1, 2, 3):
-        raise ValueError(f"Invalid show_mode: {show_mode}. Expected one of [0, 1, 2, 3].")
+    if show_mode not in SHOW_MODES:
+        raise ValueError(f"Invalid show_mode: {show_mode}. Expected one of {list(SHOW_MODES)}.")
     if not (isinstance(config_model, dict) or config_model is None):
         raise ValueError(f"Invalid config_model: {config_model}. Expected a dictionary or None.")
     if not (isinstance(config_solver, dict) or config_solver is None):

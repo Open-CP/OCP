@@ -27,6 +27,30 @@ GOAL_MODEL_VERSION_RULES = {
     "INTEGRAL_TWOSUBSET": (("INTEGRAL_TWOSUBSET", None),),
 }
 
+# Goal vocabularies, partitioned by the attack that accepts them.
+DIFFERENTIAL_GOALS = ("DIFFERENTIAL_SBOXCOUNT", "DIFFERENTIALPATH_PROB", "DIFFERENTIAL_PROB",
+                      "TRUNCATEDDIFF_SBOXCOUNT")
+LINEAR_GOALS = ("LINEAR_SBOXCOUNT", "LINEARPATH_CORR", "LINEARHULL_CORR",
+                "TRUNCATEDLINEAR_SBOXCOUNT")
+INTEGRAL_GOALS = ("INTEGRAL_TWOSUBSET",)
+
+# objective_target comes in two forms: a bare keyword, or a keyword plus a number ("AT MOST 12").
+OBJECTIVE_TARGETS_BARE = ("OPTIMAL", "EXISTENCE")
+OBJECTIVE_TARGETS_WITH_VALUE = ("AT MOST", "EXACTLY", "AT LEAST")
+OBJECTIVE_TARGETS = OBJECTIVE_TARGETS_BARE + OBJECTIVE_TARGETS_WITH_VALUE
+
+# Symbolic markers that the `constraints` list expands.
+ANALYSIS_CONSTRAINT_MARKERS = {
+    "INPUT_NOT_ZERO": "add an input difference/mask non-zero constraint (differential, linear)",
+    "TWO_SUBSET_INIT": "set the two-subset division-property initial state (integral)",
+}
+
+SHOW_MODES = (0, 1, 2, 3)
+
+# SAT only: how modeling_solving_optimal_intobj walks the objective bound.
+SAT_OPTIMAL_STRATEGIES = ("INCREASING FROM AT MOST", "INCREASING FROM EXACTLY",
+                          "DECREASING FROM AT MOST", "ADAPTIVE FROM AT MOST")
+
 
 def fill_functions_rounds_layers_positions(
     cipher,

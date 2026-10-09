@@ -380,11 +380,10 @@ def solve_milp(filename, config_solver=None):
 
 
 def solve_milp_gurobi(filename, config_solver):
-    """Solve a MILP model using Gurobi, or return ``None`` if gurobipy is unavailable."""
+    """Solve a MILP model using Gurobi; raise if gurobipy is unavailable."""
     gp = _load_gurobi()
     if gp is None:
-        print("[WARNING] gurobipy module can't be loaded ... skipping test")
-        return None
+        raise RuntimeError("[ERROR] gurobipy can't be loaded. Install it: pip install gurobipy")
 
     try:
         model = gp.read(filename) # Load the model from file.
@@ -429,11 +428,10 @@ def solve_milp_gurobi(filename, config_solver):
 
 
 def solve_milp_scip(filename, config_solver):
-    """Solve a MILP model using SCIP, or return ``None`` if PySCIPOpt is unavailable."""
+    """Solve a MILP model using SCIP; raise if PySCIPOpt is unavailable."""
     Model = _load_scip_model()
     if Model is None:
-        print("[WARNING] PySCIPOpt module can't be loaded ... skipping SCIP test")
-        return None
+        raise RuntimeError("[ERROR] PySCIPOpt can't be loaded. Install it: pip install pyscipopt")
 
     try:
         model = Model()
@@ -482,7 +480,7 @@ def solve_sat(filename, variable_map, config_solver=None):
 
     Returns:
         list: Up to ``solution_number`` solutions, each a dict mapping variable names to 0/1;
-            an empty list if unsatisfiable or the selected backend can't be loaded.
+            an empty list if unsatisfiable. An unloadable backend raises an exception.
     """
 
     if config_solver is None:
@@ -511,7 +509,7 @@ def solve_sat(filename, variable_map, config_solver=None):
             solutions = solve_sat_external(filename, variable_map, config_solver)
         else:
             solutions = []
-        # Normalize a missing-backend None to [] so callers always get a list (parity with solve_milp).
+        # Normalize a None to [] so callers always get a list (parity with solve_milp).
         return solutions if solutions is not None else []
     finally:
         config_solver["resource_usage"] = monitor.stop()
@@ -524,12 +522,11 @@ def solve_sat_pysat(filename, variable_map, config_solver):
     """Solve a SAT model (DIMACS CNF ``filename``) with PySAT.
 
     Shared arguments as in :func:`solve_sat`. Returns up to ``solution_number``
-    ``{variable_name: 0/1}`` solutions, or ``None`` if PySAT is unavailable.
+    ``{variable_name: 0/1}`` solutions; raise if PySAT is unavailable.
     """
     CNF, Solver = _load_pysat()
     if CNF is None or Solver is None:
-        print("[WARNING] pysat module can't be loaded ... skipping test")
-        return None
+        raise RuntimeError("[ERROR] pysat can't be loaded. Install it: pip install python-sat")
 
     solver = config_solver.get("solver", "DEFAULT")
     solution_number = config_solver.get("solution_number", 1)
@@ -615,14 +612,13 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
     """Solve a SAT model (DIMACS CNF ``filename``) with Google OR-Tools CP-SAT.
 
     Shared arguments as in :func:`solve_sat`. Returns up to ``solution_number``
-    ``{variable_name: 0/1}`` solutions, or ``None`` if OR-Tools CP-SAT is unavailable.
+    ``{variable_name: 0/1}`` solutions; raise if OR-Tools CP-SAT is unavailable.
     Known difference: multi-solution enumeration is callback-based and does not
     project blocking clauses onto ``trail_var_names`` (unlike the PySAT/external backends).
     """
     cp_model = _load_ortools_cpsat()
     if cp_model is None:
-        print("[WARNING] OR-Tools CP-SAT module can't be loaded ... skipping test")
-        return None
+        raise RuntimeError("[ERROR] ortools can't be loaded. Install it: pip install ortools")
 
     # Creates the model
     model = cp_model.CpModel()

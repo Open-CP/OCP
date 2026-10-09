@@ -12,6 +12,7 @@ import os
 import tools.model_objective as model_objective
 from tools.model_constraints import gen_matsui_constraints_milp, gen_predefined_constraints
 import solving.solving as solving
+from tools.model_configuration import OBJECTIVE_TARGETS_BARE, OBJECTIVE_TARGETS_WITH_VALUE
 
 
 # ----------------------- Objective Target (MILP) ------------------------
@@ -26,9 +27,9 @@ def parse_objective_target(objective_target):
         tuple: ``(strategy, value)`` where ``strategy`` is the target keyword and
         ``value`` is the parsed number (``None`` for ``"OPTIMAL"`` / ``"EXISTENCE"``).
     """
-    if objective_target == "OPTIMAL" or objective_target == "EXISTENCE":
+    if objective_target in OBJECTIVE_TARGETS_BARE:
         return objective_target, None
-    for keyword in ["AT MOST", "EXACTLY", "AT LEAST"]:
+    for keyword in OBJECTIVE_TARGETS_WITH_VALUE:
         if objective_target.startswith(keyword):
             try:
                 value = float(objective_target.split()[-1])

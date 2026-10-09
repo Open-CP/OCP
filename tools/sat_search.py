@@ -13,6 +13,7 @@ import tools.model_objective as model_objective
 from tools.model_objective import cal_round_obj_fun_values_from_solution
 from tools.model_constraints import gen_predefined_constraints, gen_matsui_constraints_sat
 import solving.solving as solving
+from tools.model_configuration import OBJECTIVE_TARGETS_BARE, OBJECTIVE_TARGETS_WITH_VALUE, SAT_OPTIMAL_STRATEGIES
 
 
 # Upper bound for the incrementing SAT objective search (INCREASING / ADAPTIVE strategies).
@@ -32,9 +33,9 @@ def parse_objective_target(objective_target):
         tuple: ``(strategy, value)`` where ``strategy`` is the target keyword and
         ``value`` is the parsed number (``None`` for ``"OPTIMAL"`` / ``"EXISTENCE"``).
     """
-    if objective_target == "OPTIMAL" or objective_target == "EXISTENCE":
+    if objective_target in OBJECTIVE_TARGETS_BARE:
         return objective_target, None
-    for keyword in ["AT MOST", "EXACTLY", "AT LEAST"]:
+    for keyword in OBJECTIVE_TARGETS_WITH_VALUE:
         if objective_target.startswith(keyword):
             try:
                 value = float(objective_target.split()[-1])
@@ -200,19 +201,24 @@ def modeling_solving_optimal_intobj(constraints, objective_function, config_mode
         obj_val = int(optimal_search_strategy_sat.split()[-1])
     except ValueError:
         raise ValueError(
-            f"Invalid format: '{optimal_search_strategy_sat}'. Expected 'INCREASING FROM AT MOST X', "
-            "'INCREASING FROM EXACTLY X', 'DECREASING FROM AT MOST X', or 'ADAPTIVE FROM AT MOST X'."
+            f"Invalid format: '{optimal_search_strategy_sat}'. Expected one of "
+            + ", ".join(f"'{st} X'" for st in SAT_OPTIMAL_STRATEGIES) + "."
         )
+    # A bound above the objective-variable count is not expressible by the cardinality
+    # encodings (gen_sequential_encoding_sat rejects it), so cap the increasing search there.
+    obj_vars = model_objective.gen_obj_fun_variables(objective_function, obj_fun_decimal=False)
+    end_cap = min(SAT_OBJ_SEARCH_CAP, sum(len(row) for row in obj_vars) + 1)
     if optimal_search_strategy_sat.startswith("INCREASING FROM AT MOST"):
-        cons_type, step, end_obj_value, mode = "SUM_AT_MOST", 1, SAT_OBJ_SEARCH_CAP, "INCREASING"
+        cons_type, step, end_obj_value, mode = "SUM_AT_MOST", 1, end_cap, "INCREASING"
     elif optimal_search_strategy_sat.startswith("INCREASING FROM EXACTLY"):
-        cons_type, step, end_obj_value, mode = "SUM_EXACTLY", 1, SAT_OBJ_SEARCH_CAP, "INCREASING"
+        cons_type, step, end_obj_value, mode = "SUM_EXACTLY", 1, end_cap, "INCREASING"
     elif optimal_search_strategy_sat.startswith("DECREASING FROM AT MOST"):
         cons_type, step, end_obj_value, mode = "SUM_AT_MOST", -1, -1, "DECREASING"
     elif optimal_search_strategy_sat.startswith("ADAPTIVE FROM AT MOST"):
-        cons_type, step, end_obj_value, mode = "SUM_AT_MOST", 1, SAT_OBJ_SEARCH_CAP, "ADAPTIVE"
+        cons_type, step, end_obj_value, mode = "SUM_AT_MOST", 1, end_cap, "ADAPTIVE"
     else:
-        raise ValueError(f"Invalid optimal_search_strategy_sat: {optimal_search_strategy_sat}.")
+        raise ValueError(f"Invalid optimal_search_strategy_sat: {optimal_search_strategy_sat}. "
+                         f"Expected one of {list(SAT_OPTIMAL_STRATEGIES)}.")
 
     found_feasible = None
     solutions = None
@@ -250,6 +256,8 @@ def modeling_solving_optimal_intobj(constraints, objective_function, config_mode
                 return current_solutions
         obj_val += step
         solutions = current_solutions
+    if mode in ("INCREASING", "ADAPTIVE") and not solutions:
+        print(f"[INFO] No solution with objective value up to {end_obj_value - 1}.")
     return solutions
 
 
