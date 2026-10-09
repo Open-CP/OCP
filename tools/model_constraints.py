@@ -365,13 +365,8 @@ def gen_matsui_constraints_sat(
         StartingRound = MatsuiRoundIndex[matsui_count][0]
         EndingRound = MatsuiRoundIndex[matsui_count][1]
         PartialCardinalityCons = obj_sat - best_obj[StartingRound] - best_obj[Round-EndingRound]
-        left = 0
-        for i in range(StartingRound):
-            left += len(obj_var[i])
-        right = 0
-        for i in range(EndingRound):
-            right += len(obj_var[i])
-        right -= 1
+        left = sum(len(obj_var[i]) for i in range(Round - StartingRound, Round))
+        right = sum(len(obj_var[i]) for i in range(Round - EndingRound, Round)) - 1
         constraints += gen_matsui_partial_cardinality_sat(
             Main_Vars,
             dummy_var,

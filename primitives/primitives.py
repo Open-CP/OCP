@@ -203,14 +203,15 @@ class Layered_Function:
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant".
     def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, modulo=None):
         if len(constant)<self._total_words(): constant = constant + [None]*(self._total_words() - len(constant))
+        table_name = "RC_" + "".join(ch if ch.isalnum() else "_" for ch in f"{self.name}_{name}")
         i = 0
         for j in range(self._total_words()):
             in_var, out_var = self.vars[crt_round][crt_layer][j], self.vars[crt_round][crt_layer+1][j]
             if constant[j] is not None:
                 if add_type == 'xor':
-                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer+1,j)))
+                    self.constraints[crt_round][crt_layer].append(ConstantXOR([in_var], [out_var], constant_table, crt_round, i, ID=generateID(name,crt_round,crt_layer+1,j), table_name=table_name))
                 elif add_type == 'modadd':
-                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer+1,j)))
+                    self.constraints[crt_round][crt_layer].append(ConstantAdd([in_var], [out_var], constant_table, crt_round, i, modulo=modulo, ID=generateID(name,crt_round,crt_layer+1,j), table_name=table_name))
                 else:
                     raise ValueError(f"AddConstantLayer: unknown add_type '{add_type}'")
                 i += 1

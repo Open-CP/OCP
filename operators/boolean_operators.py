@@ -322,15 +322,19 @@ class ConstantXOR(UnaryOperator):
         "milp": ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
     }
 
-    def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, ID = None):
+    def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, ID = None, table_name = "RC"):
         super().__init__(input_vars, output_vars, ID = ID)
         self.table = constant_table
         self.table_r, self.table_i = round, index
+        self.table_name = table_name
+
+    def get_header_ID(self):
+        return [self.__class__.__name__, self.model_version, self.table_name]
 
     def generate_implementation(self, implementation_type='python', unroll=False):
         self.check_supported_implementation(implementation_type)
         if unroll==True: my_constant=hex(self.table[self.table_r-1][self.table_i])
-        else: my_constant=f"RC[i][{self.table_i}]"
+        else: my_constant=f"{self.table_name}[i][{self.table_i}]"
         if implementation_type == 'python':
             return [self.get_var_ID('out', 0, unroll) + ' = ' + self.get_var_ID('in', 0, unroll) + ' ^ ' + my_constant]
         elif implementation_type == 'c':
@@ -340,15 +344,16 @@ class ConstantXOR(UnaryOperator):
         else: raise_unknown_implementation_type(self.__class__.__name__, implementation_type)
 
     def generate_implementation_header(self, implementation_type='python'):
+        name = self.table_name
         if implementation_type == 'python':
-            return [f"#Constraints List\nRC={self.table}"]
+            return [f"#Constraints List\n{name}={self.table}"]
         elif implementation_type == 'c':
             bit_size = max(max(row) for row in self.table).bit_length()
             var_def_c = 'uint8_t' if bit_size <= 8 else "uint32_t" if bit_size <= 32 else "uint64_t" if bit_size <= 64 else "uint128_t"
-            return [f"// Constraints List\n{var_def_c} RC[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
+            return [f"// Constraints List\n{var_def_c} {name}[][{len(self.table[0])}] = {{\n    " + ", ".join("{ " + ", ".join(map(str, row)) + " }" for row in self.table) + "\n};"]
         elif implementation_type == 'verilog':
             bit_size = max(max(row) for row in self.table).bit_length()
-            return [f"// Constraints List\nreg [{bit_size-1}:0] RC [0:{len(self.table)-1}][0:{len(self.table[0])-1}];", "initial begin"] + [f"    RC[{i}][{j}] = {bit_size}'h{self.table[i][j]:X};" for i in range(len(self.table)) for j in range(len(self.table[0]))] + ["end"]
+            return [f"// Constraints List\nreg [{bit_size-1}:0] {name} [0:{len(self.table)-1}][0:{len(self.table[0])-1}];", "initial begin"] + [f"    {name}[{i}][{j}] = {bit_size}'h{self.table[i][j]:X};" for i in range(len(self.table)) for j in range(len(self.table[0]))] + ["end"]
         else: return None
 
     def generate_model(self, model_type='sat'):

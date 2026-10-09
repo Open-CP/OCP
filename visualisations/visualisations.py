@@ -5,8 +5,11 @@ Renders a cipher's round/layer/operator structure as a matplotlib figure (saved 
 
 import os, os.path
 from numpy import linspace
-import matplotlib.pyplot as plt
-from matplotlib.patches import Ellipse, Rectangle, Circle
+try:
+    import matplotlib.pyplot as plt
+    from matplotlib.patches import Ellipse, Rectangle, Circle
+except (ImportError, OSError):
+    plt = None
 
 def adjust_lightness(color, amount=0.5):
     import matplotlib.colors as mc
@@ -27,6 +30,11 @@ def find_function_index_from_x_coord(in_x_coord, function_x_limits):
 
 # function that generates the figure describing the primitive  
 def generate_figure(my_prim, filename, display_unused_variables=False, display_copied_variables=True): 
+    if plt is None:
+        raise ImportError(
+            "matplotlib is required for structural visualization. "
+            "Install it with: pip install matplotlib"
+        )
     print("\nGenerating visualisation figure for " + my_prim.name + " in " + str(filename) + " ...", end="", flush=True)
     os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)
 
