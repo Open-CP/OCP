@@ -14,6 +14,9 @@ from contextlib import redirect_stdout
 import shutil
 from tools.paths import get_files_dir
 
+IMPLEMENTED_LANGUAGES = ("python", "c", "verilog") # 'rust' is planned
+
+
 def is_c_compiler_available():
     """Check if gcc or any C compiler is available in the system."""
     compilers = ['gcc', 'clang', 'cl', 'cc']
@@ -46,9 +49,13 @@ def get_var_def_c(word_bitsize):
 def generate_implementation(my_prim, filename, language = 'python', unroll = False):
     """Generate ``my_prim``'s reference implementation and write it to ``filename``.
 
-    ``language`` is one of 'python' / 'c' / 'verilog' / 'rust'. With ``unroll`` True the rounds are
+    ``language`` is one of 'python' / 'c' / 'verilog'; 'rust' is planned. With ``unroll`` True the rounds are
     fully unrolled (round indices baked into variable names); otherwise a rolled loop is emitted.
     """
+    if language not in IMPLEMENTED_LANGUAGES:
+        hint = " (planned, not implemented)" if language == "rust" else ""
+        raise ValueError(f"[ERROR] Unknown implementation language: {language}{hint}. "
+                         f"Expected one of {sorted(IMPLEMENTED_LANGUAGES)}.")
     nbr_rounds = my_prim.nbr_rounds
     
     os.makedirs(os.path.dirname(filename) or ".", exist_ok=True)

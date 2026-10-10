@@ -9,7 +9,8 @@ Provides:
 from itertools import combinations
 import time
 
-from tools.model_configuration import fill_functions_rounds_layers_positions, gen_round_model_constraint_obj_fun
+from tools.model_configuration import (IMPOSSIBLE_GOAL_MIDDLE, fill_functions_rounds_layers_positions,
+                                       gen_round_model_constraint_obj_fun)
 from tools.model_constraints import gen_fixed_activity_constraints
 
 import tools.milp_search as milp_search
@@ -17,8 +18,7 @@ import tools.sat_search as sat_search
 from tools.paths import get_files_dir
 
 
-_GOAL_MIDDLE = {"IMPOSSIBLETRUNCATEDDIFF": "TRUNCATEDDIFF_SBOXCOUNT",
-               "IMPOSSIBLEDIFF": "DIFFERENTIAL_SBOXCOUNT"}
+_GOAL_MIDDLE = IMPOSSIBLE_GOAL_MIDDLE   # shared vocabulary; see tools/model_configuration.py
 
 
 def _parse_and_set_configs(cipher, goal, config_model, config_solver):
@@ -94,7 +94,7 @@ def search_id_distinguisher_enumeration(cipher, goal="IMPOSSIBLETRUNCATEDDIFF",
         2. S. Sun, D. Gerault, P. Lafourcade, Q. Yang, Y. Todo, K. Qiao, L. Hu, "Analysis of AES, SKINNY, and others with Constraint Programming", ToSC 2017(1), 281-306.
     """
     if goal not in _GOAL_MIDDLE:
-        raise ValueError(f"Invalid goal: {goal}. Expected one of {list(_GOAL_MIDDLE)}.")
+        raise ValueError(f"[ERROR] Invalid goal: {goal}. Expected one of {list(_GOAL_MIDDLE)}.")
     goal_middle = _GOAL_MIDDLE[goal]
     config_model, config_solver = _parse_and_set_configs(cipher, goal, config_model, config_solver)
     model_type, bitwise = config_model["model_type"], ("TRUNCATEDDIFF" not in goal_middle)

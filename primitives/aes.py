@@ -85,10 +85,11 @@ class AES_block_cipher(Block_cipher):
         """
 
         p_bitsize, k_bitsize = version[0], version[1]
-        assert p_bitsize == 128, f"[ERROR] For AES, the plaintext bit size is fixed to 128. The provided bit size is {p_bitsize}."
-        assert k_bitsize in [128, 192, 256], f"[ERROR] For AES, the key bit size should be either 128, 192 or 256. The provided bit size is {k_bitsize}."
-        full_rounds = {128: 10, 192: 12, 256: 14}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(version[1])
+        full_rounds = {128: 10, 192: 12, 256: 14}   # keyed on the key size; the block size is fixed
+        if p_bitsize != 128 or k_bitsize not in full_rounds:
+            raise ValueError(f"[ERROR] Unknown version {version} for AES_block_cipher. Expected one of "
+                             f"{[[128, k] for k in sorted(full_rounds)]}: the block size is fixed to 128.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[k_bitsize]
         nbr_rounds += 1
         print(f"[INFO] For {name}, after {nbr_rounds-1} round transformations, there is still a final AddRoundKey layer. Hence, the internal modeling round number is set to {nbr_rounds}. Please keep this in mind when interpreting subsequent relative files.")
         if represent_mode==0:

@@ -100,14 +100,13 @@ class LED_block_cipher(Block_cipher):
             represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
 
-        if version not in [[64, 64], [64, 128]]:
-            raise ValueError(f"LED only supports (64, 64) and (64, 128) versions, got {version}")
         p_bitsize, k_bitsize = version[0], version[1]
 
         # LED-64: 8 steps × 4 rounds = 32 rounds, 9 key additions (8 before each step + 1 final)
         # LED-128: 12 steps × 4 rounds = 48 rounds, 13 key additions (12 before each step + 1 final)
-        full_rounds = {64: 32, 128: 48}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(k_bitsize)
+        full_rounds = {(64, 64): 32, (64, 128): 48}
+        if (p_bitsize, k_bitsize) not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for LED_block_cipher. Expected one of {[list(v) for v in sorted(full_rounds)]}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[(p_bitsize, k_bitsize)]
 
         if represent_mode==0:
             (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize) = (5, 16, 0, 4)

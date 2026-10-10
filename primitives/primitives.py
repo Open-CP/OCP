@@ -197,11 +197,38 @@ class Layered_Function:
 
     # apply a layer "name" of a simple identity at the round "crt_round", at the layer "crt_layer".
     def AddIdentityLayer(self, name, crt_round, crt_layer):
+        """Apply a layer "name" that passes every word through unchanged.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+        """
         for j in range(self._total_words()):
             self._add_equal_constraint(name, crt_round, crt_layer, j)
 
     # apply a layer "name" of a Constant addition, at the round "crt_round", at the layer "crt_layer", with the adding "add_type" and the constant value "constant".
     def AddConstantLayer(self, name, crt_round, crt_layer, add_type, constant, constant_table, modulo=None):
+        """Apply a layer "name" that adds a round constant to selected words.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            add_type (str): How to add, ``'xor'`` or ``'modadd'``. Anything else raises.
+            constant (list): One entry per word, in word order; ``None`` leaves that word
+                unchanged (identity), anything else marks it as receiving a constant. Shorter than
+                the state is padded with ``None``. Only the positions matter, not the values --
+                the values come from ``constant_table``.
+            constant_table (list): The round constants, indexed ``[round][i]`` where ``i`` counts
+                the non-``None`` positions of ``constant`` from 0. Usually from
+                ``gen_rounds_constant_table()``; it must have a row per round the layer runs in.
+            modulo (int, optional): Modulus for ``'modadd'``; defaults to 2^bitsize.
+
+        Example:
+            ``constant = [1, None, 1, None]`` with ``add_type='xor'`` XORs ``constant_table[r][0]``
+            into word 0 and ``constant_table[r][1]`` into word 2, leaving words 1 and 3 alone.
+        """
         if len(constant)<self._total_words(): constant = constant + [None]*(self._total_words() - len(constant))
         table_name = "RC_" + "".join(ch if ch.isalnum() else "_" for ch in f"{self.name}_{name}")
         i = 0
@@ -219,6 +246,24 @@ class Layered_Function:
 
     # apply a layer "name" of a single operator "my_operator" with input indexes "index_in" and output indexes "index_out", at the round "crt_round", at the layer "crt_layer". The other output indexes are just being applied identity
     def SingleOperatorLayer(self, name, crt_round, crt_layer, my_operator, index_in, index_out):
+        """Apply a layer "name" of one operator at selected positions, identity elsewhere.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            my_operator (callable): The operator class, called as
+                ``my_operator(in_vars, out_vars, ID=...)``. Any ``operators/`` class whose
+                constructor takes that shape, e.g. ``XOR``, ``AND``, ``Rot``.
+            index_in (list): Per execution, the input word indexes that operator consumes.
+            index_out (list): Per execution, where its output goes. Either a list of ints (one
+                output word each, paired with ``index_in`` by position) or a list of lists (several
+                output words each). Words absent from ``index_out`` are applied identity.
+
+        Example:
+            ``index_in = [[0, 1]], index_out = [2]`` with ``my_operator=XOR`` writes
+            ``word2 = word0 ^ word1`` and passes the other words through.
+        """
         flat_index_out = [idx for sub in index_out for idx in (sub if isinstance(sub, list) else [sub])]
         for j in range(self._total_words()):
             if j not in flat_index_out:
@@ -237,6 +282,18 @@ class Layered_Function:
 
     # apply a layer "name" of a GF2Linear_Trans at the round "crt_round", at the layer "crt_layer"
     def GF2Linear_TransLayer(self, name, crt_round, crt_layer, index_in, index_out, mat, constants=None):
+        """Apply a layer "name" of a GF(2) linear transform at selected positions.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            index_in (list): One input word index per execution.
+            index_out (list): One output word index per execution, paired with ``index_in`` by
+                position. Words absent here are applied identity.
+            mat (list): The bit-level matrix over GF(2), as rows of 0/1, applied within one word.
+            constants (list, optional): A constant added after the transform (affine case).
+        """
         flat_index_out = [idx for sub in index_out for idx in (sub if isinstance(sub, list) else [sub])]
         for j in range(self._total_words()):
             if j not in flat_index_out:
@@ -248,6 +305,21 @@ class Layered_Function:
 
     # apply a layer "name" of a Matrix "mat" (only square matrix), at the round "crt_round", at the layer "crt_layer", operating in the field GF(2^"bitsize") with polynomial "polynomial"
     def MatrixLayer(self, name, crt_round, crt_layer, mat, indexes_list, polynomial = None):
+        """Apply a layer "name" of a square matrix to one or more groups of words.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            mat (list): A **square** matrix as rows; a non-square shape raises.
+            indexes_list (list): One group of word indexes per application, each as long as
+                ``mat``; a wrong length raises. Words absent from every group are applied identity.
+            polynomial (int, optional): The reduction polynomial when the entries live in
+                GF(2^bitsize), e.g. AES MixColumns. ``None`` means the entries act over GF(2).
+
+        Example:
+            AES MixColumns is ``mat`` 4x4 with ``indexes_list`` the four columns of the state.
+        """
         m = len(mat)
         for i in mat:
             if len(i) != m:
@@ -263,12 +335,40 @@ class Layered_Function:
 
     # extract a subkey from the external variable, determined by "extraction_mask"
     def ExtractionLayer(self, name, crt_round, crt_layer, extraction_indexes, external_variable):
+        """Apply a layer "name" that copies selected words of an external variable into the state.
+
+        Used by a key schedule to take a subkey out of the key variable: the state word ``j``
+        receives ``external_variable[extraction_indexes[j]]``.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            extraction_indexes (list): For each state word in order, which index of
+                ``external_variable`` it takes. Its length sets how many words are written.
+            external_variable (list): The variables to read from, e.g. the key input.
+        """
         for j, indexes in enumerate(extraction_indexes):
             in_var, out_var = external_variable[indexes], self.vars[crt_round][crt_layer+1][j]
             self._add_equal_constraint(name, crt_round, crt_layer, j, in_var, out_var)
 
     # apply a layer "name" of an AddRoundKeyLayer addition, at the round "crt_round", at the layer "crt_layer", with the adding operator "my_operator". Only the positions where mask=1 will have the AddRoundKey applied, the rest being just identity
     def AddRoundKeyLayer(self, name, crt_round, crt_layer, my_operator, sk_function, mask = None):
+        """Apply a layer "name" that combines the state with a subkey, identity where masked off.
+
+        Args:
+            name (str): Name of the layer.
+            crt_round (int): Round number.
+            crt_layer (int): Layer number.
+            my_operator (callable): The combining operator, called as
+                ``my_operator([state_var, subkey_var], [out_var], ID=...)``, e.g. ``XOR``.
+            sk_function (Layered_Function): The subkey function; its last layer of round
+                ``crt_round`` supplies the subkey words, consumed in order.
+            mask (list, optional): One 0/1 per state word; 1 receives a subkey word, 0 is
+                identity. Defaults to all ones over ``sk_function.nbr_words``, and is padded with
+                zeros if shorter than the state. ``sum(mask)`` must equal
+                ``sk_function.nbr_words`` or it raises.
+        """
         if mask is None: mask = [1]*sk_function.nbr_words
         if sum(mask) != sk_function.nbr_words:
             raise ValueError("AddRoundKeyLayer: subkey size does not match the mask")

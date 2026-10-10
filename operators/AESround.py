@@ -35,6 +35,7 @@ class AESround(Operator):
         "milp": _MODEL_VERSIONS,
     }
     SUPPORTED_IMPLEMENTATIONS = ("python", "c")
+    MODEL_VERSIONS_DELEGATED = True # The round delegates its model version to its inner operators.
 
     def __init__(self, input_vars, output_vars, subkey=None, ID = None):
         if len(input_vars) != 16:

@@ -1,6 +1,7 @@
 """Model-building configuration for cipher analysis.
 """
 
+from operators.Sbox import Sbox
 from tools.paths import get_files_dir
 
 
@@ -33,6 +34,13 @@ DIFFERENTIAL_GOALS = ("DIFFERENTIAL_SBOXCOUNT", "DIFFERENTIALPATH_PROB", "DIFFER
 LINEAR_GOALS = ("LINEAR_SBOXCOUNT", "LINEARPATH_CORR", "LINEARHULL_CORR",
                 "TRUNCATEDLINEAR_SBOXCOUNT")
 INTEGRAL_GOALS = ("INTEGRAL_TWOSUBSET",)
+
+# These two searches are strategies over a middle-round goal rather than models of their own, so
+# each goal names the goal it is modelled as.
+IMPOSSIBLE_GOAL_MIDDLE = {"IMPOSSIBLETRUNCATEDDIFF": "TRUNCATEDDIFF_SBOXCOUNT",
+                          "IMPOSSIBLEDIFF": "DIFFERENTIAL_SBOXCOUNT"}
+ZEROCORR_GOAL_MIDDLE = {"ZEROCORRELATIONTRUNCATEDLINEAR": "TRUNCATEDLINEAR_SBOXCOUNT",
+                        "ZEROCORRELATIONLINEAR": "LINEAR_SBOXCOUNT"}
 
 # objective_target comes in two forms: a bare keyword, or a keyword plus a number ("AT MOST 12").
 OBJECTIVE_TARGETS_BARE = ("OPTIMAL", "EXISTENCE")
@@ -139,29 +147,33 @@ def configure_model_version(cipher, goal, config_model):
         )
 
 
-def set_model_versions(cipher, version, functions, rounds, layers, positions, operator_name=None):
-    """Assign a model version to matching constraints in the selected cipher scope."""
-    def assign_version(cons):
-        if operator_name is None: # Assign model_version to all operators in the cipher.
-            cons.model_version = cons.__class__.__name__ + "_" + version
-        elif operator_name == cons.__class__.__name__ or (
-            operator_name == "Sbox"
-            and cons.__class__.__name__.endswith("Sbox")
-        ):
-            cons.model_version = cons.__class__.__name__ + "_" + version
+def operator_in_scope(operator_class, operator_name):
+    """Whether ``operator_class`` is covered by the ``operator_name`` scope of a version rule.
 
-    # Assign model_version to input/output constraints.
-    for cons in cipher.inputs_constraints:
-        assign_version(cons)
-    for cons in cipher.outputs_constraints:
-        assign_version(cons)
+    ``None`` covers every operator. ``"Sbox"`` covers every S-box.
+    """
+    if operator_name is None:
+        return True
+    if operator_name == "Sbox":
+        return issubclass(operator_class, Sbox)
+    return operator_name == operator_class.__name__
 
-    # Assign model_version to each function.
+
+def scoped_constraints(cipher, functions, rounds, layers):
+    """Every operator of ``cipher`` inside the given scope, inputs and outputs included."""
+    constraints = list(cipher.inputs_constraints) + list(cipher.outputs_constraints)
     for f in functions:
         for r in rounds[f]:
             for l in layers[f][r]:
-                for cons in cipher.functions[f].constraints[r][l]:
-                    assign_version(cons)
+                constraints.extend(cipher.functions[f].constraints[r][l])
+    return constraints
+
+
+def set_model_versions(cipher, version, functions, rounds, layers, positions, operator_name=None):
+    """Assign a model version to matching constraints in the selected cipher scope."""
+    for cons in scoped_constraints(cipher, functions, rounds, layers):
+        if operator_in_scope(type(cons), operator_name):
+            cons.model_version = cons.__class__.__name__ + "_" + version
 
 
 def gen_round_model_constraint_obj_fun(cipher, goal, config_model):

@@ -2,6 +2,8 @@
 
 Not ready for use, still in development."""
 
+IN_DEVELOPMENT = True
+
 from primitives.primitives import Block_cipher
 from operators.modular_operators import ModAdd
 from operators.SHACAL2BooleanFunctions import SHACAL2_Sigma0, SHACAL2_Sigma1, SHACAL2_Sum0, SHACAL2_Sum1, SHACAL2_Maj, SHACAL2_Ch

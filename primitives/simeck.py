@@ -22,7 +22,8 @@ class Simeck_permutation(Permutation):
 
         p_bitsize = version
         full_rounds = {32: 32, 48: 36, 64: 44}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(version)
+        if version not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for Simeck_permutation. Expected one of {sorted(full_rounds)}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[version]
         if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (5, 2, 2, p_bitsize>>1)
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
@@ -79,7 +80,8 @@ class Simeck_block_cipher(Block_cipher):
 
         p_bitsize, k_bitsize = version[0], version[1]
         full_rounds = {(32, 64): 32, (48, 96): 36}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get((version[0], version[1]))
+        if (p_bitsize, k_bitsize) not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for Simeck_block_cipher. Expected one of {[list(v) for v in sorted(full_rounds)]}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[(p_bitsize, k_bitsize)]
         if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (6, 2, 2, p_bitsize>>1),  (6, int(2*k_bitsize/p_bitsize), 2, p_bitsize>>1),  (1, 1, 0, p_bitsize>>1)
         k_nbr_rounds = max(1, nbr_rounds - k_nbr_words + 1)

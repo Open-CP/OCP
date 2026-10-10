@@ -23,7 +23,8 @@ class Skinny_permutation(Permutation):
         # define the parameters
         p_bitsize = version
         full_rounds = {64: 32, 128: 40}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(version)
+        if version not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for Skinny_permutation. Expected one of {sorted(full_rounds)}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[version]
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (4, 16, 0, int(p_bitsize/16))
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for Skinny_permutation.")
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
@@ -91,7 +92,8 @@ class Skinny_block_cipher(Block_cipher):
         # define the parameters
         p_bitsize, k_bitsize = version[0], version[1]
         full_rounds = {(64, 64): 32, (64, 128): 36, (64, 192): 40, (128, 128): 40, (128, 256): 48, (128, 384): 56}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get((version[0], version[1]))
+        if (p_bitsize, k_bitsize) not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for Skinny_block_cipher. Expected one of {[list(v) for v in sorted(full_rounds)]}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[(p_bitsize, k_bitsize)]
         self.tweak_size = int(k_bitsize/p_bitsize)
         k_nbr_rounds = nbr_rounds if self.tweak_size == 1 else nbr_rounds + 1
         if represent_mode==0:

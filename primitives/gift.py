@@ -22,7 +22,8 @@ class GIFT_permutation(Permutation):
         """
 
         full_rounds = {64: 28, 128: 40}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(version)
+        if version not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for GIFT_permutation. Expected one of {sorted(full_rounds)}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[version]
         if represent_mode==0: nbr_layers, nbr_words, nbr_temp_words, word_bitsize = (3, version, 0, 1)
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for GIFT_permutation.")
         super().__init__(name, s_input, s_output, nbr_rounds, [nbr_layers, nbr_words, nbr_temp_words, word_bitsize])
@@ -96,8 +97,9 @@ class GIFT_block_cipher(Block_cipher):
             represent_mode: Integer specifying the mode of representation used for encoding the cipher.
         """
         p_bitsize, k_bitsize = version[0], version[1]
-        full_rounds = {64: 28, 128: 40}
-        if nbr_rounds is None: nbr_rounds = full_rounds.get(p_bitsize)
+        full_rounds = {(64, 128): 28, (128, 128): 40}
+        if (p_bitsize, k_bitsize) not in full_rounds: raise ValueError(f"[ERROR] Unknown version {version} for GIFT_block_cipher. Expected one of {[list(v) for v in sorted(full_rounds)]}.")
+        if nbr_rounds is None: nbr_rounds = full_rounds[(p_bitsize, k_bitsize)]
         if represent_mode==0: (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (4, p_bitsize, 0, 1),  (1, k_bitsize, 0, 1),  (1, int(p_bitsize/2), 0, 1)
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for GIFT_block_cipher.")
         super().__init__(name, p_input, k_input, c_output, nbr_rounds, nbr_rounds, [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize], [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize], [sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize])

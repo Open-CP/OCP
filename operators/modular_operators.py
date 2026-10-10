@@ -292,6 +292,8 @@ class ModMul(BinaryOperator):
     ``modulo`` optionally sets the modulus; by default it uses 2^bitsize.
     """
 
+    SUPPORTED_MODEL_VERSIONS = {"sat": (), "milp": ()}
+
     def __init__(self, input_vars, output_vars, modulo = None, ID = None):
         super().__init__(input_vars, output_vars, ID = ID )
         self.modulo = modulo
@@ -326,6 +328,8 @@ class ConstantAdd(UnaryOperator):
 
     ``modulo`` optionally sets the modulus; by default it uses 2^bitsize.
     """
+
+    SUPPORTED_MODEL_VERSIONS = {"sat": (), "milp": ()}
 
     def __init__(self, input_vars, output_vars, constant_table, round = 0, index = 0, modulo = None, ID = None, table_name = "RC"):
         super().__init__(input_vars, output_vars, ID = ID)

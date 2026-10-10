@@ -18,6 +18,15 @@ KNOT_PERMUTATION_DEFAULT_VERSION = (256, 'AEAD')
 
 
 # The KNOT internal permutation
+def knot_version_params(version):
+    """The table entry for ``version``, normalising a list to a tuple; raises if there is none."""
+    version = tuple(version) if isinstance(version, list) else version
+    if version not in KNOT_PERMUTATION_VERSIONS:
+        raise ValueError(f"[ERROR] Unknown version {version} for KNOT_permutation. Expected one of "
+                         f"{[list(v) for v in sorted(KNOT_PERMUTATION_VERSIONS)]}.")
+    return version, KNOT_PERMUTATION_VERSIONS[version]
+
+
 class KNOT_permutation(Permutation):
     def __init__(self, name, version, s_input, s_output, nbr_rounds=None, represent_mode=0):
         """
@@ -32,8 +41,7 @@ class KNOT_permutation(Permutation):
             represent_mode: Integer specifying the mode of representation used for encoding the permutation.
         """
         if represent_mode != 0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for KNOT_permutation.")
-        version = tuple(version) if isinstance(version, list) else version
-        params = KNOT_PERMUTATION_VERSIONS[version]
+        version, params = knot_version_params(version)
         rows, cols, d, lfsr, offsets, direction = params["rows"], params["cols"], params["d"], params["lfsr"], params["offsets"], params["direction"]
         total = rows * cols
         if nbr_rounds is None: nbr_rounds = params["nbr_rounds"]
@@ -128,8 +136,7 @@ class KNOT_permutation(Permutation):
 
 def KNOT_PERMUTATION(r=None, version=None, represent_mode=0, copy_operator=False):
     if version is None: version = KNOT_PERMUTATION_DEFAULT_VERSION
-    version = tuple(version) if isinstance(version, list) else version
-    params = KNOT_PERMUTATION_VERSIONS[version]
+    version, params = knot_version_params(version)
     n = params["rows"] * params["cols"]
     my_input, my_output = [var.Variable(1, ID="in" + str(i)) for i in range(n)], [var.Variable(1, ID="out" + str(i)) for i in range(n)]
     my_permutation = KNOT_permutation(f"KNOT{version[0]}_{version[1]}_PERM", version, my_input, my_output, nbr_rounds=r, represent_mode=represent_mode)
