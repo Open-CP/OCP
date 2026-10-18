@@ -63,6 +63,21 @@ def _printable_config(config_solver):
     return {k: v for k, v in config_solver.items() if k != "resource_usage"}
 
 
+SOLVER_STATUSES = ("SAT", "UNSAT", "UNKNOWN")  # how a solve ended; only "UNSAT" proves no solution exists
+
+
+def _set_solver_status(config_solver, status, reason=None):
+    """Record how the solve ended, so a caller cannot read ``[]`` as UNSAT.
+
+    "UNKNOWN" means a limit stopped the solver: any result is partial and no bound was proven.
+    """
+    if status not in SOLVER_STATUSES:
+        raise ValueError(f"[ERROR] Unknown solver status: '{status}'. Expected one of {list(SOLVER_STATUSES)}.")
+    config_solver["solver_status"] = status
+    if reason is not None:
+        config_solver["solver_status_reason"] = reason
+
+
 def _modules_available(*module_names):
     """Return True if every named module is importable, without importing any of them."""
     return all(find_spec(module_name) is not None for module_name in module_names)
@@ -351,12 +366,15 @@ def solve_milp(filename, config_solver=None):
 
     Returns:
         A list of solutions. Each solution is represented as a dictionary mapping variable names to their values.
+        An empty list means no solution only under ``config_solver["solver_status"] == "UNSAT"``.
     """
 
     if config_solver is None:
         config_solver = {}
     if not isinstance(config_solver, dict):
         raise ValueError(f"Invalid config_solver: {config_solver}. Expected a dictionary or None.")
+    for key in ("solver_status", "solver_status_reason"):
+        config_solver.pop(key, None)  # the setdefault below must not meet the previous solve's status
     solver = normalize_milp_solver_name(config_solver.get("solver", "DEFAULT"))
     config_solver["solver"] = solver
     if "solver_version" not in config_solver:  # resolve once (guard: setdefault would recompute every call)
@@ -371,7 +389,9 @@ def solve_milp(filename, config_solver=None):
         elif solver == "SCIP":
             solutions = solve_milp_scip(filename, config_solver)
         # Normalize a missing-backend None to [] so callers always get a list.
-        return solutions if solutions is not None else []
+        solutions = solutions if solutions is not None else []
+        config_solver.setdefault("solver_status", "SAT" if solutions else "UNSAT")
+        return solutions
     finally:
         config_solver["resource_usage"] = monitor.stop()
         elapsed = round(time.time() - time_start, 2)
@@ -398,14 +418,22 @@ def solve_milp_gurobi(filename, config_solver):
         # Solve the model
         model.optimize()
         sol_count = getattr(model, "SolCount", 0)
-    except gp.GurobiError:
-        print("[ERROR] Check your Gurobi license, visit https://gurobi.com/unrestricted for more information")
-        return []
+        status = getattr(model, "Status", None)
+    except gp.GurobiError as e:
+        raise RuntimeError(f"[ERROR] Gurobi failed: {e}. Check your license, "
+                           f"see https://gurobi.com/unrestricted") from e
+
+    # How it ended, before the solutions: no solution is UNSAT only if Gurobi says infeasible,
+    # and a solution found at a limit is not a proven optimum.
+    if status == gp.GRB.INFEASIBLE:
+        _set_solver_status(config_solver, "UNSAT")
+    elif status != gp.GRB.OPTIMAL:
+        _set_solver_status(config_solver, "UNKNOWN", f"Gurobi status {status}")
 
     # Return a list of solutions
     # Case 1: No solution found
     if sol_count == 0:
-        print("[INFO] Found no solution from Gurobi.")
+        print(f"[INFO] Found no solution from Gurobi (status {status}).")
         return []
 
     # Case 2: Single optimal solution found
@@ -446,13 +474,19 @@ def solve_milp_scip(filename, config_solver):
         # Solve the model
         model.optimize()
         sol_count = model.getNSols()
+        status = model.getStatus()
     except _scip_error_types() as e:
-        print(f"[WARNING] SCIP solver error: {e} ... skipping test")
-        return []
+        raise RuntimeError(f"[ERROR] SCIP failed: {e}") from e
+
+    # How it ended, before the solutions (as in solve_milp_gurobi).
+    if status == "infeasible":
+        _set_solver_status(config_solver, "UNSAT")
+    elif status != "optimal":
+        _set_solver_status(config_solver, "UNKNOWN", f"SCIP status '{status}'")
 
     # Return a list of solutions
     if sol_count == 0:
-        print("[INFO] Found no solution from SCIP.")
+        print(f"[INFO] Found no solution from SCIP (status '{status}').")
         return []
 
     else:
@@ -479,14 +513,17 @@ def solve_sat(filename, variable_map, config_solver=None):
             - solution_number: The number of solutions to find (default: 1).
 
     Returns:
-        list: Up to ``solution_number`` solutions, each a dict mapping variable names to 0/1;
-            an empty list if unsatisfiable. An unloadable backend raises an exception.
+        list: Up to ``solution_number`` solutions, each a dict mapping variable names to 0/1.
+            An empty list means unsatisfiable only under ``config_solver["solver_status"] == "UNSAT"``.
+            An unloadable backend, a missing binary or unparsable solver output raises.
     """
 
     if config_solver is None:
         config_solver = {}
     if not isinstance(config_solver, dict):
         raise ValueError(f"Invalid config_solver: {config_solver}. Expected a dictionary or None.")
+    for key in ("solver_status", "solver_status_reason"):
+        config_solver.pop(key, None)  # the setdefault below must not meet the previous solve's status
     solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"),
                                        backend=config_solver.get("backend"))
     config_solver["solver"] = solver
@@ -510,7 +547,9 @@ def solve_sat(filename, variable_map, config_solver=None):
         else:
             solutions = []
         # Normalize a None to [] so callers always get a list (parity with solve_milp).
-        return solutions if solutions is not None else []
+        solutions = solutions if solutions is not None else []
+        config_solver.setdefault("solver_status", "SAT" if solutions else "UNSAT")
+        return solutions
     finally:
         config_solver["resource_usage"] = monitor.stop()
         elapsed = round(time.time() - time_start, 2)
@@ -608,6 +647,18 @@ def _projected_block_clause(model, trail_var_nums):
     return [-l for l in model if abs(l) in trail_var_nums]
 
 
+def _set_cpsat_status(config_solver, cp_model, status, solutions):
+    """Map a CP-SAT status to a solver status; an invalid model is a bug, not an answer."""
+    if solutions:
+        _set_solver_status(config_solver, "SAT")
+    elif status == cp_model.INFEASIBLE:
+        _set_solver_status(config_solver, "UNSAT")
+    elif status == cp_model.MODEL_INVALID:
+        raise RuntimeError("[ERROR] CP-SAT rejected the model as invalid.")
+    else:  # UNKNOWN, or a status this version does not name: nothing proven
+        _set_solver_status(config_solver, "UNKNOWN", f"CP-SAT status {status}")
+
+
 def solve_sat_cpsat(filename, variable_map, config_solver):
     """Solve a SAT model (DIMACS CNF ``filename``) with Google OR-Tools CP-SAT.
 
@@ -635,8 +686,11 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
 
     solver = cp_model.CpSolver()
     solver.parameters.num_workers = 1
-    config_solver = config_solver or {}
+    if config_solver is None:
+        config_solver = {}
     solution_number = config_solver.get("solution_number", 1)
+    if not isinstance(solution_number, int) or isinstance(solution_number, bool) or solution_number < 1:
+        raise ValueError(f"[ERROR] solution_number = {solution_number!r} must be an integer >= 1.")
     sol_list = []
 
     if solution_number == 1:
@@ -646,10 +700,11 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
             for var, var_id in variable_map.items():
                 sol[var] = solver.value(boolean_var_map[var_id])
             sol_list.append(sol)
+        _set_cpsat_status(config_solver, cp_model, status, sol_list)
         print(f"[INFO] Found {len(sol_list)} solution(s) from OR-Tools CP-SAT.")
         return sol_list
 
-    elif solution_number > 1:
+    else:  # guarded above: an int >= 1, so this is solution_number > 1
         class VarArraySolutionPrinter(cp_model.CpSolverSolutionCallback):
             def __init__(self, variable_map, boolean_var_map, solution_number):
                 cp_model.CpSolverSolutionCallback.__init__(self)
@@ -666,10 +721,10 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
                 self.solutions.append(sol)
 
         solution_printer = VarArraySolutionPrinter(variable_map, boolean_var_map, solution_number)
-        solver.SearchForAllSolutions(model, solution_printer)
+        status = solver.SearchForAllSolutions(model, solution_printer)
+        _set_cpsat_status(config_solver, cp_model, status, solution_printer.solutions)
         print(f"[INFO] Found {len(solution_printer.solutions)} solution(s) from OR-Tools CP-SAT.")
         return solution_printer.solutions
-    return sol_list
 
 
 def solve_sat_external(filename, variable_map, config_solver):
@@ -679,15 +734,15 @@ def solve_sat_external(filename, variable_map, config_solver):
         - solver_bin: binary path/name overriding the registry default (optional).
         - solver-specific keys read by the registry builder (e.g. ``threads`` for PRS).
 
-    Returns up to ``solution_number`` ``{variable_name: 0/1}`` solutions, or ``None``
-    if the solver binary is unavailable; the list is empty (or cut short) on UNSAT or timeout.
+    Returns up to ``solution_number`` solutions, cut short on UNSAT or a timeout -- which
+    ``solver_status`` tells apart. An unregistered solver, a missing binary or bad output raises.
     """
 
     solver = config_solver.get("solver")
     build_args = EXTERNAL_SAT_SOLVERS.get(solver)
     if build_args is None:
-        print(f"[WARNING] '{solver}' is not a registered external solver ... skipping.")
-        return None
+        raise ValueError(f"[ERROR] '{solver}' is not a registered external solver. "
+                         f"Supported: {', '.join(EXTERNAL_SAT_SOLVERS)}.")
 
     timeout = config_solver.get("time_limit", None)
     solution_number = config_solver.get("solution_number", 1)
@@ -701,8 +756,8 @@ def solve_sat_external(filename, variable_map, config_solver):
             cnf_lines = f.read().splitlines()
         header_idx = next((i for i, l in enumerate(cnf_lines) if l.lstrip().startswith("p cnf")), None)
         if header_idx is None:
-            print(f"[WARNING] {filename} has no 'p cnf' header ... skipping.")
-            return []
+            raise ValueError(f"[ERROR] {filename} has no 'p cnf' header, so the blocking clauses "
+                             f"cannot be counted; enumeration needs a well-formed DIMACS file.")
         nv, nc = (int(x) for x in cnf_lines[header_idx].split()[2:4])
         body = cnf_lines[header_idx + 1:]        # the clause lines
 
@@ -714,17 +769,17 @@ def solve_sat_external(filename, variable_map, config_solver):
             # First run uses the original file; later runs use the working copy with blocks.
             cmd = base_cmd + [filename if not blocks else work_path]
 
-            # A timeout stops enumeration; already-found solutions (if any) are still
-            # returned. A missing binary means the backend is unavailable -> None
-            # (it can only happen on the first call, before any solution is found).
+            # A timeout stops enumeration and already-found solutions are still returned, with
+            # the status saying they are partial. A missing binary is a configuration error.
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
             except subprocess.TimeoutExpired:
                 print(f"[WARNING] {solver} timed out after {timeout}s ... stopping enumeration.")
+                _set_solver_status(config_solver, "UNKNOWN", f"timed out after {timeout}s")
                 break
-            except FileNotFoundError:
-                print(f"[WARNING] {solver} binary not found at '{cmd[0]}' ... skipping.")
-                return None
+            except FileNotFoundError as e:
+                raise RuntimeError(f"[ERROR] {solver} binary not found at '{cmd[0]}'. "
+                                   f"Set config_solver['solver_bin'] or put it on PATH.") from e
 
             # Parse the standard DIMACS competition output (s-line + v model lines).
             status, literals = None, []
@@ -735,19 +790,31 @@ def solve_sat_external(filename, variable_map, config_solver):
                 elif line.startswith("v "):
                     literals += [int(tok) for tok in line[2:].split()]
 
-            if status != "SATISFIABLE":
-                print("[INFO] UNSAT reached." if status == "UNSATISFIABLE"
-                      else f"[INFO] {solver} returned status '{status}' ... stopping.")
+            if status == "UNSATISFIABLE":
+                print("[INFO] UNSAT reached.")
+                if not sol_list:  # mid-enumeration it only means "no further solution"
+                    _set_solver_status(config_solver, "UNSAT")
                 break
+            if status == "UNKNOWN":  # DIMACS: the solver gave up at its own limit
+                print(f"[WARNING] {solver} returned UNKNOWN ... stopping.")
+                _set_solver_status(config_solver, "UNKNOWN", f"{solver} returned UNKNOWN")
+                break
+            if status != "SATISFIABLE":
+                unreadable = (f"{solver} returned status '{status}', which is not DIMACS "
+                              f"competition output; its result cannot be read")
+                if sol_list:  # as for a timeout: the solutions already found are still valid
+                    print(f"[WARNING] {unreadable} ... stopping enumeration.")
+                    _set_solver_status(config_solver, "UNKNOWN", unreadable)
+                    break
+                raise RuntimeError(f"[ERROR] {unreadable}.")
 
             # Set of signed literals (drop the terminating 0). A SATISFIABLE status with no
             # model means the solver did not print its assignment -> guard against a silent
             # empty solution rather than returning garbage.
             model = set(lit for lit in literals if lit != 0)
             if not model:
-                print(f"[WARNING] {solver} reported SATISFIABLE but emitted no model (v-lines); "
-                      f"ensure it is invoked to print the assignment ... stopping.")
-                break
+                raise RuntimeError(f"[ERROR] {solver} reported SATISFIABLE but emitted no model "
+                                   f"(v-lines); ensure it is invoked to print the assignment.")
 
             sol_list.append(_solution_from_model(model, variable_map))
 

@@ -157,6 +157,37 @@ def gen_predefined_constraints(model_type, cons_type, cons_vars, cons_value, bit
     return builders[cons_type](model_type, cons_vars_name, cons_value, encoding=encoding)
 
 
+def gen_no_good_cut(var_ids, bits, model_type="milp"):
+    """No-good cut forbidding one 0/1 assignment ``bits`` over ``var_ids``, forcing any later
+    solution to differ in at least one of these variables (e.g. to enumerate distinct solutions).
+
+        MILP:  sum_{b=0} v + sum_{b=1} (1 - v) >= 1
+        SAT :  one blocking clause = OR of the negated literals of the assignment.
+
+    Returns a list with the single constraint string (empty list if ``var_ids`` is empty).
+    """
+    if len(var_ids) != len(bits):
+        raise ValueError(f"gen_no_good_cut: var_ids and bits differ in length ({len(var_ids)} vs {len(bits)}).")
+    if not var_ids:
+        return []
+    if model_type == "milp":
+        # violated only at the given assignment
+        ones = sum(1 for b in bits if int(b) != 0)
+        parts = []
+        for vid, b in zip(var_ids, bits):
+            sign = "+" if int(b) == 0 else "-"
+            if not parts:  # first term: drop a leading '+', keep a leading '-'
+                parts.append(vid if sign == "+" else f"-{vid}")
+            else:
+                parts.append(f"{sign} {vid}")
+        lhs = " ".join(parts)
+        return [f"{lhs} >= {1 - ones}"]
+    elif model_type == "sat":
+        return [" ".join((f"-{vid}" if int(b) else f"{vid}") for vid, b in zip(var_ids, bits))]
+    else:
+        raise ValueError(f"gen_no_good_cut: unknown model_type '{model_type}'.")
+
+
 def gen_constraints_exactly(model_type, cons_vars, cons_value, encoding=None):
     """Constrain each selected variable to equal ``cons_value`` (MILP, or SAT for value 0/1)."""
     if model_type == "milp":
@@ -175,14 +206,10 @@ def gen_constraints_sum_exactly(model_type, cons_vars, cons_value, encoding=1):
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" = {cons_value}"]
     elif model_type == "sat" and cons_value == 0:
         return [f"-{cons_vars[i]}" for i in range(len(cons_vars))]
+    elif model_type == "sat" and cons_vars and cons_value > len(cons_vars):
+        return _sat_false(cons_vars)
     elif model_type == "sat" and pysat_import:
-        # ``None`` is defaulted downstream in ``_pysat_cardinality_constraints``; here we
-        # only reject an explicitly out-of-range encoding.
-        if encoding is not None and encoding not in [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]:
-            raise ValueError(
-                f"[ERROR] Invalid encoding = {encoding}, refer "
-                "https://pysathq.github.io/docs/html/api/card.html"
-            )
+        _check_sat_encoding(encoding, "SUM_EXACTLY")
         card_enc = _require_pysat_cardenc()
         return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.equals, "equals")
     elif model_type == "sat":
@@ -203,15 +230,34 @@ def gen_constraints_at_most(model_type, cons_vars, cons_value, encoding=None):
         raise ValueError(f"Unsupported model_type '{model_type}' for AT_MOST constraint.")
 
 
+def _check_sat_encoding(encoding, cons_type):
+    """Refuse an encoding the SAT cardinality builders cannot take."""
+    if encoding is None:
+        return
+    if isinstance(encoding, int) and not isinstance(encoding, bool) and 0 <= encoding <= 9:
+        return
+    if cons_type == "SUM_AT_MOST" and encoding == "SEQUENTIAL":
+        return
+    allowed = "0-9" + (" or 'SEQUENTIAL'" if cons_type == "SUM_AT_MOST" else "")
+    raise ValueError(f"[ERROR] Invalid encoding {encoding!r} for {cons_type}: expected {allowed}. "
+                     f"Refer to https://pysathq.github.io/docs/html/api/card.html")
+
+
+def _sat_false(cons_vars):
+    """Two clauses that cannot both hold: a SAT constraint which is false over these variables."""
+    return [f"{cons_vars[0]}", f"-{cons_vars[0]}"]
+
+
 def gen_constraints_sum_at_most(model_type, cons_vars, cons_value, encoding="SEQUENTIAL"):
     """Constrain the sum of the selected variables to be at most ``cons_value``."""
     if model_type == "milp":
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" <= {cons_value}"]
+    elif model_type == "sat" and cons_vars and cons_value >= len(cons_vars):
+        return []   # at most n of n binary variables: trivially true, so no clause is needed
     elif model_type == "sat" and (encoding == "SEQUENTIAL" or encoding is None):
         return gen_sequential_encoding_sat(cons_vars, cons_value)
     elif model_type == "sat" and pysat_import:
-        if not isinstance(encoding, int):
-            encoding = 1  # Default to 1 if the encoding is not specified as an integer
+        _check_sat_encoding(encoding, "SUM_AT_MOST")
         card_enc = _require_pysat_cardenc()
         return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.atmost, "atmost")
     elif model_type == "sat":
@@ -241,7 +287,10 @@ def gen_constraints_sum_at_least(model_type, cons_vars, cons_value, encoding=1):
         return [' + '.join(f"{cons_vars[i]}" for i in range(len(cons_vars))) + f" >= {cons_value}"]
     elif model_type == "sat" and cons_value == 1:
         return [' '.join(f"{cons_vars[i]}" for i in range(len(cons_vars)))]
+    elif model_type == "sat" and cons_vars and cons_value > len(cons_vars):
+        return _sat_false(cons_vars)   # as in gen_constraints_sum_exactly
     elif model_type == "sat" and pysat_import:
+        _check_sat_encoding(encoding, "SUM_AT_LEAST")
         card_enc = _require_pysat_cardenc()
         return _pysat_cardinality_constraints(cons_vars, cons_value, encoding, card_enc.atleast, "atleast")
     elif model_type == "sat":
@@ -256,16 +305,20 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None):
     if not hasattr(gen_sequential_encoding_sat, "_counter"):
         gen_sequential_encoding_sat._counter = 0
     n = len(hw_list)
-    if not isinstance(weight, int) or weight < 0 or weight > n:
-        raise ValueError(f"weight should be an integer: 0 <= weight <= n (n={n}), got {weight}")
+    if not isinstance(weight, int) or weight < 0:
+        raise ValueError(f"[ERROR] weight should be a non-negative integer, got {weight!r}.")
     if weight == 0:
         return [f'-{var}' for var in hw_list]
     if weight >= n:
-        return []
+        return []   # at most n (or more) of n: trivially true, so no clause is needed
     if dummy_variables is None:
         gen_sequential_encoding_sat._counter += 1
         prefix = f'dummy_seq_{gen_sequential_encoding_sat._counter}'
         dummy_variables = [[f'{prefix}_{i}_{j}' for j in range(weight)] for i in range(n - 1)]
+    elif (not isinstance(dummy_variables, list) or len(dummy_variables) != n - 1
+          or any(not isinstance(row, list) or len(row) < weight for row in dummy_variables)):
+        raise ValueError(f"[ERROR] dummy_variables must hold {n - 1} rows of at least {weight} "
+                         f"counter names: one row per position, one column per weight level.")
     constraints = [f'-{hw_list[0]} {dummy_variables[0][0]}']
     constraints.extend([f'-{dummy_variables[0][j]}' for j in range(1, weight)])
     for i in range(1, n - 1):
@@ -282,19 +335,49 @@ def gen_sequential_encoding_sat(hw_list, weight, dummy_variables=None):
 
 # ----------- Matsui's branch-and-bound constraints Generation ------------- #
 def gen_matsui_constraints_milp(Round, best_obj, obj_fun, cons_type="ALL"):
-    """Generate Matsui branch-and-bound constraints for MILP models."""
+    """Matsui's branch-and-bound constraints for a MILP model of a ``Round``-round search.
+
+    Any contiguous ``i`` rounds of a valid trail are a valid ``i``-round trail, so they weigh at
+    least ``best_obj[i-1]`` and the complementary block weighs at most ``obj - best_obj[i-1]``.
+    That is emitted for each ``i`` in ``1..Round-1`` with a positive bound:
+
+        UPPER:  sum of rounds i+1..Round   <=  obj - best_obj[i-1]
+        LOWER:  sum of rounds 1..Round-i   <=  obj - best_obj[i-1]
+
+    Args:
+        Round: how many rounds are searched, which need not be ``cipher.nbr_rounds``.
+        best_obj: ``[B_1, ..., B_{Round-1}]``, ``B_i`` the best weight known for ``i`` rounds --
+            true weights, not the SAT side's integer objective.
+        obj_fun: round ``r``'s weight variables in ``obj_fun[r-1]``; ``Round`` rows, or
+            ``Round + 1`` when the extra one is empty.
+        cons_type: ``"UPPER"``, ``"LOWER"`` or ``"ALL"`` for both.
+
+    One empty extra row is tolerated; every round that remains must carry weight. That row is the
+    one added for a leftover key addition (see ``primitives/primitives.py``), so dropping it costs
+    nothing. A weightless round elsewhere is refused: ``best_obj`` bounds rounds that transform
+    the state, so a complement holding one is held to weight it cannot carry.
+    """
     if Round < 2:
-        raise ValueError(f"Round = {Round} must be at least 2.")
+        raise ValueError(f"[ERROR] Round = {Round} must be at least 2: one round cannot be split in two.")
     if len(best_obj) != Round - 1:
-        raise ValueError(f"best_obj = {best_obj} length must be Round-1 = {Round - 1}.")
-    if obj_fun is not None:  # copy so the caller's list is not mutated
-        obj_fun = list(obj_fun)
-    while obj_fun and obj_fun[-1] == []:  # drop trailing empty rounds
-        obj_fun.pop()
-    if obj_fun is None or len(obj_fun) != Round or not all(isinstance(obj, list) for obj in obj_fun):
-        raise ValueError(f"obj_fun = {obj_fun} must be a list of lists, and with length equal to Round = {Round}.")
+        raise ValueError(f"[ERROR] best_obj holds {len(best_obj)} bound(s), must hold Round-1 = {Round - 1}.")
+    if any(not isinstance(bound, (int, float)) or isinstance(bound, bool) for bound in best_obj):
+        raise ValueError(f"[ERROR] best_obj must hold numbers, got "
+                         f"{[type(bound).__name__ for bound in best_obj]}.")
+    if obj_fun is None:
+        raise ValueError("[ERROR] obj_fun must hold one list of weight variables per round, got None.")
+    obj_fun = list(obj_fun)  # accept any sequence of rows
+    if not all(isinstance(obj, list) for obj in obj_fun):
+        raise ValueError("[ERROR] obj_fun must hold one list of weight variables per round.")
+    if len(obj_fun) == Round + 1 and (obj_fun[0] == []) != (obj_fun[-1] == []): # Exactly one end is empty: drop it
+        obj_fun = obj_fun[1:] if obj_fun[0] == [] else obj_fun[:-1]
+    if len(obj_fun) != Round:
+        raise ValueError(f"[ERROR] obj_fun holds {len(obj_fun)} round(s) but Round = {Round}.")
+    if not all(obj_fun):
+        raise ValueError("[ERROR] obj_fun holds an empty round, so Matsui's bounds do not apply to "
+                         "it. Every round searched must carry weight; check the goal and the scope.")
     if cons_type not in ["ALL", "UPPER", "LOWER"]:
-        raise ValueError(f"cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER'].")
+        raise ValueError(f"[ERROR] cons_type = {cons_type} must be one of ['ALL', 'UPPER', 'LOWER'].")
 
     add_cons = []
     for i in range(1, Round):
@@ -318,20 +401,52 @@ def gen_matsui_constraints_sat(
     GroupConstraintChoice=1,
     GroupNumForChoice=1,
 ):
-    """Generate Matsui branch-and-bound constraints for SAT models."""
+    """Matsui's branch-and-bound constraints for a SAT model of a ``Round``-round search.
+
+    The same bounding condition as :func:`gen_matsui_constraints_milp`, imposed on the sequential
+    encoding's counter over all weight variables: the window spanning a group of rounds may hold at
+    most ``obj_sat - best_obj[start] - best_obj[Round-end]`` active variables. With the default
+    ``GroupNumForChoice = 1`` every window starts at round 0, so only the suffix family is emitted
+    -- MILP's UPPER, not its LOWER. That is deliberate: it matches the reference implementation.
+
+    Args:
+        Round: how many rounds are searched, which need not be ``cipher.nbr_rounds``.
+        best_obj: ``[B_1, ..., B_{Round-1}]``, whole numbers -- they count weight variables, so pass
+            a round's ``"integer_obj_fun_value"`` where its true weight is fractional.
+        obj_sat: the weight being tested, a positive integer.
+        obj_var: round ``r``'s weight variables in ``obj_var[r-1]``; ``Round`` rows, or
+            ``Round + 1`` when the extra one is empty.
+        GroupConstraintChoice: only ``1`` is implemented.
+        GroupNumForChoice: how many groups of windows to emit.
+
+    One empty extra row is dropped and every round that remains must carry weight, exactly as in
+    :func:`gen_matsui_constraints_milp`.
+    """
     if Round < 2:
-        raise ValueError(f"Round = {Round} must be at least 2.")
+        raise ValueError(f"[ERROR] Round = {Round} must be at least 2: one round cannot be split in two.")
     if len(best_obj) != Round - 1:
-        raise ValueError(f"best_obj length = {len(best_obj)} must be (Round-1) = {Round - 1}.")
+        raise ValueError(f"[ERROR] best_obj holds {len(best_obj)} bound(s), must hold Round-1 = {Round - 1}.")
     if not isinstance(obj_sat, int) or obj_sat <= 0:
-        raise ValueError(f"obj_sat = {obj_sat} must be a positive integer.")
-    if obj_var is not None:  # copy so the caller's list is not mutated
-        obj_var = list(obj_var)
-    while obj_var and obj_var[-1] == []:  # drop trailing empty rounds
-        obj_var.pop()
-    if obj_var is None or len(obj_var) != Round or not all(isinstance(row, list) for row in obj_var):
-        obj_var_len = "None" if obj_var is None else len(obj_var)
-        raise ValueError(f"obj_var must be a list of lists, and with length = {obj_var_len} equal to Round = {Round}.")
+        raise ValueError(f"[ERROR] obj_sat = {obj_sat} must be a positive integer.")
+    if any(not isinstance(bound, (int, float)) or isinstance(bound, bool) for bound in best_obj):
+        raise ValueError(f"[ERROR] best_obj must hold numbers, got "
+                         f"{[type(bound).__name__ for bound in best_obj]}.")
+    if any(not float(bound).is_integer() for bound in best_obj):  # these count weight variables
+        raise ValueError(f"[ERROR] best_obj = {best_obj} must hold whole numbers; where a weight is "
+                         f"fractional, pass that round's \"integer_obj_fun_value\" instead.")
+    best_obj = [int(bound) for bound in best_obj]
+    if obj_var is None:
+        raise ValueError("[ERROR] obj_var must hold one list of weight variables per round, got None.")
+    obj_var = list(obj_var)  # accept any sequence of rows
+    if not all(isinstance(row, list) for row in obj_var):
+        raise ValueError("[ERROR] obj_var must hold one list of weight variables per round.")
+    if len(obj_var) == Round + 1 and (obj_var[0] == []) != (obj_var[-1] == []):
+        obj_var = obj_var[1:] if obj_var[0] == [] else obj_var[:-1]
+    if len(obj_var) != Round:
+        raise ValueError(f"[ERROR] obj_var holds {len(obj_var)} round(s) but Round = {Round}.")
+    if not all(obj_var):
+        raise ValueError("[ERROR] obj_var holds an empty round, so Matsui's bounds do not apply to "
+                         "it. Every round searched must carry weight; check the goal and the scope.")
     if GroupConstraintChoice != 1:
         raise ValueError(f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}.")
     if GroupNumForChoice < 1:
@@ -345,6 +460,9 @@ def gen_matsui_constraints_sat(
     for r in range(Round):
         for i in range(len(obj_var[Round - 1 - r])):
             Main_Vars += [obj_var[Round - 1 - r][i]]
+    if obj_sat >= len(Main_Vars):
+        print(f"[INFO] obj_sat = {obj_sat} >= {len(Main_Vars)} weight variables, trivially satisfied.")
+        return []
     gen_matsui_constraints_sat._counter += 1
     dummy_var = [
         [
@@ -387,11 +505,17 @@ def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m):
     if not isinstance(k, int) or k <= 0:
         raise ValueError("k must be a positive integer.")
     if not isinstance(left, int) or left < 0:
-        raise ValueError("left index must be a non-negative integer.")
-    if not isinstance(right, int) or right >= len(obj_var):
-        raise ValueError(f"right index = {right} out of range of obj_var = {len(obj_var)}.")
+        raise ValueError(f"[ERROR] left index = {left} must be a non-negative integer.")
+    if not isinstance(right, int) or right < -1 or right >= len(obj_var):
+        raise ValueError(f"[ERROR] right index = {right} must lie in [-1, {len(obj_var) - 1}].")
+    if left > right + 1:  # the caller's own left <= right + 1 never breaks, so this is an index bug
+        raise ValueError(f"[ERROR] window [left, right] = [{left}, {right}] is inverted; an empty "
+                         f"window is written right = left - 1.")
     if not isinstance(m, int) or m < 0:
-        raise ValueError(f"m={m} must be a non-negative integer.")
+        raise ValueError(f"[ERROR] m = {m} must be a non-negative integer: obj_sat is below the "
+                         f"weight best_obj already forces.")
+    if right < left:  # empty window: nothing in it to count, so nothing to constrain
+        return []
 
     n = len(obj_var)
     add_cons = []
@@ -433,7 +557,7 @@ def gen_input_non_zero_constraints(cipher, config_model, bitwise):
     """
     cons_vars = [var for cons in cipher.inputs_constraints for var in cons.input_vars]
     model_type = config_model.get("model_type", "milp").lower()
-    encoding = config_model.get("atleast_encoding_sat", "SEQUENTIAL") if model_type == "sat" else None
+    encoding = config_model.get("atleast_encoding_sat", 1) if model_type == "sat" else None
     constraints = gen_predefined_constraints(
         model_type=model_type,
         cons_type="SUM_AT_LEAST",
@@ -454,31 +578,35 @@ def _cipher_boundary_vars(in_out, cipher):
     cons_vars = []
     if in_out == "input":
         if not hasattr(cipher, "inputs") or not isinstance(cipher.inputs, dict):
-            raise ValueError("[WARNING] Cipher 'inputs' attribute invalid.")
+            raise ValueError("[ERROR] Cipher 'inputs' attribute invalid.")
         for input_name in cipher.inputs:
             cons_vars += cipher.inputs[input_name]
     elif in_out == "output":
         if not hasattr(cipher, "outputs") or not isinstance(cipher.outputs, dict):
-            raise ValueError("[WARNING] Cipher 'outputs' attribute invalid.")
+            raise ValueError("[ERROR] Cipher 'outputs' attribute invalid.")
         for output_name in cipher.outputs:
             cons_vars += cipher.outputs[output_name]
     else:
-        raise ValueError(f"[WARNING] Invalid in_out: {in_out}. Expected 'input' or 'output'.")
+        raise ValueError(f"[ERROR] Invalid in_out: {in_out}. Expected 'input' or 'output'.")
 
     if not cons_vars:
-        raise ValueError(f"[WARNING] Cipher has no {in_out} variables.")
+        raise ValueError(f"[ERROR] Cipher has no {in_out} variables.")
     return cons_vars
 
 
 def normalize_fixed_value_bits(fixed_value, bit_count, value_name):
-    """Normalize a binary or hexadecimal fixed mask/difference string to bits."""
+    """Normalize a binary or hexadecimal fixed mask/difference string to bits.
+
+    A value wider than ``bit_count`` is rejected, never truncated: truncation would silently pin
+    the wrong bits.
+    """
 
     text = fixed_value.strip().lower()
     if text.startswith("0b"):
         digits = text[2:]
         if any(c not in "01" for c in digits):  # 0x validates via int(); 0b must too
             raise ValueError(
-                f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+                f"[ERROR] Invalid {value_name} format: {fixed_value}. "
                 "Expected binary (0b...) or hexadecimal (0x...) string."
             )
         bits = digits.zfill(bit_count)
@@ -487,36 +615,49 @@ def normalize_fixed_value_bits(fixed_value, bit_count, value_name):
             bits = bin(int(text, 16))[2:].zfill(bit_count)
         except ValueError as exc:
             raise ValueError(
-                f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+                f"[ERROR] Invalid {value_name} format: {fixed_value}. "
                 "Expected binary (0b...) or hexadecimal (0x...) string."
             ) from exc
     else:
         raise ValueError(
-            f"[WARNING] Invalid {value_name} format: {fixed_value}. "
+            f"[ERROR] Invalid {value_name} format: {fixed_value}. "
             "Expected binary (0b...) or hexadecimal (0x...) string."
         )
 
     if len(bits) > bit_count:
         raise ValueError(
-            f"[WARNING] {value_name} has {len(bits)} bits but the {bit_count}-bit boundary was expected."
+            f"[ERROR] {value_name} has {len(bits)} bits but the {bit_count}-bit boundary was expected."
         )
     return bits
 
 
-def _fix_vars_to_bits(cons_vars, bits, model_type):
-    """Pin ``cons_vars`` to ``bits``, MSB first, consuming ``var.bitsize`` bits per variable.
+def state_bits(cons_vars, fixed_value, value_name="value"):
+    """``[(var_id, bit)]`` for ``cons_vars`` pinned to ``fixed_value``, MSB first.
 
-    A 1-bit variable is addressed by its plain ID, a wider one bit by bit as ``{ID}_{i}``.
+    The word count and the word width come from the variables themselves, so a caller cannot
+    disagree with the primitive about how a state splits. ``fixed_value`` is the whole state as
+    ``"0x..."`` / ``"0b..."`` and must match the target's width.
     """
-    constraints, offset = [], 0
-    for var in cons_vars:
-        for bit_index in range(var.bitsize):
-            var_id = var.ID if var.bitsize == 1 else f"{var.ID}_{bit_index}"
-            constraints += gen_predefined_constraints(
-                model_type, "EXACTLY", [var_id], int(bits[offset + bit_index]), bitwise=False
-            )
-        offset += var.bitsize
-    return constraints
+    ids = state_var_ids(cons_vars)
+    bits = normalize_fixed_value_bits(fixed_value, len(ids), value_name)
+    return [(var_id, int(bit)) for var_id, bit in zip(ids, bits)]
+
+
+def state_var_ids(cons_vars):
+    """The model variable IDs of a state, MSB first.
+
+    Split out so reading a value off a solution uses the same order as pinning one into a model;
+    the two directions disagreeing would make a claim written here unreadable there.
+    """
+    return [var_id for var in cons_vars for var_id in expand_var_ids(var, bitwise=True)]
+
+
+def _fix_vars_to_bits(cons_vars, fixed_value, model_type, value_name="value"):
+    """Pin ``cons_vars`` to ``fixed_value`` as model constraints; see ``state_bits``."""
+    return [constraint
+            for var_id, bit in state_bits(cons_vars, fixed_value, value_name)
+            for constraint in gen_predefined_constraints(model_type, "EXACTLY", [var_id], bit,
+                                                         bitwise=False)]
 
 
 def gen_fixed_input_output_constraints(in_out, fixed_value, cipher, model_type, value_name="value"):
@@ -526,9 +667,7 @@ def gen_fixed_input_output_constraints(in_out, fixed_value, cipher, model_type, 
         raise ValueError(f"Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
 
     cons_vars = _cipher_boundary_vars(in_out, cipher)
-    bit_count = sum(var.bitsize for var in cons_vars)
-    bits = normalize_fixed_value_bits(fixed_value, bit_count, value_name)
-    return _fix_vars_to_bits(cons_vars, bits, model_type)
+    return _fix_vars_to_bits(cons_vars, fixed_value, model_type, value_name)
 
 
 def gen_fixed_activity_constraints(cons_vars, active_positions, model_type="milp", bitwise=False):
@@ -572,9 +711,7 @@ def gen_fixed_state_constraints(cipher, function, rnd, layer, fixed_value, model
         raise ValueError(f"nwords {nwords} out of range for {function!r} (1..{fn.nbr_words}).")
 
     cons_vars = fn.vars[rnd][layer][: nwords if nwords is not None else fn.nbr_words]
-    bit_count = sum(var.bitsize for var in cons_vars)
-    bits = normalize_fixed_value_bits(fixed_value, bit_count, value_name)
-    return _fix_vars_to_bits(cons_vars, bits, model_type)
+    return _fix_vars_to_bits(cons_vars, fixed_value, model_type, value_name)
 
 
 def gen_required_fixed_boundary_constraints(cipher, input_value, output_value, model_type):

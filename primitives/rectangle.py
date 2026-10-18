@@ -73,7 +73,7 @@ class RECTANGLE_block_cipher(Block_cipher):
         assert version in [[64,80], [64,128]], f"Unsupported version: {version}."
         p_bitsize, k_bitsize = version[0], version[1]
         if nbr_rounds is None or nbr_rounds==25:
-            nbr_rounds=26
+            nbr_rounds=26  # add one more round: round 26 applies the final key addition
             print(f"[INFO] For RECTANGLE, after 25 round transformations, there is still a final AddRoundKey layer. Hence, the internal modeling round number is set to {nbr_rounds}. Please keep this in mind when interpreting subsequent relative files.")
         if represent_mode!=0: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for {self.__class__.__name__}.")
         (s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize), (k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize), (sk_nbr_layers, sk_nbr_words, sk_nbr_temp_words, sk_word_bitsize) = (3, p_bitsize, 0, 1),  (3, k_bitsize, 0, 1),  (1, p_bitsize, 0, 1)
@@ -138,6 +138,7 @@ class RECTANGLE_block_cipher(Block_cipher):
                 S.SboxLayer("SB", i, 1, RECTANGLE_Sbox, index=state_sbox_indexes)  # Sbox layer
                 S.PermutationLayer("SR", i, 2, shift_rows) # ShiftRow layer
             elif i == 26:
+                self.padding_round = "last"  # one more round is added to the end of the cipher, after the last round
                 S.AddIdentityLayer("ID", i, 1)
                 S.AddIdentityLayer("ID", i, 2)
 

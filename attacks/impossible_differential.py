@@ -24,8 +24,8 @@ _GOAL_MIDDLE = IMPOSSIBLE_GOAL_MIDDLE   # shared vocabulary; see tools/model_con
 def _parse_and_set_configs(cipher, goal, config_model, config_solver):
     """Fill in default model/solver configuration and return ``(config_model, config_solver)``."""
     # ===== Set Default config_model and config_solver =====
-    config_model = config_model or {}
-    config_solver = config_solver or {}
+    config_model = config_model if config_model is not None else {}
+    config_solver = config_solver if config_solver is not None else {}
 
     # Set "model_type", the automated model framework, 'milp' or 'sat'
     config_model["model_type"] = config_model.get("model_type", "milp").lower()

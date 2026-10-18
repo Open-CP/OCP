@@ -115,6 +115,8 @@ class LED_block_cipher(Block_cipher):
             k_nbr_rounds = (nbr_rounds//4)+1
         else: raise ValueError(f"[ERROR] The represent_mode {represent_mode} is not supported for LED_block_cipher.")
 
+        self.padding_round = "last"  # nbr_rounds+1 below: the extra round applies no transformation
+        print(f"[INFO] For {name}, after {nbr_rounds} round transformations, one more round is modelled for the final key addition. Hence, the internal modeling round number is set to {nbr_rounds+1}. Please keep this in mind when interpreting subsequent relative files.")
         super().__init__(name, p_input, k_input, c_output, nbr_rounds+1, k_nbr_rounds,
                         [s_nbr_layers, s_nbr_words, s_nbr_temp_words, s_word_bitsize],
                         [k_nbr_layers, k_nbr_words, k_nbr_temp_words, k_word_bitsize],

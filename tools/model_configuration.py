@@ -176,22 +176,18 @@ def set_model_versions(cipher, version, functions, rounds, layers, positions, op
             cons.model_version = cons.__class__.__name__ + "_" + version
 
 
-def gen_round_model_constraint_obj_fun(cipher, goal, config_model):
-    """Generate constraints and objective-function variables for selected rounds."""
-    model_type = config_model["model_type"]
-    configure_model_version(cipher, goal, config_model)
-    constraint = []
-    obj_fun = [[] for _ in range(cipher.nbr_rounds)]
+def model_scope(cipher, config_model):
+    """``[(round, cons)]`` for exactly the operators a model will be generated for.
 
-    # Generate constraints linking input and output.
-    if config_model.get("gen_input_model", True):
-        for cons in cipher.inputs_constraints:
-            constraint.extend(cons.generate_model(model_type=model_type))
-    if config_model.get("gen_output_model", True):
-        for cons in cipher.outputs_constraints:
-            constraint.extend(cons.generate_model(model_type=model_type))
-
-    # Generate constraints and objective function for each round/layer/operator.
+    ``round`` is ``None`` for the boundary constraints. Shared with the check below so the two
+    cannot disagree about scope: ``set_model_versions`` assigns more broadly, and checking that
+    wider set would reject requests that generate fine.
+    """
+    scope = []
+    for switch, boundary in (("gen_input_model", cipher.inputs_constraints),
+                             ("gen_output_model", cipher.outputs_constraints)):
+        if config_model.get(switch, True):
+            scope.extend((None, cons) for cons in boundary)
     functions = config_model.get("functions")
     rounds = config_model.get("rounds")
     layers = config_model.get("layers")
@@ -199,15 +195,50 @@ def gen_round_model_constraint_obj_fun(cipher, goal, config_model):
     for f in functions:
         for r in rounds[f]:
             for l in layers[f][r]:
-                for i in positions[f][r][l]:
-                    cons = cipher.functions[f].constraints[r][l][i]
-                    cons_class_name = cons.__class__.__name__
-                    # Operator-specific params, if any: {cons_class_name: {param_name: param_value}}.
-                    # Example: config_model["model_params"] = {"PRESENT_Sbox": {"tool_type": "polyhedron"}}
-                    params = (config_model.get("model_params") or {}).get(cons_class_name, {})
-                    constraint.extend(cons.generate_model(model_type=model_type, **params))
-                    if hasattr(cons, 'weight'):
-                        obj_fun[r-1].extend(cons.weight)
+                scope.extend((r, cipher.functions[f].constraints[r][l][i])
+                             for i in positions[f][r][l])
+    return scope
+
+
+def check_assigned_model_versions(cipher, config_model):
+    """Raise once, naming **every** operator left with a version it does not declare.
+
+    Reads the versions actually assigned, not the goal's rules, so a ``model_version`` override is
+    accepted when it works. Exemptions match ``Operator.check_supported_model_version``: nothing
+    new is refused, only refused before any model is built.
+    """
+    model_type = config_model["model_type"]
+    blocked = {}
+    for _, cons in model_scope(cipher, config_model):
+        declared = getattr(type(cons), "SUPPORTED_MODEL_VERSIONS", {}).get(model_type, ())
+        if not declared or cons.model_version is None:
+            continue
+        allowed = {f"{type(cons).__name__}_{suffix}" for suffix in declared}
+        if cons.model_version not in allowed:
+            blocked[type(cons).__name__] = cons.model_version
+    if blocked:
+        listed = ", ".join(f"{name} (assigned {version})" for name, version in sorted(blocked.items()))
+        raise ValueError(
+            f"[ERROR] {len(blocked)} operator class(es) do not model the version this request needs "
+            f"under model_type='{model_type}': {listed}. Nothing was generated."
+        )
+
+
+def gen_round_model_constraint_obj_fun(cipher, goal, config_model):
+    """Generate constraints and objective-function variables for selected rounds."""
+    model_type = config_model["model_type"]
+    configure_model_version(cipher, goal, config_model)
+    check_assigned_model_versions(cipher, config_model)
+    constraint = []
+    obj_fun = [[] for _ in range(cipher.nbr_rounds)]
+
+    for r, cons in model_scope(cipher, config_model):
+        # Operator-specific params, if any: {cons_class_name: {param_name: param_value}}.
+        # Example: config_model["model_params"] = {"PRESENT_Sbox": {"tool_type": "polyhedron"}}
+        params = (config_model.get("model_params") or {}).get(cons.__class__.__name__, {})
+        constraint.extend(cons.generate_model(model_type=model_type, **params))
+        if r is not None and hasattr(cons, "weight"):
+            obj_fun[r - 1].extend(cons.weight)
     return constraint, obj_fun
 
 
@@ -246,8 +277,10 @@ def parse_and_set_configs(cipher, goal, objective_target, config_model, config_s
     applied by each attack frontend after calling this.
     """
 
-    config_model = dict(config_model or {})
-    config_solver = dict(config_solver or {})
+    # config_model = dict(config_model or {})
+    # config_solver = dict(config_solver or {})
+    config_model = config_model if config_model is not None else {}
+    config_solver = config_solver if config_solver is not None else {}
     config_model["model_type"] = normalize_model_type(config_model.get("model_type", "milp"))
 
     functions, rounds, layers, positions = fill_functions_rounds_layers_positions(cipher)

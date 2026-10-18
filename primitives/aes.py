@@ -90,7 +90,8 @@ class AES_block_cipher(Block_cipher):
             raise ValueError(f"[ERROR] Unknown version {version} for AES_block_cipher. Expected one of "
                              f"{[[128, k] for k in sorted(full_rounds)]}: the block size is fixed to 128.")
         if nbr_rounds is None: nbr_rounds = full_rounds[k_bitsize]
-        nbr_rounds += 1
+        nbr_rounds += 1  # add one more round: round nbr_rounds applies the final key addition
+        self.padding_round = "last"
         print(f"[INFO] For {name}, after {nbr_rounds-1} round transformations, there is still a final AddRoundKey layer. Hence, the internal modeling round number is set to {nbr_rounds}. Please keep this in mind when interpreting subsequent relative files.")
         if represent_mode==0:
             if k_bitsize==128:

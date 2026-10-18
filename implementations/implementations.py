@@ -491,8 +491,8 @@ def test_implementation_c(cipher, cipher_name, input, output):
         return False
 
 def test_implementation_verilog(cipher, cipher_name, input, output):
-    """Compile and run the generated Verilog implementation of ``cipher`` on ``input`` and check it
-    matches ``output``. Returns True/False, or None if the Verilog toolchain or file is unavailable."""
+    """Print the command that would compile and run the generated Verilog; **always returns None**.
+    Nothing is compiled, run or compared, so the ``None`` never means "matched", only "not checked"."""
     print(f"\n****************TEST VERILOG IMPLEMENTATION of {cipher_name}****************")
 
     # Check if Verilog compiler is available
