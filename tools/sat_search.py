@@ -57,6 +57,10 @@ def decimal_objective_combinations(config_model, min_int_obj_value, max_obj_valu
 
 
 def _sat_objective_encoding(config_model, cons_type):
+    """The PySAT encoding for one objective cons_type. Only the three `SUM_*` names are legal:
+    the per-variable `AT_MOST` / `AT_LEAST` / `EXACTLY` pass downstream yet leave the objective
+    unconstrained.
+    """
     if cons_type == "SUM_AT_MOST":
         return config_model.get("atmost_encoding_sat", "SEQUENTIAL")
     if cons_type == "SUM_EXACTLY":
@@ -121,7 +125,8 @@ def gen_sat_constraints_from_objective_target(
             )
         else:
             print(
-                f"[WARNING] Skipping Matsui constraints since obj_val = {obj_val} < best_obj[-1] = {best_obj[-1]}."
+                f"[WARNING] Skipping Matsui constraints since obj_val = {obj_val} < "
+                f"best_obj[-1] = {best_obj[-1]}; if best_obj is right this bound has no solution."
             )
             hw_list = [obj for row in obj_fun_vars for obj in row]
             constraints += gen_predefined_constraints(
@@ -500,14 +505,11 @@ def write_sat_model(constraints=None, filename="sat.cnf"):
     constraints = constraints or []
     filename = filename or "sat.cnf"
 
+    # An empty clause IS falsity: dropping it rewrote a contradiction into a satisfiable model.
     empty_clause_idx = [i for i, clause in enumerate(constraints) if not clause.split()]
     if empty_clause_idx:
-        print(
-            f"[WARNING] write_sat_model: skipping {len(empty_clause_idx)} empty clause(s) at index "
-            f"{empty_clause_idx[:10]} (a malformed/degenerate constraint reached the model writer; "
-            "keeping it would make the SAT model trivially UNSAT)."
-        )
-        constraints = [clause for clause in constraints if clause.split()]
+        raise ValueError(f"[ERROR] write_sat_model: {len(empty_clause_idx)} empty clause(s) at "
+                         f"indices {empty_clause_idx[:10]}; a generator emitted no literals.")
 
     dir_path = os.path.dirname(filename)
     if dir_path:

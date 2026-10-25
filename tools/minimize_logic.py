@@ -27,7 +27,7 @@ def _find_external_espresso():
     """Locate the external espresso binary (independent of PyEDA's), or ``None``.
 
     Checks ``~/espresso-logic/bin`` (the documented install dir, not usually on PATH),
-    then searches PATH -- excluding the Python environment's own bin, where PyEDA's
+    then searches PATH, excluding the Python environment's own bin, where PyEDA's
     ``espresso`` lives (that is the ``minimize_logic`` backend).
     """
     conventional = Path.home() / "espresso-logic" / "bin" / "espresso"

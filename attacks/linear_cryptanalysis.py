@@ -86,7 +86,7 @@ def search_linear_trail(
         constraints = ["INPUT_NOT_ZERO"]
     _validate_request(goal, constraints, objective_target, show_mode, config_model, config_solver)
 
-    # Generate a new cipher instance with added copy layer after each operator.
+    # Add a copy layer after each operator: linear masks fan out at branches.
     cipher.add_copy_operators()
 
     # Step 1. Parse and set model and solver configurations.

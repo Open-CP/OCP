@@ -3,9 +3,9 @@
 An Operator relates a group of input variables to a group of output variables. 
 Every concrete operator provides two code generators:
 
-- :meth:`Operator.generate_implementation` -- executable code for the operator in a
+- :meth:`Operator.generate_implementation`: executable code for the operator in a
   target language (python/c/verilog), selected by the operator's ``implementation_type``.
-- :meth:`Operator.generate_model` -- SAT/MILP constraint strings for a cryptanalysis
+- :meth:`Operator.generate_model`: SAT/MILP constraint strings for a cryptanalysis
   model (differential / linear / integral), selected by the operator's ``model_version``.
 """
 

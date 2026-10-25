@@ -124,7 +124,7 @@ class XOR(BinaryOperator):
     """Bitwise XOR of the two input variables into the output."""
 
     SUPPORTED_MODEL_VERSIONS = {
-        "sat":  ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDLINEAR"),
+        "sat":  ("XORDIFF", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDLINEAR"),
         "milp": ("XORDIFF", "XORDIFF_1", "XORDIFF_2", "LINEAR", "TRUNCATEDDIFF", "TRUNCATEDDIFF_1", "TRUNCATEDLINEAR", "INTEGRAL_TWOSUBSET"),
     }
 

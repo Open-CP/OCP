@@ -53,7 +53,7 @@ class RuntimeResourceMonitor:
     A no-op when psutil is unavailable. ``stop()`` joins the sampling thread and returns the
     collected stats. ``max_num_threads`` is the peak TOTAL process threads (including the
     sampler and main threads); ``max_added_threads`` reports the peak workload-added threads
-    over the start-of-monitoring baseline -- use it for solver-parallelism analysis.
+    over the start-of-monitoring baseline; use it for solver-parallelism analysis.
     """
 
     def __init__(self, pid=None, interval=0.2):
@@ -116,7 +116,7 @@ class RuntimeResourceMonitor:
 
         ``max_num_threads`` is the peak TOTAL process thread count; ``max_added_threads`` is
         the peak over the baseline (``baseline_num_threads``), i.e. the threads the workload
-        itself spun up -- excluding the main and sampler threads. Use ``max_added_threads`` for
+        itself spun up, excluding the main and sampler threads. Use ``max_added_threads`` for
         solver-parallelism analysis.
         """
         if not HAS_PSUTIL or self.sample_count == 0:

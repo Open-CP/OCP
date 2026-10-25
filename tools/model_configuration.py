@@ -59,6 +59,9 @@ SHOW_MODES = (0, 1, 2, 3)
 SAT_OPTIMAL_STRATEGIES = ("INCREASING FROM AT MOST", "INCREASING FROM EXACTLY",
                           "DECREASING FROM AT MOST", "ADAPTIVE FROM AT MOST")
 
+# The scope names of a version rule that are not operator class names; see operator_in_scope.
+SCOPE_KEYWORDS = (None, "Sbox")
+
 
 def fill_functions_rounds_layers_positions(
     cipher,
@@ -134,7 +137,20 @@ def configure_model_version(cipher, goal, config_model):
             operator_name=operator_name,
         )
 
-    overrides = config_model.get("model_version") or {}
+    overrides = config_model.get("model_version")
+    if overrides is None:
+        overrides = {}
+    if not isinstance(overrides, dict):
+        raise ValueError(f"[ERROR] config_model['model_version'] = {overrides!r} must be a "
+                         f"{{operator_name: version}} dict, or None.")
+    if overrides:
+        # A key matching nothing overrides nothing, silently; a keyword matching nothing is normal.
+        scope_names = {cons.__class__.__name__ for _, cons in model_scope(cipher, config_model)}
+        unknown = sorted(name for name in overrides
+                         if name not in SCOPE_KEYWORDS and name not in scope_names)
+        if unknown:
+            raise ValueError(f"[ERROR] config_model['model_version'] names {unknown}, which would "
+                             f"override nothing. Expected None, 'Sbox', or one of {sorted(scope_names)}.")
     for operator_name in sorted(overrides, key=lambda name: name is not None):
         set_model_versions(
             cipher,
@@ -150,7 +166,8 @@ def configure_model_version(cipher, goal, config_model):
 def operator_in_scope(operator_class, operator_name):
     """Whether ``operator_class`` is covered by the ``operator_name`` scope of a version rule.
 
-    ``None`` covers every operator. ``"Sbox"`` covers every S-box.
+    ``None`` covers every operator. ``"Sbox"`` covers every S-box. Both are in
+    ``SCOPE_KEYWORDS``, which is what keeps the override check from demanding a class name.
     """
     if operator_name is None:
         return True
@@ -265,8 +282,9 @@ def default_model_filename(cipher, goal, objective_target, model_type):
 def normalize_solution_number(value):
     """Validate that a solver ``solution_number`` is a positive integer, returning it."""
 
-    if not isinstance(value, int) or value <= 0:
-        raise ValueError(f"Invalid solution_number: {value}. Expected a positive integer.")
+    # bool is an int, and solution_number=True meaning 1 is a typo rather than a request.
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+        raise ValueError(f"[ERROR] solution_number = {value!r} must be an integer >= 1.")
     return value
 
 

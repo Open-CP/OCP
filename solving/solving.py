@@ -78,6 +78,15 @@ def _set_solver_status(config_solver, status, reason=None):
         config_solver["solver_status_reason"] = reason
 
 
+def _checked_solution_number(config_solver):
+    """``solution_number`` as an int >= 1, or a refusal naming the value."""
+    solution_number = config_solver.get("solution_number", 1)
+    # bool is an int, and solution_number=True meaning 1 is a typo rather than a request.
+    if not isinstance(solution_number, int) or isinstance(solution_number, bool) or solution_number < 1:
+        raise ValueError(f"[ERROR] solution_number = {solution_number!r} must be an integer >= 1.")
+    return solution_number
+
+
 def _modules_available(*module_names):
     """Return True if every named module is importable, without importing any of them."""
     return all(find_spec(module_name) is not None for module_name in module_names)
@@ -405,14 +414,17 @@ def solve_milp_gurobi(filename, config_solver):
     if gp is None:
         raise RuntimeError("[ERROR] gurobipy can't be loaded. Install it: pip install gurobipy")
 
+    if config_solver is None:
+        config_solver = {}
+    solution_number = _checked_solution_number(config_solver)
+
     try:
         model = gp.read(filename) # Load the model from file.
         # Set Parameters provided by Gurobi. Example: TimeLimit, SolutionLimit, PoolSearchMode, PoolSolutions, MIPFocus, etc.
         for key, val in config_solver.items():
             if hasattr(model.Params, key):
                 setattr(model.Params, key, val)
-        solution_number = config_solver.get("solution_number", 1)
-        if isinstance(solution_number, int) and solution_number > 1:
+        if solution_number > 1:
             model.Params.PoolSearchMode = 2
             model.Params.PoolSolutions = solution_number
         # Solve the model
@@ -443,8 +455,8 @@ def solve_milp_gurobi(filename, config_solver):
         print("[INFO] Found 1 solution from Gurobi.")
         return [sol]
 
-    # Case 3: Multiple solutions found
-    elif solution_number > 1 or getattr(model.Params, "PoolSearchMode", 0) > 0:
+    # Case 3: whatever else has solutions.
+    else:
         sol_list = []
         for i in range(model.SolCount):
             model.Params.SolutionNumber = i
@@ -461,14 +473,17 @@ def solve_milp_scip(filename, config_solver):
     if Model is None:
         raise RuntimeError("[ERROR] PySCIPOpt can't be loaded. Install it: pip install pyscipopt")
 
+    if config_solver is None:
+        config_solver = {}
+    solution_number = _checked_solution_number(config_solver)
+
     try:
         model = Model()
         model.readProblem(filename)
         # Set Parameters provided by SCIP. TO DO MORE
         if "time_limit" in config_solver:
             model.setRealParam("limits/time", config_solver["time_limit"])
-        solution_number = config_solver.get("solution_number", 1)
-        if isinstance(solution_number, int) and solution_number > 1: # TO DO: support multiple solutions
+        if solution_number > 1: # TO DO: support multiple solutions
             print("[WARNING] It currently does not support finding multiple solutions ... returning only one solution")
             model.setIntParam("limits/solutions", solution_number)
         # Solve the model
@@ -688,9 +703,7 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
     solver.parameters.num_workers = 1
     if config_solver is None:
         config_solver = {}
-    solution_number = config_solver.get("solution_number", 1)
-    if not isinstance(solution_number, int) or isinstance(solution_number, bool) or solution_number < 1:
-        raise ValueError(f"[ERROR] solution_number = {solution_number!r} must be an integer >= 1.")
+    solution_number = _checked_solution_number(config_solver)
     sol_list = []
 
     if solution_number == 1:
@@ -734,7 +747,7 @@ def solve_sat_external(filename, variable_map, config_solver):
         - solver_bin: binary path/name overriding the registry default (optional).
         - solver-specific keys read by the registry builder (e.g. ``threads`` for PRS).
 
-    Returns up to ``solution_number`` solutions, cut short on UNSAT or a timeout -- which
+    Returns up to ``solution_number`` solutions, cut short on UNSAT or a timeout, which
     ``solver_status`` tells apart. An unregistered solver, a missing binary or bad output raises.
     """
 

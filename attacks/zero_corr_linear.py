@@ -96,6 +96,10 @@ def search_zc_distinguisher_enumeration(cipher, goal="ZEROCORRELATIONTRUNCATEDLI
     if goal not in _GOAL_MIDDLE:
         raise ValueError(f"[ERROR] Invalid goal: {goal}. Expected one of {list(_GOAL_MIDDLE)}.")
     goal_middle = _GOAL_MIDDLE[goal]
+
+    # Add a copy layer after each operator, as in linear_cryptanalysis; impossible_differential must not.
+    cipher.add_copy_operators()
+
     config_model, config_solver = _parse_and_set_configs(cipher, goal, config_model, config_solver)
     model_type, bitwise = config_model["model_type"], ("TRUNCATEDLINEAR" not in goal_middle)
 

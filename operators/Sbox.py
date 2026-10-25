@@ -3,7 +3,7 @@
 
 Each S-box computes its DDT/LAT and differential/linear branch numbers, generates lookup-table
 implementations (python/C/Verilog, including the bit-sliced form), and builds SAT/MILP models
-from cached constraint templates -- regenerating a template via espresso / convex-hull only
+from cached constraint templates; regenerating a template via espresso / convex-hull only
 when it is not already cached under ``files/sbox_modeling/``.
 """
 

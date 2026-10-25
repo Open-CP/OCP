@@ -93,7 +93,7 @@ def _is_irreducible_gf2(poly, degree):
 
 
 def generate_binary_matrix_1(degree):
-    """Identity matrix -- the bit-matrix of the GF(2^m) element 1."""
+    """Identity matrix: the bit-matrix of the GF(2^m) element 1."""
     return [[1 if i == j else 0 for j in range(degree)] for i in range(degree)]
 
 

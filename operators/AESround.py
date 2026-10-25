@@ -1,7 +1,7 @@
 """Composite AES round operator.
 
-``AESround`` assembles one AES round from sub-operators -- SubBytes (AES_Sbox), ShiftRows
-(Equal wiring), MixColumns (Matrix over GF(2^8)), and an optional AddRoundKey (XOR) -- and
+``AESround`` assembles one AES round from sub-operators: SubBytes (AES_Sbox), ShiftRows
+(Equal wiring), MixColumns (Matrix over GF(2^8)), and an optional AddRoundKey (XOR). It
 delegates code/model generation to them, propagating its model version to each inner operator
 (the S-box keeps the full version suffix; the other operators take the base version).
 """

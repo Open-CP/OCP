@@ -406,12 +406,12 @@ def gen_matsui_constraints_sat(
     The same bounding condition as :func:`gen_matsui_constraints_milp`, imposed on the sequential
     encoding's counter over all weight variables: the window spanning a group of rounds may hold at
     most ``obj_sat - best_obj[start] - best_obj[Round-end]`` active variables. With the default
-    ``GroupNumForChoice = 1`` every window starts at round 0, so only the suffix family is emitted
-    -- MILP's UPPER, not its LOWER. That is deliberate: it matches the reference implementation.
+    ``GroupNumForChoice = 1`` every window starts at round 0, so only the suffix family is emitted:
+    MILP's UPPER, not its LOWER. That is deliberate: it matches the reference implementation.
 
     Args:
         Round: how many rounds are searched, which need not be ``cipher.nbr_rounds``.
-        best_obj: ``[B_1, ..., B_{Round-1}]``, whole numbers -- they count weight variables, so pass
+        best_obj: ``[B_1, ..., B_{Round-1}]``, whole numbers; they count weight variables, so pass
             a round's ``"integer_obj_fun_value"`` where its true weight is fractional.
         obj_sat: the weight being tested, a positive integer.
         obj_var: round ``r``'s weight variables in ``obj_var[r-1]``; ``Round`` rows, or

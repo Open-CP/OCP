@@ -102,7 +102,7 @@ def gen_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version=0):
                 f'-{vin1} -{vin2} -{vout}',
             ]
         else:
-            raise ValueError(f"Unknown version {version} for XOR in SAT.")
+            raise ValueError(f"[ERROR] XOR has a SAT encoding for version 0 only, not {version}.")
     elif model_type == 'milp':
         if version == 0:
             return [f'{vin1} + {vin2} - {vout} >= 0',
@@ -138,7 +138,7 @@ def gen_word_xor_constraints(vin1, vin2, vout, model_type, v_dummy=None, version
                     f'{vin1} -{vin2} {vout}',
                     f'-{vin1} {vin2} {vout}']
         else:
-            raise ValueError(f"Unknown version {version} for Word-wise XOR in SAT.")
+            raise ValueError(f"[ERROR] Word-wise XOR has a SAT encoding for version 0 only, not {version}.")
     elif model_type == 'milp':
         if version == 0:
             return [f'{vin1} + {vin2} - {vout} >= 0',
@@ -196,7 +196,7 @@ def gen_word_nxor_constraints(vin, vout, model_type, v_dummy=None, version=0):
     """SAT/MILP constraints for the word-level (truncated) n-ary XOR of ``vin`` into ``vout``.
 
     Valid propagations (activity of inputs -> output): the number of active variables among
-    ``vin`` and ``vout`` together is never exactly 1 -- it is 0 (all inactive) or >= 2. E.g. n=3:
+    ``vin`` and ``vout`` together is never exactly 1; it is 0 (all inactive) or >= 2. E.g. n=3:
     (0,0,0) -> 0; (1,1,0) -> 0 or 1; (1,0,0) -> 1  (a lone active input with vout=0 is forbidden).
     """
     _require_string_list(vin)
