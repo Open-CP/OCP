@@ -88,6 +88,7 @@ def _pysat_cardinality_constraints(cons_vars, cons_value, encoding, encoder, enc
     _, card_vpool = _load_pysat_cardinality_backend()
     if card_vpool is None:
         raise ValueError("PySAT is required for SAT cardinality constraints.")
+    # Numbering from 1 cannot collide with the pool's auxiliaries: PySAT lifts the pool above max(lits).
     variable_map = {name: idx + 1 for idx, name in enumerate(cons_vars)}
     reverse_map = {v: k for k, v in variable_map.items()}
     lits = [variable_map[name] for name in cons_vars]
@@ -167,7 +168,7 @@ def gen_no_good_cut(var_ids, bits, model_type="milp"):
     Returns a list with the single constraint string (empty list if ``var_ids`` is empty).
     """
     if len(var_ids) != len(bits):
-        raise ValueError(f"gen_no_good_cut: var_ids and bits differ in length ({len(var_ids)} vs {len(bits)}).")
+        raise ValueError(f"[ERROR] gen_no_good_cut: var_ids and bits differ in length ({len(var_ids)} vs {len(bits)}).")
     if not var_ids:
         return []
     if model_type == "milp":
@@ -185,7 +186,7 @@ def gen_no_good_cut(var_ids, bits, model_type="milp"):
     elif model_type == "sat":
         return [" ".join((f"-{vid}" if int(b) else f"{vid}") for vid, b in zip(var_ids, bits))]
     else:
-        raise ValueError(f"gen_no_good_cut: unknown model_type '{model_type}'.")
+        raise ValueError(f"[ERROR] gen_no_good_cut: unknown model_type '{model_type}'.")
 
 
 def gen_constraints_exactly(model_type, cons_vars, cons_value, encoding=None):
@@ -244,7 +245,8 @@ def _check_sat_encoding(encoding, cons_type):
 
 
 def _sat_false(cons_vars):
-    """Two clauses that cannot both hold: a SAT constraint which is false over these variables."""
+    """Two clauses that cannot both hold: a SAT constraint which is false over these variables.
+    Never an empty clause, which ``write_sat_model`` refuses."""
     return [f"{cons_vars[0]}", f"-{cons_vars[0]}"]
 
 
@@ -417,7 +419,7 @@ def gen_matsui_constraints_sat(
         obj_var: round ``r``'s weight variables in ``obj_var[r-1]``; ``Round`` rows, or
             ``Round + 1`` when the extra one is empty.
         GroupConstraintChoice: only ``1`` is implemented.
-        GroupNumForChoice: how many groups of windows to emit.
+        GroupNumForChoice: how many groups of windows to emit, only ``1`` is supported now.
 
     One empty extra row is dropped and every round that remains must carry weight, exactly as in
     :func:`gen_matsui_constraints_milp`.
@@ -449,13 +451,12 @@ def gen_matsui_constraints_sat(
                          "it. Every round searched must carry weight; check the goal and the scope.")
     if GroupConstraintChoice != 1:
         raise ValueError(f"Currently only support GroupConstraintChoice = 1, but got {GroupConstraintChoice}.")
-    if GroupNumForChoice < 1:
-        raise ValueError(f"GroupNumForChoice = {GroupNumForChoice} must be at least 1.")
+    if GroupNumForChoice != 1:
+        raise ValueError(f"Currently only support GroupNumForChoice = 1, but got {GroupNumForChoice}.")
 
     if not hasattr(gen_matsui_constraints_sat, "_counter"):  # Use function attribute to set global counter
         gen_matsui_constraints_sat._counter = 0
-    if len(best_obj) == Round-1:
-        best_obj = [0] + best_obj
+    best_obj = [0] + best_obj  # B_0 = 0, so best_obj[i] is the optimum B_i of i rounds
     Main_Vars = list([])
     for r in range(Round):
         for i in range(len(obj_var[Round - 1 - r])):
@@ -499,11 +500,11 @@ def gen_matsui_constraints_sat(
 def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m):
     """Generate partial cardinality SAT clauses for Matsui constraints."""
     if not isinstance(obj_var, list) or len(obj_var) == 0:
-        raise ValueError("obj_var must be a non-empty list.")
+        raise ValueError("[ERROR] obj_var must be a non-empty list.")
     if not isinstance(dummy_var, list) or len(dummy_var) != len(obj_var) - 1:
-        raise ValueError("dummy_var must be a list with length equal to len(obj_var) - 1.")
+        raise ValueError("[ERROR] dummy_var must be a list with length equal to len(obj_var) - 1.")
     if not isinstance(k, int) or k <= 0:
-        raise ValueError("k must be a positive integer.")
+        raise ValueError("[ERROR] k must be a positive integer.")
     if not isinstance(left, int) or left < 0:
         raise ValueError(f"[ERROR] left index = {left} must be a non-negative integer.")
     if not isinstance(right, int) or right < -1 or right >= len(obj_var):

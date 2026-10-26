@@ -535,6 +535,5 @@ def extract_and_format_trails(
         trails.append(trail)
     if not trails:  # an empty result is a proof only under UNSAT
         status, reason = config_solver.get("solver_status"), config_solver.get("solver_status_reason")
-        print(f"[INFO] No trail: solver_status = {status}{f' ({reason})' if reason else ''}"
-              f"{'; nothing was proven' if status != 'UNSAT' else ''}.")
+        print(f"[INFO] No trail: solver_status = {status}{f' ({reason})' if reason else ''}.")
     return trails

@@ -121,10 +121,10 @@ def configure_model_version(cipher, goal, config_model):
     positions = config_model.get("positions")
     missing = [key for key in ("functions", "rounds", "layers", "positions") if config_model.get(key) is None]
     if missing:
-        raise ValueError(f"config_model is missing required scope keys: {missing}.")
+        raise ValueError(f"[ERROR] config_model is missing required scope keys: {missing}.")
 
     if goal not in GOAL_MODEL_VERSION_RULES:
-        raise ValueError(f"Invalid goal: {goal}.")
+        raise ValueError(f"[ERROR] Invalid goal: {goal}.")
 
     for version, operator_name in GOAL_MODEL_VERSION_RULES[goal]:
         set_model_versions(
@@ -218,7 +218,7 @@ def model_scope(cipher, config_model):
 
 
 def check_assigned_model_versions(cipher, config_model):
-    """Raise once, naming **every** operator left with a version it does not declare.
+    """Raise once, naming **every** operator class left with a version it does not declare.
 
     Reads the versions actually assigned, not the goal's rules, so a ``model_version`` override is
     accepted when it works. Exemptions match ``Operator.check_supported_model_version``: nothing
@@ -237,7 +237,7 @@ def check_assigned_model_versions(cipher, config_model):
         listed = ", ".join(f"{name} (assigned {version})" for name, version in sorted(blocked.items()))
         raise ValueError(
             f"[ERROR] {len(blocked)} operator class(es) do not model the version this request needs "
-            f"under model_type='{model_type}': {listed}. Nothing was generated."
+            f"under model_type='{model_type}': {listed}. No constraints were generated."
         )
 
 
@@ -265,7 +265,7 @@ def normalize_model_type(model_type):
 
     normalized = str(model_type).lower()
     if normalized not in ("milp", "sat"):
-        raise ValueError(f"Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
+        raise ValueError(f"[ERROR] Invalid model_type: {model_type}. Expected one of ['milp', 'sat'].")
     return normalized
 
 

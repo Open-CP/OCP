@@ -101,9 +101,8 @@ def two_stage_trail_search(
     pattern and searches the best bit-level trail on it. Only word-oriented cipher
     representations are supported (e.g. the AES or SKINNY permutation).
 
-    A factory (rather than a cipher instance) is required because a full attack leaves state on
-    the cipher it ran against: every operator in scope keeps the ``model_version`` that stage's
-    goal assigned. Stage 2 asks a different goal, so it needs a fresh cipher.
+    A factory (rather than a cipher instance) is required so each stage gets a cipher no earlier
+    attack has modified.
 
     Args:
         cipher_factory (callable): ``cipher_factory(r)`` returns a fresh cipher of ``r`` rounds.

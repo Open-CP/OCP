@@ -41,7 +41,7 @@ def test_milp_model(op):
             expected_constraints = []
             for i in range(op.input_vars[0].bitsize):
                 i1, i2, o = var_in1[i], var_in2[i], var_out[i]
-                expected_constraints += [f'{o} - {i1} >= 0', f'{o} - {i2} >= 0', f'{o} - {i1} - {i2} <= 0']
+                expected_constraints += [f'{o} - {i1} >= 0', f'{o} - {i2} >= 0', f'{i1} + {i2} - {o} >= 0']
             assert milp_constraints[:-1] == expected_constraints
             assert milp_constraints[-1] == 'Binary\n' + ' '.join(v for v in var_in1 + var_in2 + var_out)
         print(f"MILP constraints with model_version={model_v}: \n", "\n".join(milp_constraints))

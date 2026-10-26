@@ -85,6 +85,10 @@ def search_linear_trail(
     if constraints is None:
         constraints = ["INPUT_NOT_ZERO"]
     _validate_request(goal, constraints, objective_target, show_mode, config_model, config_solver)
+    if goal == "LINEARHULL_CORR" and objective_target != "EXISTENCE":
+        print(f"[WARNING] goal='LINEARHULL_CORR' supports only objective_target='EXISTENCE'; "
+              f"overriding '{objective_target}' -> 'EXISTENCE'.")
+        objective_target = "EXISTENCE"
 
     # Add a copy layer after each operator: linear masks fan out at branches.
     cipher.add_copy_operators()

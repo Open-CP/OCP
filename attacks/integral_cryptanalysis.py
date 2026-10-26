@@ -205,7 +205,7 @@ def search_integral_distinguisher(cipher, goal="INTEGRAL_TWOSUBSET", constraints
     if not (isinstance(config_solver, dict) or config_solver is None):
         raise ValueError(f"Invalid config_solver: {config_solver}. Expected a dictionary or None.")
 
-    # Generate a new cipher instance with added copy layer after each operator.
+    # Add a copy layer after each operator: division property fans out at branches.
     cipher.add_copy_operators()
 
     # Step 1. Parse and set model and solver configurations.
@@ -275,4 +275,7 @@ def _extract_and_format_integral_distinguishers(cipher, goal, config_model, conf
         distinguisher.save_json()
         distinguisher.save_txt()
         distinguishers.append(distinguisher)
+    if not distinguishers:
+        status, reason = config_solver.get("solver_status"), config_solver.get("solver_status_reason")
+        print(f"[INFO] No distinguisher: solver_status = {status}{f' ({reason})' if reason else ''}.")
     return distinguishers
