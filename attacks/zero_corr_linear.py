@@ -55,23 +55,32 @@ def _verify_zero_correlation(base_cons, obj, fix_constraints, model_type, config
     Returns True if NO trail exists -> confirmed zero-correlation; False if a trail exists."""
     model_cons = base_cons + list(fix_constraints)
     if model_type == "milp":
-        solutions = milp_search.modeling_solving_milp("EXISTENCE", model_cons, obj, config_model, config_solver)
+        milp_search.modeling_solving_milp("EXISTENCE", model_cons, obj, config_model, config_solver)
     elif model_type == "sat":
-        solutions = sat_search.modeling_solving_sat("EXISTENCE", model_cons, obj, config_model, config_solver)
+        sat_search.modeling_solving_sat("EXISTENCE", model_cons, obj, config_model, config_solver)
     else:
         raise ValueError(f"Unsupported model_type: {model_type}. Expected 'milp' or 'sat'.")
-    return not solutions   # no trail -> confirmed zero-correlation
+    status = config_solver.get("solver_status")
+    if status == "UNSAT":
+        return True  # no trail -> confirmed zero-correlation
+    if status == "SAT":
+        return False
+    reason = config_solver.get("solver_status_reason", "no reason reported")
+    raise RuntimeError(f"Zero-correlation check inconclusive: status={status!r}, reason={reason}")
 
 
 # ---------------------------- strategy dispatcher ----------------------------
 def search_zero_correlation(cipher, goal="ZEROCORRELATIONTRUNCATEDLINEAR", strategy="ENUMERATION",
                             config_model=None, config_solver=None, show_mode=0):
-    """Zero-correlation linear search:
-           Gamma_in --> Gamma_X --[distinguisher]--> Gamma_Y --> Gamma_out
+    """Run an zero-correlation linear distinguisher search using the selected strategy.
 
-    goal: "ZEROCORRELATIONTRUNCATEDLINEAR" (word-level truncated) or "ZEROCORRELATIONLINEAR" (bit-level).
-    strategy: the search strategy.
-        "ENUMERATION": see :func:`search_zc_distinguisher_enumeration`.
+    The searched segment is ``Gamma_X (input mask) --> [distinguisher]--> Gamma_Y (output mask)``.
+
+    Args:
+        goal: ``"ZEROCORRELATIONTRUNCATEDLINEAR"`` for word-level truncated activity or
+            ``"ZEROCORRELATIONLINEAR"`` for bit-level activity.
+        strategy: Search strategy. ``"ENUMERATION"`` selects
+            :func:`search_zc_distinguisher_enumeration`.
     """
     if strategy == "ENUMERATION":
         return search_zc_distinguisher_enumeration(cipher, goal=goal, config_model=config_model,

@@ -49,8 +49,8 @@ def get_var_def_c(word_bitsize):
 def generate_implementation(my_prim, filename, language = 'python', unroll = False):
     """Generate ``my_prim``'s reference implementation and write it to ``filename``.
 
-    ``language`` is one of 'python' / 'c' / 'verilog'; 'rust' is planned. With ``unroll`` True the rounds are
-    fully unrolled (round indices baked into variable names); otherwise a rolled loop is emitted.
+    ``language`` is one of 'python' / 'c' / 'verilog'. With ``unroll`` True the rounds are fully
+    unrolled (round indices baked into variable names); otherwise a rolled loop is emitted.
     """
     if language not in IMPLEMENTED_LANGUAGES:
         hint = " (planned, not implemented)" if language == "rust" else ""
@@ -586,3 +586,56 @@ def test_implementation_rust(cipher, cipher_name, input, output):
     except Exception as e:
         print(f"Failed to load or execute the Rust function: {e}")
         return False
+
+
+# Tester looked up by name at call time, so a test can substitute one.
+_LANGUAGE_INFO = {
+    "python":  ("py",  "test_implementation_python"),
+    "c":       ("c",   "test_implementation_c"),
+    "verilog": ("sv",  "test_implementation_verilog"),
+    "rust":    ("rs",  "test_implementation_rust"),
+}
+
+
+def generate_and_verify(cipher, language="python", unroll=False):
+    """Generate an implementation and check it against every test vector.
+
+    Per vector a tester returns True (matched), False (disagreed, raises) or None
+    (nothing checked: no compiler, or Verilog, which has no automated test).
+    Evidence of correctness is the matched count, not the absence of a raise.
+    """
+    if language not in _LANGUAGE_INFO:
+        raise ValueError(f"Unsupported language '{language}'; choose from {sorted(_LANGUAGE_INFO)}")
+
+    ext, tester_name = _LANGUAGE_INFO[language]
+    tester = globals()[tester_name]
+
+    suffix = "_unrolled" if unroll else ""
+    label = cipher.name + suffix
+    path = get_files_dir() / f"{label}.{ext}"
+
+    generate_implementation(cipher, path, language, unroll)
+    # A tester reports a missing file as "not checked", which would read as a skip.
+    if not os.path.exists(str(path)):
+        raise RuntimeError(f"[ERROR] {language} implementation of {cipher.name} was not written to {path}.")
+
+    total = len(cipher.test_vectors)
+    if not total:
+        print(f"[WARNING] {cipher.name} defines no test vector: nothing was verified.")
+        return {"matched": 0, "skipped": [], "total": 0}
+
+    matched, failures, skipped = 0, [], []
+    for index, vector in enumerate(cipher.test_vectors):
+        outcome = tester(cipher, label, vector[0], vector[1])
+        if outcome is True:
+            matched += 1
+        elif outcome is False:
+            failures.append(f"{language} {label} vector {index}")
+        else:
+            skipped.append(f"{language} {label} vector {index}")
+
+    if failures:
+        raise RuntimeError(f"[ERROR] KAT disagreed for {cipher.name}: {'; '.join(failures)}.")
+    if skipped:
+        print(f"[INFO] not checked, the tester returned nothing: {', '.join(skipped)}")
+    return {"matched": matched, "skipped": skipped, "total": total}

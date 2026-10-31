@@ -24,12 +24,13 @@ def cdd_ineq_to_coeff_rhs(ineq):
 
 
 def cdd_eq_to_coeff_rhs(eq):
-    """
-    Convert a cddlib-style equality [b, a1, ..., an] (meaning b + a x = 0) into 2 inequalities matching is_sat() format (a * x >= b_form):
-      1)  a * x >= -b
-      2) (-a) * x >= b
+    """Convert a cddlib equality to two inequalities matching :func:`is_sat`.
+
+    An equality ``[b, a1, ..., an]`` means ``b + a*x = 0`` and becomes
+    ``a*x >= -b`` plus ``(-a)*x >= b``.
+
     Returns:
-        a list of two inequalities, each as [a1, ..., an, rhs]
+        list: Two inequalities, each represented as ``[a1, ..., an, rhs]``.
     """
     b = eq[0]
     a = eq[1:]

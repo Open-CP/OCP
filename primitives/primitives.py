@@ -1,6 +1,6 @@
 """Base classes for cipher primitives.
 
-A ``Primitive`` is a composition of one or more ``Layered_Function`` objects -- a round function,
+A ``Primitive`` is a composition of one or more ``Layered_Function`` objects: a round function,
 a key schedule, a keystream generator. Each ``Layered_Function`` is a sequence of rounds, each
 round a sequence of layers, and each layer a set of operators carrying the variables of one layer
 to those of the next. The result is a directed acyclic graph of variables and operators that
@@ -10,12 +10,12 @@ all read from, so one description serves them all.
 The constructions below specialise that abstraction, each fixing which internal functions exist
 and how they are wired to the primitive's inputs and outputs:
 
-* ``Function`` -- a single function, ``FUNCTION``; a reusable component such as one round.
-* ``Permutation`` -- a single function, ``PERMUTATION``; a keyless permutation, as well as a
+* ``Function``: a single function, ``FUNCTION``; a reusable component such as one round.
+* ``Permutation``: a single function, ``PERMUTATION``; a keyless permutation, as well as a
   block cipher's state transformation with the key-dependent parts left out.
-* ``Block_cipher`` -- ``PERMUTATION`` for the state transformation, ``KEY_SCHEDULE`` for the key
+* ``Block_cipher``: ``PERMUTATION`` for the state transformation, ``KEY_SCHEDULE`` for the key
   schedule, and ``SUBKEYS`` for how subkeys are extracted and injected into the rounds.
-* ``Stream_cipher`` -- ``INITIALIZATION``, ``STATE_UPDATE`` and ``KEYSTREAM_GEN``.
+* ``Stream_cipher``: ``INITIALIZATION``, ``STATE_UPDATE`` and ``KEYSTREAM_GEN``.
 
 Inside a function, ``vars[r][l][k]`` is the k-th state word at layer ``l`` of round ``r``, and
 ``constraints[r][l]`` holds the operators carrying layer ``l`` to layer ``l+1``. A definition must
@@ -420,8 +420,8 @@ class Primitive(ABC):
 
     def __init__(self, name, inputs, outputs):
         self.name = name                # name of the primitive
-        self.inputs = inputs            # list of the inputs of the primitive
-        self.outputs = outputs          # list of the outputs of the primitive
+        self.inputs = inputs            # dict of the primitive's inputs, keyed by name (e.g. "plaintext", "key")
+        self.outputs = outputs          # dict of the primitive's outputs, keyed by name
         self.functions = {}             # functions of the primitive, keyed by name
         self.inputs_constraints = []    # constraints linking the primitive inputs to the functions input variables
         self.outputs_constraints = []   # constraints linking the primitive outputs to the functions output variables

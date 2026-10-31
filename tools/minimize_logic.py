@@ -40,27 +40,19 @@ def _find_external_espresso():
     return Path(found) if found else None
 
 
-def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list of integer coefficients representing a linear inequality of the form: sum_i (coeff_i * x_i) >= rhs
-    """
+def espresso_pattern_to_ineq(pattern):
+    """Convert one Espresso pattern to inequality coefficients and a right-hand side.
+
     Args:
-        pattern (str): A string consisting of characters '0', '1', or '-'. Each character corresponds to one variable:
-                         '0' -> +1 coefficient (positive)
-                         '1' -> -1 coefficient (negative)
-                         '-' -> 0 coefficient (ignored)
+        pattern (str): A string containing ``0``, ``1``, or ``-`` for each variable. They map to
+            coefficients ``+1``, ``-1``, and ``0`` respectively.
 
     Returns:
         List[int]: Coefficients followed by the right-hand side (RHS) constant.
 
     Example:
-        pattern = '01-1'  # Suppose variables = ['x1', 'x2', 'x3', 'x4']
-        Then:
-            x1 = '0' -> +1
-            x2 = '1' -> -1
-            x3 = '-' ->  0
-            x4 = '1' -> -1
-            Coefficients = [1, -1, 0, -1], RHS = -2 (from two '1's) + 1 = -1
-            Inequality becomes: x1 - x2 - x4 >= -1
-        -> [1, -1, 0, -1, -1]
+        ``01-1`` maps to ``[1, -1, 0, -1, -1]``, representing
+        ``x1 - x2 - x4 >= -1``.
     """
     coeffs = []
     rhs = 0
@@ -76,23 +68,16 @@ def espresso_pattern_to_ineq(pattern): # Convert the Espresso output into a list
 
 
 def ttb_to_ineq_logic(ttable, variables, mode=0, tool_type="minimize_logic", timeout=3600):
-    """
-    Convert a truth table in PLA (Programmable Logic Array) format to inequalities using logic minimization.
+    """Convert a PLA truth table to inequalities using logic minimization.
 
     Args:
-        ttable:
-            Truth table values.
-            ttable[n] == '0' means output bit 1 in PLA; otherwise output bit 0.
-        variables (list[str]):
-            Variable names in the truth table order.
-        mode (int):
-            Espresso option preset (0, 1, or 2).
-        tool_type (str):
-            "minimize_logic": use PyEDA's espresso (the 'espresso' executable on PATH).
-            "minimize_logic_espresso": use the external espresso, auto-discovered by
-                ``_find_external_espresso`` in common install locations.
-        timeout (int):
-            Timeout in seconds for the espresso subprocess (default 3600 = 1 hour); a
+        ttable: Truth-table values. ``ttable[n] == "0"`` means output bit 1 in PLA; any other
+            value means output bit 0.
+        variables (list[str]): Variable names in truth-table order.
+        mode (int): Espresso option preset (0, 1, or 2).
+        tool_type (str): ``"minimize_logic"`` uses PyEDA's executable on ``PATH``;
+            ``"minimize_logic_espresso"`` uses the separately installed external executable.
+        timeout (int): Timeout in seconds for the Espresso subprocess; a
             ``RuntimeError`` is raised if espresso does not finish within it.
 
     Returns:

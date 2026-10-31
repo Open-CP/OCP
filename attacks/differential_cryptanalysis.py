@@ -8,7 +8,10 @@ Provides:
 import time
 from math import log2
 from attacks.attack_trace import DifferentialTrail, extract_and_format_trails
-from tools.model_constraints import gen_input_non_zero_constraints, gen_required_fixed_boundary_constraints
+from tools.model_constraints import (gen_input_non_zero_constraints,
+                                    gen_input_key_non_zero_constraints,
+                                    gen_required_fixed_boundary_constraints,
+                                    has_key_input)
 from tools.model_configuration import (parse_and_set_configs, gen_round_model_constraint_obj_fun,
                                        DIFFERENTIAL_GOALS, OBJECTIVE_TARGETS, SHOW_MODES)
 from tools.model_objective import has_Sbox_with_decimal_weights, detect_Sbox
@@ -22,7 +25,7 @@ def _validate_request(goal, constraints, objective_target, show_mode, config_mod
     allowed_goals = list(DIFFERENTIAL_GOALS)
     allowed_objective_targets = list(OBJECTIVE_TARGETS)
     allowed_show = list(SHOW_MODES)
-    if not any(goal.startswith(prefix) for prefix in allowed_goals):
+    if goal not in allowed_goals:
         raise ValueError(f"Invalid goal: {goal}. Expected one of {allowed_goals}.")
     if not isinstance(constraints, list) or any(not isinstance(c, str) for c in constraints):
         raise ValueError(f"Invalid constraints: {constraints}. Expected a list of strings.")
@@ -83,7 +86,8 @@ def search_diff_trail(
 
     t_start = time.time()  # Start of the whole search (for total_time).
     if constraints is None:
-        constraints = ["INPUT_NOT_ZERO"]
+        constraints = ["INPUT_KEY_NOT_ZERO"] if has_key_input(cipher) else ["INPUT_NOT_ZERO"]
+        print(f"[INFO] constraints default to {constraints} for {type(cipher).__name__}.")
     _validate_request(goal, constraints, objective_target, show_mode, config_model, config_solver)
     if goal == "DIFFERENTIAL_PROB" and objective_target != "EXISTENCE":
         print(f"[WARNING] goal='DIFFERENTIAL_PROB' supports only objective_target='EXISTENCE'; "
@@ -102,8 +106,10 @@ def search_diff_trail(
     bitwise = "TRUNCATEDDIFF" not in goal
     model_cons = []
     for cons in constraints:
-        if cons == "INPUT_NOT_ZERO":  # Expand the symbolic input-non-zero marker.
+        if cons == "INPUT_NOT_ZERO":
             model_cons += gen_input_non_zero_constraints(cipher, config_model, bitwise)
+        elif cons == "INPUT_KEY_NOT_ZERO": 
+            model_cons += gen_input_key_non_zero_constraints(cipher, config_model, bitwise)
         else:
             model_cons += [cons]
     model_cons.extend(round_constraints)

@@ -55,23 +55,32 @@ def _verify_impossible_differential(base_cons, obj, fix_constraints, model_type,
     Returns True if NO trail exists -> confirmed impossible; False if a trail exists."""
     model_cons = base_cons + list(fix_constraints)
     if model_type == "milp":
-        solutions = milp_search.modeling_solving_milp("EXISTENCE", model_cons, obj, config_model, config_solver)
+        milp_search.modeling_solving_milp("EXISTENCE", model_cons, obj, config_model, config_solver)
     elif model_type == "sat":
-        solutions = sat_search.modeling_solving_sat("EXISTENCE", model_cons, obj, config_model, config_solver)
+        sat_search.modeling_solving_sat("EXISTENCE", model_cons, obj, config_model, config_solver)
     else:
         raise ValueError(f"Unsupported model_type: {model_type}. Expected 'milp' or 'sat'.")
-    return not solutions   # no trail -> confirmed impossible
+    status = config_solver.get("solver_status")
+    if status == "UNSAT":
+        return True  # no trail -> confirmed impossible
+    if status == "SAT":
+        return False
+    reason = config_solver.get("solver_status_reason", "no reason reported")
+    raise RuntimeError(f"Impossible-differential check inconclusive: status={status!r}, reason={reason}")
 
 
 # ---------------------------- strategy dispatcher ----------------------------
 def search_impossible_differential(cipher, goal="IMPOSSIBLETRUNCATEDDIFF", strategy="ENUMERATION",
                                    config_model=None, config_solver=None, show_mode=0):
-    """Impossible differential search:
-           Delta_in --> Delta_X --[distinguisher]--> Delta_Y --> Delta_out
+    """Run an impossible-differential distinguisher search using the selected strategy.
 
-    goal: "IMPOSSIBLETRUNCATEDDIFF" (word-level truncated) or "IMPOSSIBLEDIFF" (bit-level).
-    strategy: the search strategy; 
-        "ENUMERATION": see :func:`search_id_distinguisher_enumeration`.
+    The searched segment is ``Delta_X (input difference) --> [distinguisher]--> Delta_Y (output difference)``.
+
+    Args:
+        goal: ``"IMPOSSIBLETRUNCATEDDIFF"`` for word-level truncated activity or
+            ``"IMPOSSIBLEDIFF"`` for bit-level activity.
+        strategy: Search strategy. ``"ENUMERATION"`` selects
+            :func:`search_id_distinguisher_enumeration`.
     """
     if strategy == "ENUMERATION":
         return search_id_distinguisher_enumeration(cipher, goal=goal, config_model=config_model,

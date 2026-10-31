@@ -1,15 +1,10 @@
 """
 This module provides tools for solving MILP/SAT models. Supports multiple solvers and configurations.
     - MILP solvers: Gurobi, SCIP
-    - SAT solvers: PySAT, OR-Tools CPSAT, external DIMACS binaries (e.g., PRS, CaDiCaL, CryptoMiniSat, Kissat)
+    - SAT solvers: PySAT, OR-Tools CPSAT
 """
 from importlib import import_module
 from importlib.util import find_spec
-from shutil import which
-import os
-import re
-import subprocess
-import tempfile
 import time
 
 from tools.resource_monitor import RuntimeResourceMonitor
@@ -17,6 +12,7 @@ from tools.resource_monitor import RuntimeResourceMonitor
 
 DEFAULT_MILP_SOLVER = "GUROBI"
 DEFAULT_SAT_BACKEND = "PySAT"
+SAT_BACKENDS = (DEFAULT_SAT_BACKEND,)
 MILP_SOLVERS = ("GUROBI", "SCIP")
 PYSAT_SOLVERS = (
     "Cadical103",
@@ -38,25 +34,7 @@ PYSAT_SOLVERS = (
 )
 PYSAT_SOLVER_NAME_MAP = {name.lower(): name for name in PYSAT_SOLVERS}
 
-# External SAT solvers run as standalone binaries on a DIMACS .cnf file.
-EXTERNAL_SAT_SOLVERS = {
-    "PRS": lambda cfg: [
-        cfg.get("solver_bin", "prs"),
-        "--mode=0",
-        f"--threads={cfg.get('threads', 16)}",
-        "--preprocess_threads=1",
-        "--breakid_threads=1",
-        "--kissat_sup_threads=1",
-        "--kissat_mab_prop_threads=1",
-        "--sbva_threads=1",
-    ],
-    "CaDiCaL": lambda cfg: [cfg.get("solver_bin", "cadical")],
-    "CryptoMiniSat": lambda cfg: [cfg.get("solver_bin", "cryptominisat5")],
-    "Kissat": lambda cfg: [cfg.get("solver_bin", "kissat")],
-}
-EXTERNAL_SAT_SOLVER_NAME_MAP = {name.lower(): name for name in EXTERNAL_SAT_SOLVERS}
-
-SAT_SOLVERS = ("DEFAULT", *PYSAT_SOLVERS, "ORTools", *EXTERNAL_SAT_SOLVERS)
+SAT_SOLVERS = ("DEFAULT", *PYSAT_SOLVERS, "ORTools")
 
 def _printable_config(config_solver):
     """Return config_solver without the bulky resource_usage entry, for the settings echo line."""
@@ -92,11 +70,6 @@ def _modules_available(*module_names):
     return all(find_spec(module_name) is not None for module_name in module_names)
 
 
-def _external_binary_available(solver):
-    """Return True if the registered external solver's binary is on $PATH (registry default name)."""
-    return which(EXTERNAL_SAT_SOLVERS[solver]({})[0]) is not None
-
-
 def _backend_status(available, *, implemented=True, solvers=None):
     """Build a solver-backend capability entry (availability, implemented flag, solver names)."""
     status = {
@@ -130,10 +103,6 @@ def solver_capabilities():
                 _modules_available("ortools"),
                 solvers=("ORTools",),
             ),
-            "External": _backend_status(
-                any(_external_binary_available(s) for s in EXTERNAL_SAT_SOLVERS),
-                solvers=tuple(EXTERNAL_SAT_SOLVERS),
-            ),
         },
         "default": {
             "milp": DEFAULT_MILP_SOLVER,
@@ -155,48 +124,26 @@ def normalize_milp_solver_name(solver="DEFAULT"):
 def normalize_sat_solver_name(solver="DEFAULT", backend=None):
     """Normalize a SAT solver name to a supported value, raising on unknown.
 
-    ``backend`` selects the solving engine explicitly and takes precedence over
-    name-based matching. This disambiguates solver names shared by more than one
-    backend (e.g. PySAT's "CryptoMinisat" vs the external "CryptoMiniSat" binary,
-    identical once lowercased): set ``backend="pysat"`` or ``backend="external"``
-    to pick. With ``backend=None`` the name is matched against the PySAT names
-    first (preserving historical behaviour), then the external registry.
+    ``backend`` is a config_solver key reserved for further SAT backends; only PySAT is accepted today.
     """
     solver_text = str(solver)
-    if backend is not None and backend not in ("pysat", "external"):
-        raise ValueError(f"[ERROR] Unsupported backend: '{backend}'. Supported: 'pysat', 'external'.")
-    if backend == "external":
-        if solver_text.lower() in EXTERNAL_SAT_SOLVER_NAME_MAP:
-            return EXTERNAL_SAT_SOLVER_NAME_MAP[solver_text.lower()]
-        raise ValueError(
-            f"[ERROR] Unsupported external solver: '{solver}'. Supported: "
-            + ", ".join(EXTERNAL_SAT_SOLVERS)
-            + "."
-        )
+    if backend is not None and backend.lower() not in {b.lower() for b in SAT_BACKENDS}:
+        raise ValueError(f"[ERROR] Unsupported backend: '{backend}'. Supported: {', '.join(SAT_BACKENDS)}.")
     if solver_text.upper() == "DEFAULT":
         return "DEFAULT"
     if solver_text.lower() == "ortools":
         return "ORTools"
     if solver_text.lower() in PYSAT_SOLVER_NAME_MAP:
-        if backend is None and solver_text.lower() in EXTERNAL_SAT_SOLVER_NAME_MAP:
-            print(f"[INFO] '{solver}' matches both PySAT and an external solver; using PySAT. "
-                  f"Set config_solver['backend'] = 'external' to use the external binary.")
         return PYSAT_SOLVER_NAME_MAP[solver_text.lower()]
-    if backend is None and solver_text.lower() in EXTERNAL_SAT_SOLVER_NAME_MAP:
-        return EXTERNAL_SAT_SOLVER_NAME_MAP[solver_text.lower()]
     raise ValueError(
         f"[ERROR] Unsupported solver: '{solver}'. Supported: ORTools, DEFAULT, "
-        + ", ".join(PYSAT_SOLVERS + tuple(EXTERNAL_SAT_SOLVERS))
+        + ", ".join(PYSAT_SOLVERS)
         + "."
     )
 
 
 def is_solver_available(kind, solver="DEFAULT", backend=None):
-    """Return whether a configured solver route is both installed and implemented.
-
-    ``backend`` ('pysat'/'external') disambiguates SAT solver names shared by both
-    backends, as in :func:`normalize_sat_solver_name`.
-    """
+    """Return whether a configured solver route is both installed and implemented."""
     kind = kind.lower()
     capabilities = solver_capabilities()
 
@@ -215,8 +162,6 @@ def is_solver_available(kind, solver="DEFAULT", backend=None):
             backend_entry = capabilities["sat"]["PySAT"]
         elif solver_name == "ORTools":
             backend_entry = capabilities["sat"]["ORTools"]
-        elif solver_name in EXTERNAL_SAT_SOLVERS:
-            return _external_binary_available(solver_name)
         else:
             backend_entry = None
     else:
@@ -306,43 +251,12 @@ def _pysat_solver_version(solver):
     return "bundled with python-sat " + _module_version("pysat")
 
 
-def _external_solver_version(solver, config_solver):
-    """Query an external solver binary for its version string.
-
-    Runs the binary with common version flags and returns the first non-empty
-    output line. Falls back to a descriptive message if the binary is missing or
-    does not report a version.
-    """
-    # Reuse the registry builder to resolve the binary path (honours "solver_bin").
-    binary = EXTERNAL_SAT_SOLVERS[solver](config_solver)[0]
-    for flag in ("--version", "-version", "--help"):
-        try:
-            proc = subprocess.run([binary, flag], capture_output=True, text=True, timeout=10)
-        except FileNotFoundError:
-            return f"binary '{binary}' not found on PATH"
-        except subprocess.TimeoutExpired:
-            continue
-        if proc.returncode != 0:  # e.g. "invalid option '--version'" also contains "version"
-            continue
-        text = proc.stdout or proc.stderr
-        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
-        for ln in lines:
-            if "version" in ln.lower():
-                m = re.search(r'version[:\s]+([0-9][\w.\-]*)', ln, re.IGNORECASE)
-                return m.group(1) if m else (ln[2:] if ln.startswith("c ") else ln)
-        if lines:
-            return lines[0]
-    return "unknown"
-
-
 def _sat_solver_version(config_solver):
-    """Resolve the SAT solver (PySAT-bundled, OR-Tools CPSAT, or external binary) version string (no printing)."""
+    """Resolve the SAT solver (PySAT-bundled or OR-Tools CPSAT) version string (no printing)."""
     solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"),
                                        backend=config_solver.get("backend"))
     if solver == "ORTools":
         return "OR-Tools " + _module_version("ortools")
-    if solver in EXTERNAL_SAT_SOLVERS:
-        return _external_solver_version(solver, config_solver)
     return _pysat_solver_version(solver)  # "DEFAULT" and every PySAT solver
 
 
@@ -397,13 +311,15 @@ def solve_milp(filename, config_solver=None):
             solutions = solve_milp_gurobi(filename, config_solver)
         elif solver == "SCIP":
             solutions = solve_milp_scip(filename, config_solver)
+        else:
+            raise ValueError(f"[ERROR] No solve routine wired for MILP solver '{solver}'.")
         # Normalize a missing-backend None to [] so callers always get a list.
         solutions = solutions if solutions is not None else []
         config_solver.setdefault("solver_status", "SAT" if solutions else "UNSAT")
         return solutions
     finally:
-        config_solver["resource_usage"] = monitor.stop()
         elapsed = round(time.time() - time_start, 2)
+        config_solver["resource_usage"] = monitor.stop()
         config_solver.setdefault("solving_time", []).append(elapsed)  # per-call trace; total = sum(solving_time)
         print(f"[INFO] solve #{len(config_solver['solving_time'])}: {elapsed} s | cumulative solver time: {round(sum(config_solver['solving_time']), 2)} s")
 
@@ -420,8 +336,8 @@ def solve_milp_gurobi(filename, config_solver):
 
     try:
         model = gp.read(filename) # Load the model from file.
-        # Set Parameters provided by Gurobi. Example: TimeLimit, SolutionLimit, PoolSearchMode, PoolSolutions, MIPFocus, etc.
-        for key, val in config_solver.items():
+        # config_solver["solver_params"] holds native Gurobi parameters to forward.
+        for key, val in config_solver.get("solver_params", {}).items():
             if hasattr(model.Params, key):
                 setattr(model.Params, key, val)
         if solution_number > 1:
@@ -520,17 +436,13 @@ def solve_sat(filename, variable_map, config_solver=None):
         filename (str): Path to the CNF file.
         variable_map (dict): Mapping of variable names to their DIMACS integer ids.
         config_solver (dict):
-            - solver: solver name (e.g. "DEFAULT", "ORTools", "Cadical103",
-                or an external binary: "PRS", "CaDiCaL", "CryptoMiniSat", "Kissat").
-            - backend (optional): "pysat" or "external"; disambiguates solver names
-                shared by both backends (e.g. PySAT "CryptoMinisat" vs the external
-                "CryptoMiniSat" binary). See :func:`normalize_sat_solver_name`.
+            - solver: solver name (e.g. "DEFAULT", "ORTools", "Cadical103").
             - solution_number: The number of solutions to find (default: 1).
 
     Returns:
         list: Up to ``solution_number`` solutions, each a dict mapping variable names to 0/1.
-            An empty list means unsatisfiable only under ``config_solver["solver_status"] == "UNSAT"``.
-            An unloadable backend, a missing binary or unparsable solver output raises.
+            An empty list is unsatisfiable only under ``solver_status == "UNSAT"``; an unloadable
+            backend raises rather than returning it.
     """
 
     if config_solver is None:
@@ -542,10 +454,6 @@ def solve_sat(filename, variable_map, config_solver=None):
     solver = normalize_sat_solver_name(config_solver.get("solver", "DEFAULT"),
                                        backend=config_solver.get("backend"))
     config_solver["solver"] = solver
-    if config_solver.get("backend") is None and solver.lower() in EXTERNAL_SAT_SOLVER_NAME_MAP:
-        # Record the resolved engine for ambiguous names, so downstream re-normalization
-        # (e.g. the version lookup below) does not re-print the disambiguation notice.
-        config_solver["backend"] = "external" if solver in EXTERNAL_SAT_SOLVERS else "pysat"
     if "solver_version" not in config_solver:  # resolve once (guard: setdefault would recompute every call)
         config_solver["solver_version"] = _sat_solver_version(config_solver)
     print(f"[INFO] Solving SAT model with settings: {_printable_config(config_solver)}")
@@ -557,17 +465,15 @@ def solve_sat(filename, variable_map, config_solver=None):
             solutions = solve_sat_pysat(filename, variable_map, config_solver)
         elif solver == "ORTools":
             solutions = solve_sat_cpsat(filename, variable_map, config_solver)
-        elif solver in EXTERNAL_SAT_SOLVERS:
-            solutions = solve_sat_external(filename, variable_map, config_solver)
         else:
-            solutions = []
+            raise ValueError(f"[ERROR] No solve routine wired for SAT solver '{solver}'.")
         # Normalize a None to [] so callers always get a list (parity with solve_milp).
         solutions = solutions if solutions is not None else []
         config_solver.setdefault("solver_status", "SAT" if solutions else "UNSAT")
         return solutions
     finally:
-        config_solver["resource_usage"] = monitor.stop()
         elapsed = round(time.time() - time_start, 2)
+        config_solver["resource_usage"] = monitor.stop()
         config_solver.setdefault("solving_time", []).append(elapsed)  # per-call trace; total = sum(solving_time)
         print(f"[INFO] solve #{len(config_solver['solving_time'])}: {elapsed} s | cumulative solver time: {round(sum(config_solver['solving_time']), 2)} s")
 
@@ -680,7 +586,7 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
     Shared arguments as in :func:`solve_sat`. Returns up to ``solution_number``
     ``{variable_name: 0/1}`` solutions; raise if OR-Tools CP-SAT is unavailable.
     Known difference: multi-solution enumeration is callback-based and does not
-    project blocking clauses onto ``trail_var_names`` (unlike the PySAT/external backends).
+    project blocking clauses onto ``trail_var_names`` (unlike the PySAT backend).
     """
     cp_model = _load_ortools_cpsat()
     if cp_model is None:
@@ -738,117 +644,3 @@ def solve_sat_cpsat(filename, variable_map, config_solver):
         _set_cpsat_status(config_solver, cp_model, status, solution_printer.solutions)
         print(f"[INFO] Found {len(solution_printer.solutions)} solution(s) from OR-Tools CP-SAT.")
         return solution_printer.solutions
-
-
-def solve_sat_external(filename, variable_map, config_solver):
-    """Solve a SAT model (DIMACS CNF ``filename``) with an external binary registered in EXTERNAL_SAT_SOLVERS.
-
-    Shared arguments as in :func:`solve_sat`. Extra ``config_solver`` keys:
-        - solver_bin: binary path/name overriding the registry default (optional).
-        - solver-specific keys read by the registry builder (e.g. ``threads`` for PRS).
-
-    Returns up to ``solution_number`` solutions, cut short on UNSAT or a timeout, which
-    ``solver_status`` tells apart. An unregistered solver, a missing binary or bad output raises.
-    """
-
-    solver = config_solver.get("solver")
-    build_args = EXTERNAL_SAT_SOLVERS.get(solver)
-    if build_args is None:
-        raise ValueError(f"[ERROR] '{solver}' is not a registered external solver. "
-                         f"Supported: {', '.join(EXTERNAL_SAT_SOLVERS)}.")
-
-    timeout = config_solver.get("time_limit", None)
-    solution_number = config_solver.get("solution_number", 1)
-    trail_var_nums = _resolve_block_projection(variable_map, config_solver)
-    base_cmd = build_args(config_solver) + list(config_solver.get("extra_args", []))
-
-    # Only enumeration needs a WORKING COPY of the CNF (the original file is untouched):
-    # split off the 'p cnf' header so the clause count can be rewritten with the blocks.
-    if solution_number > 1:
-        with open(filename) as f:
-            cnf_lines = f.read().splitlines()
-        header_idx = next((i for i, l in enumerate(cnf_lines) if l.lstrip().startswith("p cnf")), None)
-        if header_idx is None:
-            raise ValueError(f"[ERROR] {filename} has no 'p cnf' header, so the blocking clauses "
-                             f"cannot be counted; enumeration needs a well-formed DIMACS file.")
-        nv, nc = (int(x) for x in cnf_lines[header_idx].split()[2:4])
-        body = cnf_lines[header_idx + 1:]        # the clause lines
-
-    work_path = None
-    blocks = []       # accumulated blocking clauses (one per solution found)
-    sol_list = []
-    try:
-        while len(sol_list) < solution_number:
-            # First run uses the original file; later runs use the working copy with blocks.
-            cmd = base_cmd + [filename if not blocks else work_path]
-
-            # A timeout stops enumeration and already-found solutions are still returned, with
-            # the status saying they are partial. A missing binary is a configuration error.
-            try:
-                proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
-            except subprocess.TimeoutExpired:
-                print(f"[WARNING] {solver} timed out after {timeout}s ... stopping enumeration.")
-                _set_solver_status(config_solver, "UNKNOWN", f"timed out after {timeout}s")
-                break
-            except FileNotFoundError as e:
-                raise RuntimeError(f"[ERROR] {solver} binary not found at '{cmd[0]}'. "
-                                   f"Set config_solver['solver_bin'] or put it on PATH.") from e
-
-            # Parse the standard DIMACS competition output (s-line + v model lines).
-            status, literals = None, []
-            for line in proc.stdout.splitlines():
-                line = line.strip()
-                if line.startswith("s "):
-                    status = line[2:].strip()
-                elif line.startswith("v "):
-                    literals += [int(tok) for tok in line[2:].split()]
-
-            if status == "UNSATISFIABLE":
-                print("[INFO] UNSAT reached.")
-                if not sol_list:  # mid-enumeration it only means "no further solution"
-                    _set_solver_status(config_solver, "UNSAT")
-                break
-            if status == "UNKNOWN":  # DIMACS: the solver gave up at its own limit
-                print(f"[WARNING] {solver} returned UNKNOWN ... stopping.")
-                _set_solver_status(config_solver, "UNKNOWN", f"{solver} returned UNKNOWN")
-                break
-            if status != "SATISFIABLE":
-                unreadable = (f"{solver} returned status '{status}', which is not DIMACS "
-                              f"competition output; its result cannot be read")
-                if sol_list:  # as for a timeout: the solutions already found are still valid
-                    print(f"[WARNING] {unreadable} ... stopping enumeration.")
-                    _set_solver_status(config_solver, "UNKNOWN", unreadable)
-                    break
-                raise RuntimeError(f"[ERROR] {unreadable}.")
-
-            # Set of signed literals (drop the terminating 0). A SATISFIABLE status with no
-            # model means the solver did not print its assignment -> guard against a silent
-            # empty solution rather than returning garbage.
-            model = set(lit for lit in literals if lit != 0)
-            if not model:
-                raise RuntimeError(f"[ERROR] {solver} reported SATISFIABLE but emitted no model "
-                                   f"(v-lines); ensure it is invoked to print the assignment.")
-
-            sol_list.append(_solution_from_model(model, variable_map))
-
-            # Block this (projected) assignment so the next run yields a different trail.
-            block_clause = _projected_block_clause(model, trail_var_nums)
-            if not block_clause:
-                break  # nothing to block -> the same solution would be re-found forever
-            blocks.append(block_clause)
-            if len(sol_list) < solution_number:  # rebuild the working copy with the blocks
-                if work_path is None:
-                    fd, work_path = tempfile.mkstemp(prefix="ext_sat_", suffix=".cnf",
-                                                     dir=os.path.dirname(os.path.abspath(filename)))
-                    os.close(fd)
-                with open(work_path, "w") as fh:
-                    fh.write(f"p cnf {nv} {nc + len(blocks)}\n")
-                    fh.write("\n".join(body) + "\n")
-                    for bc in blocks:
-                        fh.write(" ".join(str(x) for x in bc) + " 0\n")
-    finally:
-        if work_path is not None and os.path.exists(work_path):
-            os.remove(work_path)
-
-    print(f"[INFO] Found {len(sol_list)} solution(s) from {solver}.")
-    return sol_list

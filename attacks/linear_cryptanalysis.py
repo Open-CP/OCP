@@ -22,7 +22,7 @@ def _validate_request(goal, constraints, objective_target, show_mode, config_mod
     allowed_goals = list(LINEAR_GOALS)
     allowed_objective_targets = list(OBJECTIVE_TARGETS)
     allowed_show = list(SHOW_MODES)
-    if not any(goal.startswith(prefix) for prefix in allowed_goals):
+    if goal not in allowed_goals:
         raise ValueError(f"Invalid goal: {goal}. Expected one of {allowed_goals}.")
     if not isinstance(constraints, list) or any(not isinstance(c, str) for c in constraints):
         raise ValueError(f"Invalid constraints: {constraints}. Expected a list of strings.")

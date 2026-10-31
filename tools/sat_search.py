@@ -167,17 +167,31 @@ def _solve_with_objective_target(
     return modeling_solving(constraints + obj_constraints, objective_function, config_model, config_solver)
 
 
-def _check_reported_optimum(cons_type, obj_vars, solutions, bound):
-    """Warn when the weight a scan reports and the bound it was proven at disagree."""
-    if cons_type != "SUM_AT_MOST" or not solutions:
+def _check_reported_optimum(cons_type, obj_vars, solutions, bound, lower_bound_proven):
+    """Report on the weight a scan returns against the bound it was solved at."""
+    if cons_type not in ("SUM_AT_MOST", "SUM_EXACTLY") or not solutions:
         return
     counted = [variable for row in obj_vars for variable in row]
     if not counted or any(variable not in sol for sol in solutions for variable in counted):
         return   # cannot reason without every counted variable
     weights = [sum(sol[variable] for variable in counted) for sol in solutions]
-    if (min(weights), max(weights)) != (bound, bound):
-        print(f"[WARNING] The optimum reported weighs {min(weights)}..{max(weights)}, proven at "
-              f"bound {bound}: the two should be equal, so this is not a proven optimum.")
+    lo, hi = min(weights), max(weights)
+    # SUM_EXACTLY forces weight == bound; a mismatch is an equals-encoding fault.
+    if cons_type == "SUM_EXACTLY" and (lo, hi) != (bound, bound):
+        print(f"[WARNING] A reported solution weighs {lo}..{hi} but an EXACTLY bound requires {bound}.")
+        return
+    # SUM_AT_MOST weight above the bound: the cardinality constraint did not hold -> encoding bug
+    if cons_type == "SUM_AT_MOST" and hi > bound:
+        print(f"[WARNING] A reported solution weighs {hi} above the bound {bound}: the cardinality constraint did not hold.")
+        return
+    # no lower bound proven, positive weight: a found weight, not a proven optimum -> start too loose
+    if not lower_bound_proven and lo > 0:
+        print(f"[INFO] Found a solution of weight {lo}..{hi} at bound {bound} without proving any smaller bound infeasible: "
+              f"the true optimum is at most {lo}, not shown to be minimal. Restart from a smaller start value to tighten it.")
+        return
+    # a lower bound proven, yet a weight below it -> a pruning/UNSAT bug
+    if lower_bound_proven and lo < bound:
+        print(f"[WARNING] The optimum reported weighs {lo}..{hi} below the bound {bound} it was proven at: a bug.")
 
 
 def modeling_solving_sat(objective_target, constraints, objective_function, config_model, config_solver):
@@ -249,9 +263,11 @@ def modeling_solving_optimal_intobj(constraints, objective_function, config_mode
                          f"Expected one of {list(SAT_OPTIMAL_STRATEGIES)}.")
 
     found_feasible = None
+    # AT_MOST sets this below on a refutation; EXACTLY proves it only by covering [0, bound-1], i.e. starting at 0.
+    lower_bound_proven = cons_type == "SUM_EXACTLY" and obj_val == 0
     solutions = None
     def checked(found, bound):   # reports on `found`, returns it unchanged
-        _check_reported_optimum(cons_type, obj_vars, found, bound)
+        _check_reported_optimum(cons_type, obj_vars, found, bound, lower_bound_proven)
         return found
 
     # Direction-aware: ADAPTIVE flips step mid-loop, so the direction is not a constant.
@@ -272,6 +288,8 @@ def modeling_solving_optimal_intobj(constraints, objective_function, config_mode
             print(f"[WARNING] Nothing proven at objective value {obj_val} "
                   f"({config_solver.get('solver_status_reason')}) ... stopping the search.")
             return current_solutions or solutions or []
+        if cons_type == "SUM_AT_MOST" and not current_solutions:
+            lower_bound_proven = True   # an empty result is a decisive UNSAT
         if mode == "INCREASING" and current_solutions:
             return checked(current_solutions, obj_val)
         elif mode == "DECREASING" and not current_solutions:

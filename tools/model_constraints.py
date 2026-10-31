@@ -1,13 +1,11 @@
 """Model-level SAT/MILP constraints for cryptanalysis.
 
-This module provides:
-1. Model-level constraint encodings
-   - Predefined value/cardinality constraints (EXACTLY, AT_LEAST, SUM_AT_MOST, ...)
-   - SAT sequential-counter cardinality encoding
-   - Matsui's branch-and-bound constraints for MILP/SAT trail search
-2. Attack boundary/input constraints shared by the differential and linear cryptanalysis
-   - Nonzero input constraint builder
-   - Fixed input/output difference or mask constraints for hull/probability goals
+This module provides two groups of helpers:
+
+* Model-level encodings: predefined value/cardinality constraints, SAT sequential counters, and
+  Matsui branch-and-bound constraints for MILP/SAT trail search.
+* Attack boundary/input constraints shared by differential and linear cryptanalysis: nonzero
+  inputs and fixed input/output differences or masks.
 
 """
 
@@ -544,19 +542,8 @@ def gen_matsui_partial_cardinality_sat(obj_var, dummy_var, k, left, right, m):
 
 
 # ----------- Attack boundary and input constraints ------------- #
-def gen_input_non_zero_constraints(cipher, config_model, bitwise):
-    """Generate the standard nonzero input constraint.
-
-    Args:
-        cipher: The cipher whose input variables must be non-zero.
-        config_model (dict): Model configuration (``model_type``, SAT encoding, ...).
-        bitwise (bool): If True, apply the constraint per bit; otherwise per word
-            (word-level for truncated goals).
-
-    Returns:
-        list[str]: The generated model constraint strings.
-    """
-    cons_vars = [var for cons in cipher.inputs_constraints for var in cons.input_vars]
+def _gen_non_zero_constraints(cons_vars, config_model, bitwise):
+    """At least one bit (or word) of ``cons_vars`` is non-zero, in the configured model type."""
     model_type = config_model.get("model_type", "milp").lower()
     encoding = config_model.get("atleast_encoding_sat", 1) if model_type == "sat" else None
     constraints = gen_predefined_constraints(
@@ -572,6 +559,37 @@ def gen_input_non_zero_constraints(cipher, config_model, bitwise):
         if binary_vars:
             constraints.append("Binary\n" + " ".join(binary_vars))
     return constraints
+
+
+def gen_input_non_zero_constraints(cipher, config_model, bitwise):
+    """Generate the standard nonzero input constraint.
+
+    Args:
+        cipher: The cipher whose input variables must be non-zero.
+        config_model (dict): Model configuration (``model_type``, SAT encoding, ...).
+        bitwise (bool): If True, apply the constraint per bit; otherwise per word
+            (word-level for truncated goals).
+
+    Returns:
+        list[str]: The generated model constraint strings.
+    """
+    cons_vars = [var for vs in cipher.inputs.values() for var in vs]
+    return _gen_non_zero_constraints(cons_vars, config_model, bitwise)
+
+
+def has_key_input(cipher):
+    """Whether ``cipher`` declares a key input, so that a key difference/mask means anything."""
+    inputs = getattr(cipher, "inputs", None)
+    return bool(inputs.get("key")) if isinstance(inputs, dict) else False
+
+
+def gen_input_key_non_zero_constraints(cipher, config_model, bitwise):
+    """Generate the nonzero KEY input constraint, for a genuinely related-key search."""
+    if not has_key_input(cipher):
+        raise ValueError(f"[ERROR] {type(cipher).__name__} has no 'key' input (only "
+                         f"{sorted(getattr(cipher, 'inputs', None) or {})}); "
+                         f"use the primitive's block-cipher variant.")
+    return _gen_non_zero_constraints(list(cipher.inputs["key"]), config_model, bitwise)
 
 
 def _cipher_boundary_vars(in_out, cipher):
@@ -651,6 +669,16 @@ def state_var_ids(cons_vars):
     the two directions disagreeing would make a claim written here unreadable there.
     """
     return [var_id for var in cons_vars for var_id in expand_var_ids(var, bitwise=True)]
+
+
+def state_vars(cipher, function, rnd, layer, where="state"):
+    """``(fn, that state's variables)`` for one (function, round, layer)."""
+    try:
+        fn = cipher.functions[function]
+        return fn, fn.vars[rnd][layer]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise ValueError(f"[ERROR] {where}: no such function/round/layer. Functions: "
+                         f"{sorted(cipher.functions)}.") from exc
 
 
 def _fix_vars_to_bits(cons_vars, fixed_value, model_type, value_name="value"):

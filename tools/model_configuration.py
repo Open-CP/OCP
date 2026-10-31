@@ -50,6 +50,7 @@ OBJECTIVE_TARGETS = OBJECTIVE_TARGETS_BARE + OBJECTIVE_TARGETS_WITH_VALUE
 # Symbolic markers that the `constraints` list expands.
 ANALYSIS_CONSTRAINT_MARKERS = {
     "INPUT_NOT_ZERO": "add an input difference/mask non-zero constraint (differential, linear)",
+    "INPUT_KEY_NOT_ZERO": "add a key difference non-zero constraint (differential; keyed ciphers)",
     "TWO_SUBSET_INIT": "set the two-subset division-property initial state (integral)",
 }
 
