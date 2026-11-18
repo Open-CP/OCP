@@ -1,3 +1,8 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/ocp-logo-light.svg">
+  <img src="docs/images/ocp-logo.svg" width="248" alt="OCP">
+</picture>
+
 # OCP (Open Cryptanalysis Platform)
 
 The OCP tool is composed of the following main modules:

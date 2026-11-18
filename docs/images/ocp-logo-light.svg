@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 308 108" role="img" aria-labelledby="t">
+  <title id="t">Open Cryptanalysis Platform</title>
+  <g fill="#ecf2e9">
+    <g transform="translate(-7 -14) scale(.43)">
+      <path d="M263 130h-25l-33-57q-2-3-5-3h-91q-3 0-5 3l-49 84q-2 3 0 7l47 79q2 4 6 4h85q4 0 6-4l5-8h31l-15 26q-5 9-15 9H102q-10 0-15-9L32 168q-5-9 0-18L88 55q5-9 15-9h101q10 0 15 9z"/>
+      <path d="M217 130h-25l-11-19h-53l-28 47 27 47h100l16-28a21 21 0 1 1 16 7l-25 41H121q-8 0-12-7l-31-53q-4-7 0-14l34-56q4-6 12-6h63q7 0 11 6z"/>
+    </g>
+    <g fill="none" stroke="#ecf2e9" stroke-width="9" stroke-linecap="square">
+      <rect x="135" y="29" width="39" height="51" rx="19.5"/>
+      <path d="M230 39c-4-7-9-10-17-10-14 0-22 10-22 25s8 26 22 26c8 0 14-4 18-11"/>
+      <path d="M251 79V30h18c11 0 18 6 18 15s-7 15-18 15h-18"/>
+    </g>
+  </g>
+</svg>
